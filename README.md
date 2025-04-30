@@ -44,17 +44,3 @@ No Python installation is required to run the distributed executable.
   <img src="docs/images/main_interface.png" width="45%" />
   <img src="docs/images/timeline_view.png" width="45%" />
 </div>
-
-## 🛠️ For Developers
-
-### Building from Source
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/RABET.git
-cd RABET
-
-# Install development dependencies
-pip install -r requirements.txt
-
-# Build executable for Windows
-python build_windows_optimized.py
