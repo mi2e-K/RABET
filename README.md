@@ -41,6 +41,5 @@ No Python installation is required to run the distributed executable.
 
 ## 📷 Screenshots
 <div align="center">
-  <img src="docs/images/main_interface.png" width="45%" />
-  <img src="docs/images/timeline_view.png" width="45%" />
+  <img src="images/main_interface.png" width="45%" />
 </div>
