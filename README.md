@@ -1,10 +1,15 @@
 <div align="center">
   <img src="RABET.png" alt="RABET Logo" width="100"/>
   <h1>RABET - Real-time Animal Behavior Event Tagger</h1>
-  <p>A specialized desktop application for behavioral researchers to annotate animal behaviors in videos with precise timing</p>
+  <p>A desktop application for behavioral researchers to annotate animal behaviors in videos with precise timing</p>
   
   [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15313026.svg)](https://doi.org/10.5281/zenodo.15313026)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</div>
+
+## 📷 Screenshots
+<div align="center">
+  <img src="images/main_interface.png" width="75%" />
 </div>
 
 ## 📋 Features
@@ -39,7 +44,3 @@ No Python installation is required to run the distributed executable.
 4. Press mapped keys while watching the video to mark behaviors
 5. Annotations will be automatically exported upon completion
 
-## 📷 Screenshots
-<div align="center">
-  <img src="images/main_interface.png" width="45%" />
-</div>
