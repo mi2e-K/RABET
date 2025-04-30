@@ -1,11 +1,10 @@
 <div align="center">
-  <img src="RABET.png" alt="RABET Logo" width="200"/>
+  <img src="RABET.png" alt="RABET Logo" width="100"/>
   <h1>RABET - Real-time Animal Behavior Event Tagger</h1>
   <p>A specialized desktop application for behavioral researchers to annotate animal behaviors in videos with precise timing</p>
   
+  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15313026.svg)](https://doi.org/10.5281/zenodo.15313026)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-  [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-  [![PySide6](https://img.shields.io/badge/PySide6-6.4+-blue.svg)](https://doc.qt.io/qtforpython-6/)
 </div>
 
 ## 📋 Features
@@ -20,18 +19,42 @@
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.8+
-- PySide6
-- VLC Media Player
+- Windows 10/11
+- [VLC Media Player](https://www.videolan.org/vlc/) (Latest version)
+  - VLC is required for video playback functionality
+  - Make sure to install the 64-bit version
 
-### Installation
+### Installation & Running
+1. Download the latest release from the [Releases](https://github.com/yourusername/RABET/releases) page
+2. Extract the ZIP file to a location of your choice
+3. Run `RABET.exe` to start the application
+
+No Python installation is required to run the distributed executable.
+
+## 📺 Quick Start Guide
+
+1. Open a video file using File → Open Video
+2. Configure key mappings using the Action Map panel
+3. Start a timed recording session using the Recording Control panel
+4. Press mapped keys while watching the video to mark behaviors
+5. Annotations will be automatically exported upon completion
+
+## 📷 Screenshots
+<div align="center">
+  <img src="docs/images/main_interface.png" width="45%" />
+  <img src="docs/images/timeline_view.png" width="45%" />
+</div>
+
+## 🛠️ For Developers
+
+### Building from Source
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/RABET.git
 cd RABET
 
-# Install dependencies
+# Install development dependencies
 pip install -r requirements.txt
 
-# Run the application
-python main.py
+# Build executable for Windows
+python build_windows_optimized.py
