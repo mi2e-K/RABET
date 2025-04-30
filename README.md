@@ -7,7 +7,6 @@
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 </div>
 
-## 📷 Screenshots
 <div align="center">
   <img src="images/main_interface.png" width="75%" />
 </div>
