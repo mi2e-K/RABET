@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="path/to/logo.png" alt="RABET Logo" width="200"/>
+  <img src="RABET.ico" alt="RABET Logo" width="200"/>
   <h1>RABET - Real-time Animal Behavior Event Tagger</h1>
   <p>A specialized desktop application for behavioral researchers to annotate animal behaviors in videos with precise timing</p>
   
