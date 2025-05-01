@@ -33,7 +33,6 @@
 2. Extract the ZIP file to a location of your choice
 3. Run `RABET.exe` to start the application
 
-No Python installation is required to run the distributed executable.
 
 ## 📺 Quick Start Guide
 
