@@ -29,16 +29,12 @@
   - Make sure to install the 64-bit version
 
 ### Installation & Running
-You can download RABET through either of these options:
+The application is available for download from these locations:
 
-1. **GitHub Release (v1.0.0)**:
-   - Visit our [GitHub Releases page](https://github.com/YOUR_ACTUAL_USERNAME/RABET/releases/tag/v1.0.0)
-   - Download the ZIP file under "Assets"
+- [**Download from Zenodo**](https://zenodo.org/records/15313026) (Official repository)
+- [**Alternative Download (Google Drive)**](https://drive.google.com/file/d/1D-oJza1YV8Y5U63zXgK9fZFYTn2ELZfr/view?usp=drive_link)
 
-2. **Direct Download**:
-   - [Download from Google Drive](https://drive.google.com/file/d/1D-oJza1YV8Y5U63zXgK9fZFYTn2ELZfr/view?usp=drive_link)
-
-After downloading:
+Installation steps:
 1. Extract the ZIP file to a location of your choice
 2. Run `RABET.exe` to start the application
 
