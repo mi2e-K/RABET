@@ -1,0 +1,30 @@
+{
+  "latency_metrics": [
+    {
+      "name": "Attack Latency",
+      "behavior": "Attack bites",
+      "enabled": true
+    }
+  ],
+  "total_time_metrics": [
+    {
+      "name": "Total Aggression",
+      "behaviors": [
+        "Attack bites",
+        "Sideways threats",
+        "Tail rattles",
+        "Chasing"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "Total Aggression(without tail-rattles)",
+      "behaviors": [
+        "Attack bites",
+        "Sideways threats",
+        "Chasing"
+      ],
+      "enabled": true
+    }
+  ]
+}
