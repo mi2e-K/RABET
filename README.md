@@ -31,7 +31,7 @@
 ### Installation & Running
 The application is available for download from these locations:
 
-- [**Download from Zenodo**](https://zenodo.org/records/15313026) (Official repository)
+- [**Download from Zenodo**](https://zenodo.org/records/15513527) (Official repository)
 - [**Alternative Download (Google Drive)**](https://drive.google.com/file/d/1D-oJza1YV8Y5U63zXgK9fZFYTn2ELZfr/view?usp=drive_link)
 
 Installation steps:
