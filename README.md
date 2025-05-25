@@ -14,10 +14,11 @@
 ## 📋 Features
 
 - 🎥 Video playback with frame-by-frame precision control
-- ⌨️ Keyboard-based real-time annotation using configurable mappings
-- 📊 Interactive timeline visualization of behavioral events
+- 💻 Keyboard-based real-time annotation using configurable mappings
+- 🧮 Interactive timeline visualization of behavioral events
 - ⏱️ Timed recording sessions with pause/resume capability
-- 📈 Multi-file analysis for aggregate behavioral data
+- 📊 Multi-file analysis for aggregate behavioral data
+- 🎨 Visualization of behavioral events using customizable raster plots
 - 🔬 Project management for research organization
 
 ## 🚀 Getting Started
