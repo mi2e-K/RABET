@@ -11,10 +11,10 @@ jobs:
     runs-on: macos-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
     
@@ -26,6 +26,15 @@ jobs:
         pip install setuptools jaraco.text jaraco.classes jaraco.collections
         pip install importlib_metadata importlib_resources more_itertools packaging
     
+    - name: Create icon file (temporary)
+      run: |
+        # Create a simple icon if it doesn't exist
+        if [ ! -f "resources/RABET.icns" ]; then
+          echo "Creating placeholder icon..."
+          # For now, we'll skip the icon requirement
+          touch resources/RABET.icns
+        fi
+    
     - name: Build with PyInstaller
       run: |
         # Create a Mac-specific build script
@@ -34,48 +43,59 @@ jobs:
         import sys
         import subprocess
         
+        # Check if icon exists, if not, build without it
+        icon_option = []
+        if os.path.exists("resources/RABET.icns") and os.path.getsize("resources/RABET.icns") > 0:
+            icon_option = ["--icon=resources/RABET.icns"]
+        
         # Run PyInstaller with Mac-specific options
         cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
             "--windowed",  # No console window on Mac
-            "--icon=resources/RABET.icns",  # Mac icon format
             "--name=RABET",
             "--add-data=resources:resources",
             "--add-data=configs:configs",
             "--hidden-import=matplotlib.backends.backend_qt5agg",
             "--hidden-import=PIL",
             "--hidden-import=PIL.Image",
+            "--hidden-import=vlc",
+            "--hidden-import=setuptools",
+            "--hidden-import=pkg_resources",
             "--exclude-module=tkinter",
-            "main.py"
-        ]
+        ] + icon_option + ["main.py"]
         
+        print("Running command:", " ".join(cmd))
         subprocess.check_call(cmd)
         EOF
         
         python build_mac.py
     
-    - name: Create DMG installer
+    - name: List dist contents
       run: |
-        # Install create-dmg
-        brew install create-dmg
-        
-        # Create a DMG
-        create-dmg \
-          --volname "RABET" \
-          --window-pos 200 120 \
-          --window-size 600 400 \
-          --icon-size 100 \
-          --icon "RABET.app" 200 190 \
-          --hide-extension "RABET.app" \
-          --app-drop-link 400 190 \
-          "RABET-macOS.dmg" \
-          "dist/"
+        echo "Contents of dist directory:"
+        ls -la dist/
+    
+    - name: Create simple DMG (if app bundle exists)
+      run: |
+        if [ -d "dist/RABET.app" ]; then
+          echo "Creating DMG from app bundle..."
+          hdiutil create -volname "RABET" -srcfolder dist -ov -format UDZO RABET-macOS.dmg
+        else
+          echo "No app bundle found, creating DMG from executable..."
+          mkdir -p dist/RABET-Package
+          cp dist/RABET dist/RABET-Package/
+          # Create a simple README
+          echo "RABET - Real-time Animal Behavior Event Tagger" > dist/RABET-Package/README.txt
+          echo "To run: Double-click the RABET executable" >> dist/RABET-Package/README.txt
+          hdiutil create -volname "RABET" -srcfolder dist/RABET-Package -ov -format UDZO RABET-macOS.dmg
+        fi
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RABET-macOS
         path: |
-          dist/RABET
+          dist/*
           RABET-macOS.dmg
+        if-no-files-found: error
