@@ -32,7 +32,7 @@
 The application is available for download from these locations:
 
 - [**Download from Zenodo**](https://zenodo.org/records/15513527) (Official repository)
-- [**Alternative Download (Google Drive)**](https://drive.google.com/file/d/1D-oJza1YV8Y5U63zXgK9fZFYTn2ELZfr/view?usp=drive_link)
+- [**Alternative Download (Google Drive)**]([https://drive.google.com/file/d/1D-oJza1YV8Y5U63zXgK9fZFYTn2ELZfr/view?usp=drive_link](https://drive.google.com/file/d/1h0ZFwrJwf91gzJyfIsa4PpW4sdZNzdH6/view?usp=sharing))
 
 Installation steps:
 1. Extract the ZIP file to a location of your choice
