@@ -1,0 +1,111 @@
+name: Build macOS Optimized
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-mac-optimized:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install only what we need
+        pip install PySide6 python-vlc shiboken6
+        pip install numpy pandas matplotlib Pillow
+        pip install pyinstaller>=6.0.0
+        # Install hidden dependencies
+        pip install setuptools jaraco.text jaraco.classes jaraco.collections
+        pip install importlib_metadata importlib_resources more_itertools packaging
+    
+    - name: Copy build script
+      run: |
+        # Create the build script if it doesn't exist
+        if [ ! -f "build_mac_optimized.py" ]; then
+          curl -o build_mac_optimized.py https://raw.githubusercontent.com/${{ github.repository }}/main/build_mac_optimized.py
+        fi
+    
+    - name: Build optimized app
+      run: |
+        python build_mac_optimized.py --verbose
+    
+    - name: Additional optimizations
+      run: |
+        # Create optimization script
+        cat > mac_post_build.sh << 'EOF'
+        #!/bin/bash
+        APP_PATH="dist/RABET.app"
+        MACOS_PATH="$APP_PATH/Contents/MacOS"
+        
+        # Remove unused Qt frameworks
+        find "$MACOS_PATH" -name "Qt3D*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtBluetooth*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtDBus*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtDesigner*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtHelp*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtLocation*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtNfc*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtQuick3D*" -delete 2>/dev/null
+        find "$MACOS_PATH" -name "QtWebEngine*" -delete 2>/dev/null
+        
+        # Remove test and example files
+        find "$MACOS_PATH" -type d -name "test*" -exec rm -rf {} + 2>/dev/null
+        find "$MACOS_PATH" -type d -name "examples" -exec rm -rf {} + 2>/dev/null
+        
+        # Strip debug symbols
+        find "$MACOS_PATH" -name "*.dylib" -exec strip -S {} \; 2>/dev/null
+        
+        echo "Final app size: $(du -sh "$APP_PATH" | cut -f1)"
+        EOF
+        
+        chmod +x mac_post_build.sh
+        ./mac_post_build.sh
+    
+    - name: Create DMG
+      run: |
+        # Create a simple DMG file
+        if [ -d "dist/RABET.app" ]; then
+          # Create staging directory
+          mkdir -p dist/dmg
+          cp -R dist/RABET.app dist/dmg/
+          
+          # Create Applications symlink
+          ln -s /Applications dist/dmg/Applications
+          
+          # Create DMG
+          hdiutil create -volname "RABET" -srcfolder dist/dmg -ov -format UDZO RABET-macOS-optimized.dmg
+          
+          # Show final sizes
+          echo "App size: $(du -sh dist/RABET.app | cut -f1)"
+          echo "DMG size: $(du -sh RABET-macOS-optimized.dmg | cut -f1)"
+        fi
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RABET-macOS-optimized
+        path: |
+          dist/RABET.app
+          RABET-macOS-optimized.dmg
+        if-no-files-found: error
+    
+    - name: Create Release (if tagged)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: RABET-macOS-optimized.dmg
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
