@@ -1,0 +1,366 @@
+name: Build macOS Distribution (Optimized)
+
+on:
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  build-mac-optimized:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install core dependencies only
+      run: |
+        python -m pip install --upgrade pip
+        # Install PyInstaller
+        pip install pyinstaller>=6.0.0
+        
+        # Core dependencies only (from build_windows_optimized.py)
+        pip install PySide6 python-vlc shiboken6
+        
+        # Optional dependencies that are actually needed
+        pip install numpy pandas matplotlib Pillow
+        
+        # Hidden dependencies needed for PyInstaller
+        pip install setuptools jaraco.text jaraco.classes jaraco.collections
+        pip install importlib_metadata importlib_resources more_itertools packaging
+    
+    - name: Create optimized build script
+      run: |
+        cat > build_mac_optimized.py << 'EOF'
+#!/usr/bin/env python3
+# build_mac_optimized.py - Optimized Mac build script based on Windows version
+
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+
+# Same exclusions as Windows version
+DEFAULT_EXCLUDED_MODULES = [
+    # GUI frameworks that might conflict with PySide6
+    "PyQt5", "PyQt6", "wx", "tkinter", "gtk", 
+    
+    # Data science and machine learning libraries
+    "scipy", "sklearn", "seaborn", "statsmodels",
+    "tensorflow", "torch", "keras", "theano", "xgboost", "lightgbm",
+    
+    # Web frameworks and libraries
+    "django", "flask", "fastapi", "tornado", "aiohttp", "requests", "urllib3",
+    "httplib2", "boto3", "botocore", "aws", "azure", "google",
+    
+    # Development and testing tools
+    "pytest", "unittest", "nose", "sphinx", "jinja2", "IPython", "jupyter",
+    "notebook", "ipykernel", "black", "flake8", "mypy", "pylint",
+    
+    # Database libraries
+    "sqlite3", "psycopg2", "mysql", "pymongo", "sqlalchemy", "alembic",
+    
+    # Image processing libraries (except PIL which matplotlib needs)
+    "imageio", "opencv-python", "cv2",
+    
+    # Other large libraries
+    "h5py", "sympy", "dask", "numba", "distributed", "bokeh", "panel",
+    
+    # Documentation and parsing
+    "doc", "pydoc_data", "docutils", "alabaster", "babel",
+    
+    # Unused standard library modules
+    "distutils", "lib2to3", "ensurepip", "venv", "turtledemo",
+    
+    # Python internals rarely needed at runtime
+    "test", "tests", "testing", "pip", "wheel", "easy_install",
+    
+    # Mac-specific additions
+    "_osx_support", "idlelib", "turtle", "pydoc",
+]
+
+# Binaries to exclude (Mac-specific)
+DEFAULT_EXCLUDED_BINARIES = [
+    # Unused Qt modules
+    'Qt6DBus',
+    'Qt6Designer',
+    'Qt6DesignerComponents',
+    'Qt6Charts',
+    'Qt6OpenGL',
+    'Qt6Pdf',
+    'Qt6Qml',
+    'Qt6Quick',
+    'Qt6QuickControls2',
+    'Qt6QuickTemplates2',
+    'Qt6WebEngineCore',
+    'Qt6Test',
+    'Qt6Xml',
+    
+    # Qt plugins that might not be needed
+    'sqldrivers',
+    'platformthemes',
+    'webview',
+    'multimedia',
+    'playlistformats',
+    'decorations',
+    'printsupport',
+]
+
+def ensure_directories():
+    """Ensure required directories exist."""
+    for dir_name in ["resources", "logs", "projects", "configs"]:
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+            print(f"Created directory: {dir_name}")
+
+def create_spec_content():
+    """Generate optimized spec file content."""
+    
+    # Hidden imports needed
+    hidden_imports = [
+        'vlc',
+        'setuptools',
+        'pkg_resources',
+        'matplotlib.backends.backend_qt5agg',
+        'PIL',
+        'PIL.Image',
+    ]
+    
+    spec_content = f'''
+# -*- mode: python ; coding: utf-8 -*-
+import os
+import sys
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+block_cipher = None
+
+# Excluded modules
+excluded_modules = {DEFAULT_EXCLUDED_MODULES}
+
+# Excluded binaries
+excluded_binaries = {DEFAULT_EXCLUDED_BINARIES}
+
+# Data files
+datas = []
+if os.path.exists('resources'):
+    datas.append(('resources', 'resources'))
+if os.path.exists('configs'):
+    datas.append(('configs', 'configs'))
+
+# Hidden imports
+hiddenimports = {hidden_imports}
+
+a = Analysis(
+    ['main.py'],
+    pathex=[],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes=excluded_modules,
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+# Filter out excluded binaries
+a.binaries = TOC([x for x in a.binaries if not any(excluded in x[0] for excluded in excluded_binaries)])
+
+# Additional filtering for Mac
+a.binaries = TOC([x for x in a.binaries if not any(pattern in x[0] for pattern in [
+    'QtDBus', 'QtDesigner', 'QtQml', 'QtQuick', 'QtTest', 'QtXml',
+    'QtBluetooth', 'QtNfc', 'QtPositioning', 'QtLocation', 'QtSensors',
+    'QtSerialPort', 'QtSerialBus', 'Qt3D', 'QtDataVisualization',
+])])
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    name='RABET',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=True,  # Strip binaries on Mac
+    upx=False,   # UPX not recommended on Mac
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon='resources/RABET.icns' if os.path.exists('resources/RABET.icns') else None,
+)
+
+app = BUNDLE(
+    exe,
+    name='RABET.app',
+    icon='resources/RABET.icns' if os.path.exists('resources/RABET.icns') else None,
+    bundle_identifier='com.research.rabet',
+    info_plist={{
+        'CFBundleName': 'RABET',
+        'CFBundleDisplayName': 'Real-time Animal Behavior Event Tagger',
+        'CFBundleShortVersionString': '1.1.0',
+        'CFBundleVersion': '1.1.0',
+        'CFBundleExecutable': 'RABET',
+        'NSHighResolutionCapable': True,
+        'LSMinimumSystemVersion': '10.15',
+    }},
+)
+'''
+    return spec_content
+
+def main():
+    print("===== Building RABET for macOS (Optimized) =====")
+    
+    # Ensure directories exist
+    ensure_directories()
+    
+    # Create default configs if needed
+    if not os.path.exists("configs/default_action_map.json"):
+        import json
+        default_map = {
+            "o": "Attack bites",
+            "j": "Sideways threats",
+            "p": "Tail rattles",
+            "q": "Chasing",
+            "a": "Social contact",
+            "e": "Self-grooming",
+            "t": "Locomotion",
+            "r": "Rearing"
+        }
+        with open("configs/default_action_map.json", "w") as f:
+            json.dump(default_map, f, indent=2)
+    
+    # Clean build directories
+    for dir_name in ["build", "dist"]:
+        if os.path.exists(dir_name):
+            shutil.rmtree(dir_name)
+    
+    # Write spec file
+    with open("RABET_mac.spec", "w") as f:
+        f.write(create_spec_content())
+    
+    # Build with PyInstaller
+    cmd = ["pyinstaller", "RABET_mac.spec", "--noconfirm", "--clean"]
+    print(f"Running: {' '.join(cmd)}")
+    
+    try:
+        subprocess.check_call(cmd)
+        print("\n===== Build Complete =====")
+        
+        # Report size
+        if os.path.exists("dist/RABET.app"):
+            app_size = sum(f.stat().st_size for f in Path("dist/RABET.app").rglob('*'))
+            print(f"App size: {app_size / (1024*1024):.2f} MB")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"Build failed with error: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+EOF
+        
+        # Make it executable
+        chmod +x build_mac_optimized.py
+    
+    - name: Run optimized build
+      run: python build_mac_optimized.py
+    
+    - name: Post-build optimization
+      run: |
+        echo "Performing post-build cleanup..."
+        
+        # Remove unnecessary files from the app bundle
+        if [ -d "dist/RABET.app" ]; then
+          # Remove test files
+          find dist/RABET.app -name "test_*.py" -delete
+          find dist/RABET.app -name "*_test.py" -delete
+          find dist/RABET.app -name "tests" -type d -exec rm -rf {} +
+          
+          # Remove documentation
+          find dist/RABET.app -name "*.rst" -delete
+          find dist/RABET.app -name "*.md" -delete
+          
+          # Remove unnecessary Qt translations
+          if [ -d "dist/RABET.app/Contents/MacOS/PySide6/Qt/translations" ]; then
+            cd dist/RABET.app/Contents/MacOS/PySide6/Qt/translations
+            # Keep only English
+            find . -name "*.qm" ! -name "*en*" -delete
+            cd -
+          fi
+          
+          # Report final size
+          echo "Final app size:"
+          du -sh dist/RABET.app
+        fi
+    
+    - name: Create compressed DMG
+      run: |
+        if [ -d "dist/RABET.app" ]; then
+          echo "Creating optimized DMG..."
+          # Create a temporary directory for DMG contents
+          mkdir -p dmg_contents
+          cp -r dist/RABET.app dmg_contents/
+          
+          # Create README
+          cat > dmg_contents/README.txt << 'EOF'
+RABET - Real-time Animal Behavior Event Tagger
+=============================================
+
+Installation:
+1. Drag RABET.app to your Applications folder
+2. First run: Right-click RABET.app and select "Open"
+   (this bypasses macOS security warnings)
+
+System Requirements:
+- macOS 10.15 (Catalina) or later
+- VLC may need to be installed separately
+
+For support, visit: https://github.com/yourusername/RABET
+EOF
+          
+          # Create compressed DMG
+          hdiutil create -volname "RABET" -srcfolder dmg_contents -ov -format UDBZ RABET-macOS-optimized.dmg
+          
+          # Report DMG size
+          echo "DMG size:"
+          ls -lah RABET-macOS-optimized.dmg
+        fi
+    
+    - name: Create additional ZIP archive
+      run: |
+        # Create a ZIP as an alternative distribution
+        if [ -d "dist/RABET.app" ]; then
+          cd dist
+          zip -r -9 ../RABET-macOS-optimized.zip RABET.app
+          cd ..
+          echo "ZIP size:"
+          ls -lah RABET-macOS-optimized.zip
+        fi
+    
+    - name: Upload optimized builds
+      uses: actions/upload-artifact@v4
+      with:
+        name: RABET-macOS-Optimized
+        path: |
+          RABET-macOS-optimized.dmg
+          RABET-macOS-optimized.zip
+        if-no-files-found: error
+    
+    - name: Report build statistics
+      run: |
+        echo "=== Build Statistics ==="
+        echo "App bundle size: $(du -sh dist/RABET.app 2>/dev/null | cut -f1 || echo 'N/A')"
+        echo "DMG size: $(ls -lah RABET-macOS-optimized.dmg 2>/dev/null | awk '{print $5}' || echo 'N/A')"
+        echo "ZIP size: $(ls -lah RABET-macOS-optimized.zip 2>/dev/null | awk '{print $5}' || echo 'N/A')"
