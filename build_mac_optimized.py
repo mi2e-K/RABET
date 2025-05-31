@@ -196,8 +196,11 @@ def create_mac_spec_content(args, icon_path=None):
         'PIL.Image',
     ] + HIDDEN_DEPENDENCIES
     
-    # Icon option
+    # Icon option for EXE
     icon_option = f", icon='{icon_path}'" if icon_path and os.path.exists(icon_path) else ""
+    
+    # Icon value for BUNDLE (must be a string literal or None)
+    bundle_icon = f"'{icon_path}'" if icon_path and os.path.exists(icon_path) else "None"
     
     spec_content = f"""
 # -*- mode: python ; coding: utf-8 -*-
@@ -282,7 +285,7 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name='RABET.app',
-    icon={'icon_path' if icon_path else None},
+    icon={bundle_icon},
     bundle_identifier='com.rabet.app',
     info_plist={{
         'NSHighResolutionCapable': 'True',
