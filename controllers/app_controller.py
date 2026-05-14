@@ -2,7 +2,7 @@
 import logging
 import os
 import sys
-from pathlib import Path
+from version import __version__
 from PySide6.QtCore import QObject, Slot, QTimer
 from PySide6.QtGui import QIcon
 
@@ -27,6 +27,7 @@ from controllers.visualization_controller import VisualizationController  # Add 
 from utils.file_manager import FileManager
 from utils.log_manager import LogManager
 from utils.theme_manager import ThemeManager
+from utils.config_manager import ConfigManager
 
 class AppController(QObject):
     """
@@ -43,10 +44,15 @@ class AppController(QObject):
         
         # Initialize file manager
         self.file_manager = FileManager()
-        
+
+        # Application-wide settings persistence (window geometry, recent
+        # files, last directories, etc.). Lives in the user-data dir managed
+        # by FileManager.
+        self.config_manager = ConfigManager(self.file_manager)
+
         # Initialize log manager
         self.log_manager = LogManager()
-        
+
         # Initialize theme manager
         self.theme_manager = ThemeManager()
         
@@ -55,11 +61,10 @@ class AppController(QObject):
         self.log_cleanup_timer.setInterval(24 * 60 * 60 * 1000)  # 24 hours
         self.log_cleanup_timer.timeout.connect(self.perform_log_cleanup)
         self.log_cleanup_timer.start()
-        
-        # Ensure required directories exist (using the utility)
-        from utils.directory_init import ensure_app_directories
-        ensure_app_directories()
-        
+
+        # Application directories are ensured in ``main.py`` before the
+        # QApplication is created; no duplicate call is necessary here.
+
         # Initialize models
         self.video_model = VideoModel()
         self.action_map_model = ActionMapModel()
@@ -106,7 +111,8 @@ class AppController(QObject):
         # CRITICAL FIX: Completely decouple visualization from analysis model
         self.visualization_controller = VisualizationController(self.visualization_view)
         
-        # Connect visualization view files_dropped signal to app controller
+        # Keep the main window on the visualization screen when files are
+        # dropped there, but let the visualization controller own the load.
         self.visualization_view.files_dropped.connect(self.handle_visualization_files_dropped)
         
         # Provide the annotation controller reference to the main window
@@ -119,16 +125,46 @@ class AppController(QObject):
         self.main_window.recording_control_view.preserve_annotations_changed.connect(
             self.annotation_controller.set_preserve_annotations
         )
-        
-        # Load default action map
-        self._load_default_action_map()
+
+        self.connect_action_map_to_timeline()
+
+        # Check if action map loaded successfully
+        if not self.action_map_model.is_loaded():
+            self.logger.warning("Action map failed to load from files, using fallback")
+            # The model will have already created a default, so we don't need to do anything
+
+        # Wire persistence: hand the ConfigManager to MainWindow so it can
+        # restore saved geometry / view / recording-control / analysis
+        # interval settings now that all child widgets are constructed and
+        # signals are connected. The window will also save these on close.
+        self.main_window.set_config_manager(self.config_manager)
+
+        # Controllers that need to record "recently opened" files (Recent
+        # Files menu) also receive a reference to ConfigManager.
+        self.video_controller.config_manager = self.config_manager
+        self.annotation_controller.config_manager = self.config_manager
+
+        # Expose the video controller on main_window so menu actions
+        # (e.g. Open Recent Video) can drive video loads without going
+        # through AppController plumbing.
+        self.main_window.video_controller = self.video_controller
     
+    def connect_action_map_to_timeline(self):
+        """Connect action map changes to timeline color management."""
+        
+        # Connect the action map model's mapping_removed signal to timeline
+        self.action_map_model.mapping_removed.connect(
+            self.main_window.timeline_view.on_behavior_removed
+        )
+        
+        self.logger.info("Connected action map changes to timeline color management")
+
     # Handle files dropped on visualization view
     def handle_visualization_files_dropped(self, file_paths):
         """
         Handle files dropped on the visualization view.
-        This ensures the main window stays in visualization mode and passes
-        the files directly to the visualization controller.
+        This ensures the main window stays in visualization mode while the
+        visualization controller handles the actual file load.
         
         Args:
             file_paths (list): List of dropped file paths
@@ -137,9 +173,6 @@ class AppController(QObject):
         
         # Ensure we stay in visualization view
         self.main_window.switch_to_view("Visualization")
-        
-        # Forward the files directly to the visualization controller
-        self.visualization_controller.load_files(file_paths)
     
     def set_application_icon(self):
         """Set the application and window icons."""
@@ -208,11 +241,16 @@ class AppController(QObject):
         self.main_window.open_video_action.triggered.connect(self.video_controller.open_video_dialog)
         self.main_window.load_action_map_action.triggered.connect(self.action_map_controller.load_action_map_dialog)
         self.main_window.save_action_map_action.triggered.connect(self.action_map_controller.save_action_map_dialog)
+        self.main_window.reset_action_map_action.triggered.connect(self.action_map_controller.reset_to_default)
+        
         self.main_window.export_annotations_action.triggered.connect(self.annotation_controller.export_annotations_dialog)
         self.main_window.import_annotations_action.triggered.connect(self.annotation_controller.import_annotations_dialog)
+        self.main_window.undo_annotation_action.triggered.connect(self.annotation_controller.undo_last_annotation)
         self.main_window.clear_annotations_action.triggered.connect(self.annotation_controller.clear_annotations)
         self.main_window.exit_action.triggered.connect(self.handle_exit_action)
         self.main_window.about_action.triggered.connect(self.show_about_dialog)
+        if hasattr(self.main_window, 'shortcuts_action'):
+            self.main_window.shortcuts_action.triggered.connect(self.show_shortcuts_dialog)
         
         # Connect log management actions
         if hasattr(self.main_window, 'view_logs_action'):
@@ -260,24 +298,6 @@ class AppController(QObject):
         # Close the main window
         self.main_window.close()
     
-    def _load_default_action_map(self):
-        """Load default action map."""
-        # Create a default action map
-        default_mappings = {
-            'o': 'Attack bites',
-            'j': 'Sideways threats',
-            'p': 'Tail rattles',
-            'q': 'Chasing',
-            'a': 'Social contact',
-            'e': 'Self-grooming',
-            't': 'Locomotion',
-            'r': 'Rearing',
-        }
-        
-        # Add default mappings
-        for key, behavior in default_mappings.items():
-            self.action_map_model.add_mapping(key, behavior)
-    
     def perform_log_cleanup(self):
         """Perform automatic log cleanup."""
         try:
@@ -311,21 +331,33 @@ class AppController(QObject):
             self.main_window.show_error(f"Error showing log viewer: {str(e)}")
     
     @Slot()
+    def show_shortcuts_dialog(self):
+        """Open the keyboard-shortcuts reference dialog."""
+        try:
+            from views.shortcuts_dialog import ShortcutsDialog
+            mapped = self.action_map_model.get_all_mappings().items()
+            dialog = ShortcutsDialog(self.main_window, mapped_keys=mapped)
+            dialog.exec()
+        except Exception as exc:
+            self.logger.error(f"Failed to open shortcuts dialog: {exc}", exc_info=True)
+            self.main_window.show_error(f"Failed to open shortcuts dialog: {exc}")
+
+    @Slot()
     def show_about_dialog(self):
-        """Show about dialog."""
-        about_text = (
-            "RABET - Real-time Animal Behavior Event Tagger\n\n"
-            "Version: 1.1.0\n\n"
-            "A desktop application for animal behavioral annotation.\n\n"
-            "Features:\n"
-            "- Video playback with frame-by-frame navigation\n"
-            "- Keyboard-based real-time annotation\n"
-            "- Timeline visualization of behavior events\n"
-            "- Timed recording with pause/resume capability\n"
-            "- Export annotations to CSV with summary statistics\n"
-            "- Analyze multiple annotation files to aggregate behavioral data\n"
-            "- Project management for organizing research assets\n"
-            "- Data visualization with customizable raster plots\n\n"
-            "© 2025"
-        )
-        self.main_window.show_info(about_text)
+        """Show the rich-content About dialog (rendered HTML + BibTeX copy)."""
+        try:
+            from views.about_dialog import AboutDialog
+            dialog = AboutDialog(self.main_window)
+            dialog.exec()
+        except Exception as exc:
+            self.logger.error(f"Failed to open About dialog: {exc}", exc_info=True)
+            # Fall back to the plain-text message box if the rich dialog
+            # cannot be constructed for some reason.
+            self.main_window.show_info(
+                f"RABET - Real-time Animal Behavior Event Tagger\n\n"
+                f"Version: {__version__}\n"
+                f"© 2026 Koshiro Mitsui\n"
+                "Released under the MIT License.\n"
+                "Repository: https://github.com/mi2e-K/RABET\n"
+                "DOI (all versions): https://doi.org/10.5281/zenodo.15313025"
+            )

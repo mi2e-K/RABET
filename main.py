@@ -6,10 +6,8 @@ import sys
 import os
 import argparse
 import logging
-from pathlib import Path
 from PySide6.QtWidgets import QApplication, QStyleFactory
-from PySide6.QtCore import QSize, QRect
-from PySide6.QtGui import QScreen, QIcon
+from PySide6.QtGui import QIcon
 
 from controllers.app_controller import AppController
 from utils.logger import setup_logger
@@ -158,7 +156,7 @@ def main():
     
     # Set up logging based on mode
     # In distribution mode, logs are kept in memory only
-    root_logger = setup_logger(use_file_logging=args.dev)
+    setup_logger(use_file_logging=args.dev)
     logger = logging.getLogger(__name__)
     logger.info("Starting RABET application")
     

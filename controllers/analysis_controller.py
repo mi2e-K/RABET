@@ -1,9 +1,8 @@
 # controllers/analysis_controller.py - Enhanced with file management, metrics configuration, and export options
 import logging
 import os
-import sys
 import time
-from PySide6.QtCore import QObject, Slot, QTimer
+from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 from utils.auto_close_message import AutoCloseMessageBox
 from views.metrics_config_dialog import MetricsConfigDialog
@@ -77,11 +76,10 @@ class AnalysisController(QObject):
         # Get the list of behaviors from the model
         behaviors = self._model.get_behaviors_list()
         if not behaviors:
-            # If no behaviors available yet, use defaults
-            behaviors = [
-                "Attack bites", "Sideways threats", "Tail rattles", "Chasing",
-                "Social contact", "Self-grooming", "Locomotion", "Rearing"
-            ]
+            # If no behaviors are loaded yet, fall back to the default
+            # action-map's behaviour list (single source of truth).
+            from defaults import DEFAULT_ACTION_MAP
+            behaviors = list(DEFAULT_ACTION_MAP.values())
         
         # Create and show the dialog
         dialog = MetricsConfigDialog(self._view, behaviors, config)
@@ -89,11 +87,12 @@ class AnalysisController(QObject):
             # Get the updated configurations
             latency_metrics = dialog.get_latency_metrics()
             total_time_metrics = dialog.get_total_time_metrics()
-            
-            # Update the config object
-            config._latency_metrics = latency_metrics
-            config._total_time_metrics = total_time_metrics
-            
+
+            # Update via the public replace API instead of poking at private
+            # attributes; this keeps validation centralised in
+            # ``AnalysisMetricsConfig``.
+            config.replace_metrics(latency_metrics, total_time_metrics)
+
             # Apply to the model
             self._model.set_metrics_config(config)
             
@@ -205,36 +204,6 @@ class AnalysisController(QObject):
                 f"Failed to import metrics configuration from:\n{file_path}"
             )
             
-    def _get_configs_directory(self):
-        """
-        Get the directory for metrics configurations.
-        Attempts to find or create a 'configs' directory.
-        
-        Returns:
-            str: Path to the configs directory
-        """
-        # Look in common locations
-        possible_paths = [
-            "configs",  # Current directory
-            os.path.join("..", "configs"),  # Parent directory
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs")  # Relative to script
-        ]
-        
-        # For packaged app, also check relative to executable
-        if getattr(sys, 'frozen', False):
-            # We're running in a bundle
-            bundle_dir = os.path.dirname(sys.executable)
-            possible_paths.append(os.path.join(bundle_dir, "configs"))
-        
-        # Find first existing configs directory
-        for path in possible_paths:
-            if os.path.exists(path) and os.path.isdir(path):
-                return os.path.abspath(path)
-        
-        # If not found, create one in current directory
-        os.makedirs("configs", exist_ok=True)
-        return os.path.abspath("configs")
-    
     @Slot(bool, int)
     def on_interval_settings_changed(self, enabled, seconds):
         """
@@ -298,23 +267,45 @@ class AnalysisController(QObject):
     def on_analysis_complete(self, results):
         """
         Handle analysis complete event.
-        
+
         Args:
             results (dict): Analysis results
         """
         # Store current results for export
         self._current_results = results
-        
+
         # Hide progress bar
         self._view.show_progress(False)
-        
+
         # Determine if interval analysis was used
         interval_enabled, interval_seconds = self._model.get_interval_settings()
         interval_results = self._model.get_interval_results()
-        
+
+        # Push results into the new on-screen summary/interval tables so the
+        # user can inspect numbers without having to open the exported CSV.
+        behaviors = self._model.get_behaviors_list()
+        config = self._model.get_metrics_config()
+        latency_names = [m['name'] for m in config.get_enabled_latency_metrics()]
+        total_time_names = [m['name'] for m in config.get_enabled_total_time_metrics()]
+
+        self._view.update_summary_table(
+            results,
+            behaviors=behaviors,
+            latency_metric_names=latency_names,
+            total_time_metric_names=total_time_names,
+        )
+        if interval_enabled:
+            self._view.update_interval_table(
+                interval_results,
+                behaviors=behaviors,
+                total_time_metric_names=total_time_names,
+            )
+        else:
+            # Clear the Intervals tab when interval analysis is off.
+            self._view.update_interval_table({})
+
         # Update status message
         if interval_enabled:
-            # Count total intervals across all files
             total_intervals = sum(len(intervals) for intervals in interval_results.values())
             self.logger.info(f"Interval analysis complete: {len(results)} files, {total_intervals} intervals")
             self._view.set_status_message(
@@ -324,7 +315,7 @@ class AnalysisController(QObject):
         else:
             self.logger.info("Standard analysis complete")
             self._view.set_status_message(f"Analysis complete. Results processed for {len(results)} file(s).")
-        
+
         # Auto-export the summary table only if this was triggered by file loading
         if self._should_auto_export:
             self._auto_export_results(results)
@@ -434,6 +425,7 @@ class AnalysisController(QObject):
             self._model.load_files(remaining_files)
         else:
             # Clear everything if no files remain
+            self._model.clear_loaded_data()
             self._view.update_file_list([])
             self._current_results = {}
             self._view.set_status_message("All files removed")
@@ -457,6 +449,7 @@ class AnalysisController(QObject):
                 return
                 
         # Clear the file list and results
+        self._model.clear_loaded_data()
         self._view.update_file_list([])
         self._current_results = {}
         self._view.set_status_message("All files cleared")
@@ -479,8 +472,9 @@ class AnalysisController(QObject):
         default_dir = os.getcwd()  # Default to current working directory
         
         # If we have files loaded, use the directory of the first file
-        if self._view._file_paths:
-            first_file_dir = os.path.dirname(self._view._file_paths[0])
+        file_paths = self._model.get_file_paths()
+        if file_paths:
+            first_file_dir = os.path.dirname(file_paths[0])
             if os.path.exists(first_file_dir):
                 default_dir = first_file_dir
         
@@ -491,26 +485,31 @@ class AnalysisController(QObject):
         else:
             default_filename = "summary_table.csv"
         
-        # Show save dialog
-        export_path = self._view.select_export_file(default_dir, default_filename)
-        
-        if not export_path:
-            # User canceled
-            return
-            
-        # Check if file exists and confirm overwrite
-        if os.path.exists(export_path):
-            result = QMessageBox.question(
-                self._view,
-                "File Exists",
-                f"The file '{os.path.basename(export_path)}' already exists.\n\nDo you want to overwrite it?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if result != QMessageBox.StandardButton.Yes:
-                # Let user try again with a different filename
-                return self.on_export_table_requested()
-        
+        # Show save dialog, looping until the user picks a non-conflicting
+        # filename or cancels. Looping avoids recursive calls that previously
+        # grew the Python call stack on repeated overwrite-declines.
+        export_path = None
+        while True:
+            candidate_path = self._view.select_export_file(default_dir, default_filename)
+            if not candidate_path:
+                return  # User cancelled
+
+            if os.path.exists(candidate_path):
+                result = QMessageBox.question(
+                    self._view,
+                    "File Exists",
+                    f"The file '{os.path.basename(candidate_path)}' already exists.\n\nDo you want to overwrite it?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if result != QMessageBox.StandardButton.Yes:
+                    # Let the user try another filename without recursion.
+                    default_dir = os.path.dirname(candidate_path) or default_dir
+                    default_filename = os.path.basename(candidate_path)
+                    continue
+
+            export_path = candidate_path
+            break
+
         # Export the summary table
         if self.export_summary_to_file(export_path):
             # Update status message to reflect whether interval analysis was used
@@ -548,9 +547,10 @@ class AnalysisController(QObject):
             
         try:
             # Use the first file's path as the base directory for export
-            if self._view._file_paths:
+            file_paths = self._model.get_file_paths()
+            if file_paths:
                 # Get the path of the first file
-                first_file = self._view._file_paths[0]
+                first_file = file_paths[0]
                 # Use its directory as the export location
                 export_dir = os.path.dirname(first_file)
                 

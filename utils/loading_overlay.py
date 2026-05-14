@@ -1,7 +1,7 @@
 # utils/loading_overlay.py - Enhanced with input blocking
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QProgressBar
-from PySide6.QtCore import Qt, QSize, QEvent
-from PySide6.QtGui import QPainter, QColor, QPalette
+from PySide6.QtCore import Qt, QEvent
+from PySide6.QtGui import QPainter, QColor
 
 class LoadingOverlay(QWidget):
     """

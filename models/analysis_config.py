@@ -2,9 +2,8 @@
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 from utils.config_path_manager import ConfigPathManager  # Import the new class
+from defaults import default_latency_metrics, default_total_time_metrics
 
 class AnalysisMetricsConfig:
     """
@@ -18,26 +17,10 @@ class AnalysisMetricsConfig:
         # Initialize config path manager
         self._config_path_manager = ConfigPathManager()
         
-        # Initialize default configurations
-        self._latency_metrics = [{
-            "name": "Attack Latency",
-            "behavior": "Attack bites",
-            "enabled": True
-        }]
-        
-        self._total_time_metrics = [
-            {
-                "name": "Total Aggression",
-                "behaviors": ["Attack bites", "Sideways threats", "Tail rattles", "Chasing"],
-                "enabled": True
-            },
-            {
-                "name": "Total Aggression(without tail-rattles)", 
-                "behaviors": ["Attack bites", "Sideways threats", "Chasing"],
-                "enabled": True
-            }
-        ]
-        
+        # Single source of truth for the bundled defaults (see ``defaults``).
+        self._latency_metrics = default_latency_metrics()
+        self._total_time_metrics = default_total_time_metrics()
+
         # Try to load from default configuration file if it exists
         self._try_load_default_config()
     
@@ -250,6 +233,28 @@ class AnalysisMetricsConfig:
         self.logger.warning(f"Latency metric '{name}' not found for removal")
         return False
     
+    def replace_metrics(self, latency_metrics, total_time_metrics):
+        """
+        Atomically replace both metric lists.
+
+        Convenience API for UI dialogs that build a fresh set of metrics
+        rather than editing them entry-by-entry. The previous workflow had
+        callers reach into ``_latency_metrics`` / ``_total_time_metrics``
+        directly, which bypassed validation; this method centralises the
+        assignment so future invariants can be enforced in one place.
+
+        Args:
+            latency_metrics (list[dict]): New latency-metric entries.
+            total_time_metrics (list[dict]): New total-time-metric entries.
+        """
+        self._latency_metrics = [dict(m) for m in (latency_metrics or [])]
+        self._total_time_metrics = [dict(m) for m in (total_time_metrics or [])]
+        self.logger.info(
+            f"Replaced metrics configuration: "
+            f"{len(self._latency_metrics)} latency, "
+            f"{len(self._total_time_metrics)} total-time"
+        )
+
     def remove_total_time_metric(self, name):
         """
         Remove a total time metric.
@@ -395,29 +400,13 @@ class AnalysisMetricsConfig:
     def reset_to_defaults(self):
         """
         Reset configuration to default values.
-        
+
         Returns:
             bool: Always returns True
         """
-        # Re-initialize with defaults
-        self._latency_metrics = [{
-            "name": "Attack Latency",
-            "behavior": "Attack bites",
-            "enabled": True
-        }]
-        
-        self._total_time_metrics = [
-            {
-                "name": "Total Aggression",
-                "behaviors": ["Attack bites", "Sideways threats", "Tail rattles", "Chasing"],
-                "enabled": True
-            },
-            {
-                "name": "Total Aggression(without tail-rattles)", 
-                "behaviors": ["Attack bites", "Sideways threats", "Chasing"],
-                "enabled": True
-            }
-        ]
-        
+        # Re-initialise from the single source of truth.
+        self._latency_metrics = default_latency_metrics()
+        self._total_time_metrics = default_total_time_metrics()
+
         self.logger.info("Reset metrics configuration to defaults")
         return True

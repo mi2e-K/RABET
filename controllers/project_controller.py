@@ -1,7 +1,6 @@
 # controllers/project_controller.py - Updated for enhanced video management and annotation workflow
 import logging
 import os
-from pathlib import Path
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QMessageBox
 
@@ -354,7 +353,7 @@ class ProjectController(QObject):
             return
         
         # Load the video for annotation
-        self.annotate_video(resolved_path)
+        self.annotate_video(resolved_path, video_path)
     
     @Slot()
     def on_annotate_random_requested(self):
@@ -393,22 +392,23 @@ class ProjectController(QObject):
         )
         
         # Load the video for annotation
-        self.annotate_video(resolved_path)
+        self.annotate_video(resolved_path, video_path)
     
-    def annotate_video(self, video_path):
+    def annotate_video(self, video_path, project_video_ref=None):
         """
         Load a video for annotation.
         
         Args:
-            video_path (str): Path to the video
+            video_path (str): Resolved absolute path to the video
+            project_video_ref (str, optional): Stored project reference for the video
         """
         # Prepare for annotation
-        # Get video ID (basename without extension)
-        video_id = os.path.splitext(os.path.basename(video_path))[0]
+        project_video_ref = project_video_ref or video_path
+        video_id = self._model.get_video_id(project_video_ref)
         
         # Tell the annotation controller this is a project video being annotated
         self._annotation_controller.set_project_mode(True)
-        self._annotation_controller.set_current_video_id(video_id)
+        self._annotation_controller.set_current_video_id(project_video_ref)
         
         # Set annotation export path in the project directory
         if self._model.is_project_open():
@@ -429,7 +429,7 @@ class ProjectController(QObject):
             )
             return
 
-        # Since automatic switching is not working reliably, show an instruction dialog
+        # Since automatic switching is not always reliable, show an instruction dialog
         main_window = self._view.parent()
         video_name = os.path.basename(video_path)
         
@@ -441,7 +441,7 @@ class ProjectController(QObject):
         switch_msg.setText(f"<b>Video '{video_name}' is ready for annotation!</b>")
         switch_msg.setInformativeText(
             "Please click the <b>Annotation Mode</b> button in the toolbar to begin annotating.<br><br>"
-            "<span style='color: #FF9900; font-weight: bold;'>→ Look for 'Annotation Mode' in the toolbar at the top ←</span><br><br>"
+            "<span style='color: #FF9900; font-weight: bold;'>Look for 'Annotation Mode' in the toolbar at the top.</span><br><br>"
             "The video has been loaded and is waiting for you."
         )
         
@@ -449,30 +449,21 @@ class ProjectController(QObject):
         switch_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
         switch_msg.button(QMessageBox.StandardButton.Ok).setText("Got it")
         
-        # Momentarily highlight the annotation mode button in the toolbar
+        # Temporarily adjust the toolbar action text to make the next step clearer.
         if hasattr(main_window, 'annotation_mode_toolbar_action'):
+            original_text = main_window.annotation_mode_toolbar_action.text()
             try:
-                # Save original style
-                original_style = main_window.annotation_mode_toolbar_action.text()
-                
-                # Set highlighted style
-                main_window.annotation_mode_toolbar_action.setText("➡️ ANNOTATION MODE ⬅️")
-                main_window.annotation_mode_toolbar_action.setStyleSheet("background-color: #FFFF00; font-weight: bold;")
-                
-                # Process events to update the UI
+                main_window.annotation_mode_toolbar_action.setText("Annotation  <- select this")
+
                 from PySide6.QtCore import QCoreApplication
                 QCoreApplication.processEvents()
-                
-                # Show the message
                 switch_msg.exec()
-                
-                # Restore original style after dialog is closed
-                main_window.annotation_mode_toolbar_action.setText(original_style)
-                main_window.annotation_mode_toolbar_action.setStyleSheet("")
-                
+
                 return
             except Exception as e:
                 self.logger.error(f"Error highlighting annotation button: {str(e)}")
+            finally:
+                main_window.annotation_mode_toolbar_action.setText(original_text)
         
         # Fallback if highlighting doesn't work
         switch_msg.exec()

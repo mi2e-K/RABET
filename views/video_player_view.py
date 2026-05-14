@@ -1,13 +1,12 @@
 # views/video_player_view.py - Enhanced loading overlay handling
 import logging
-import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QSlider, QFrame, QSpinBox, QSizePolicy,
     QCheckBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QDateTime, QEventLoop
-from PySide6.QtGui import QIcon, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QDateTime
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from utils.loading_overlay import LoadingOverlay
 
@@ -45,11 +44,15 @@ class VideoPlayerView(QWidget):
         # Enable drag and drop
         self.setAcceptDrops(True)
         
+        # CRITICAL FIX: Set minimum size to prevent collapse
+        self.setMinimumHeight(300)
+        
         self.setup_ui()
         self.connect_signals()
         
         # Set initial state
         self._is_playing = False
+        self._has_video = False
         self._duration = 1  # Avoid division by zero
         
         # Add throttling for slider updates
@@ -84,6 +87,7 @@ class VideoPlayerView(QWidget):
 
         # Frame-by-frame mode state
         self._frame_by_frame_mode = False
+        self._native_video_surface_ready = False
     
     def setup_ui(self):
         """Set up user interface."""
@@ -91,17 +95,22 @@ class VideoPlayerView(QWidget):
         self.layout = QVBoxLayout(self)
         # Reduce margins and spacing
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(2)
-        
+        self.layout.setSpacing(1)
+
         # Video display area - MODIFIED FOR BETTER EMBEDDING
         self.video_frame = QFrame()
         self.video_frame.setFrameShape(QFrame.Shape.Panel)
         self.video_frame.setFrameShadow(QFrame.Shadow.Sunken)
-        self.video_frame.setStyleSheet("background-color: black;")
+        self.video_frame.setObjectName("video_frame")
         self.video_frame.setMinimumHeight(200)
         
-        # Set size policy to expand both horizontally and vertically
+        # CRITICAL FIX: Set fixed size policy to prevent collapse
         self.video_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        self.placeholder_background = QWidget(self.video_frame)
+        self.placeholder_background.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.placeholder_background.setObjectName("videoPlaceholderBackground")
+        self._apply_placeholder_background_style()
         
         # Add drop indicator label
         self.drop_label = QLabel("Drop Video File Here")
@@ -115,19 +124,31 @@ class VideoPlayerView(QWidget):
             border-radius: 5px;
         """)
         
-        # Add label to video frame using absolute positioning
+        # Add the drop label to the video frame.
         self.video_layout = QVBoxLayout(self.video_frame)
         self.video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video_layout.setSpacing(0)
+        self.video_layout.addStretch(1)
         self.video_layout.addWidget(self.drop_label, 0, Qt.AlignmentFlag.AlignCenter)
+        self.video_layout.addStretch(1)
+        self.placeholder_background.lower()
+        self.drop_label.raise_()
         
-        # Make sure the frame has a proper window handle
-        self.video_frame.setAttribute(Qt.WA_NativeWindow)
-        self.video_frame.setAttribute(Qt.WA_DontCreateNativeAncestors)
+        # Let Qt repaint the empty placeholder surface when no video is loaded.
+        self.video_frame.setAttribute(Qt.WA_OpaquePaintEvent)
         
         # Ensure it's visible
         self.video_frame.setVisible(True)
         
         self.layout.addWidget(self.video_frame)
+        
+        # Create a container for controls to ensure they don't collapse
+        self.controls_container = QWidget()
+        self.controls_container.setMinimumHeight(80)
+        self.controls_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.controls_container_layout = QVBoxLayout(self.controls_container)
+        self.controls_container_layout.setContentsMargins(0, 0, 0, 0)
+        self.controls_container_layout.setSpacing(2)
         
         # Time display
         self.time_layout = QHBoxLayout()
@@ -137,14 +158,14 @@ class VideoPlayerView(QWidget):
         self.time_layout.addWidget(self.current_time_label)
         self.time_layout.addStretch()
         self.time_layout.addWidget(self.duration_label)
-        self.layout.addLayout(self.time_layout)
+        self.controls_container_layout.addLayout(self.time_layout)
         
         # Position slider
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
         self.position_slider.setMinimum(0)
         self.position_slider.setMaximum(1000)
         self.position_slider.setValue(0)
-        self.layout.addWidget(self.position_slider)
+        self.controls_container_layout.addWidget(self.position_slider)
         
         # Control buttons layout
         self.controls_layout = QHBoxLayout()
@@ -154,6 +175,7 @@ class VideoPlayerView(QWidget):
         
         # Combined Play/Pause button
         self.play_pause_button = QPushButton("Play")
+        self.play_pause_button.setMinimumWidth(96)
         # Prevent space key from activating button when it has focus, to avoid duplicate actions
         self.play_pause_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.controls_layout.addWidget(self.play_pause_button)
@@ -161,6 +183,7 @@ class VideoPlayerView(QWidget):
         # Step backward button
         self.step_backward_button = QPushButton("<<")
         self.step_backward_button.setObjectName("stepBackwardButton")
+        self.step_backward_button.setMinimumWidth(56)
         # Prevent from stealing focus
         self.step_backward_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         # Save original style
@@ -170,6 +193,7 @@ class VideoPlayerView(QWidget):
         # Step forward button
         self.step_forward_button = QPushButton(">>")
         self.step_forward_button.setObjectName("stepForwardButton")
+        self.step_forward_button.setMinimumWidth(56)
         # Prevent from stealing focus
         self.step_forward_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.controls_layout.addWidget(self.step_forward_button)
@@ -193,15 +217,14 @@ class VideoPlayerView(QWidget):
         self.frame_by_frame_checkbox = QCheckBox("Frame-by-Frame Mode")
         self.frame_by_frame_checkbox.setToolTip("When enabled, arrow keys will move exactly one frame at a time")
         self.frame_by_frame_checkbox.setChecked(False)
+        # CRITICAL FIX: Set focus policy to prevent space key from toggling the checkbox
+        self.frame_by_frame_checkbox.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.controls_layout.addWidget(self.frame_by_frame_checkbox)
         
         # Add a little spacing
         self.controls_layout.addSpacing(4)
         
-        # Playback rate control - REDUCED SPACING
         self.rate_label = QLabel("Speed:")
-        # Make label more compact
-        self.rate_label.setStyleSheet("margin-right: 1px;")
         self.controls_layout.addWidget(self.rate_label)
         
         # Use slider instead of dropdown for playback rate
@@ -209,17 +232,17 @@ class VideoPlayerView(QWidget):
         self.rate_slider.setMinimum(25)  # 0.25x
         self.rate_slider.setMaximum(200) # 2.00x
         self.rate_slider.setValue(100)   # 1.00x
-        self.rate_slider.setFixedWidth(180)  # Increased width from 100 to 180 pixels
+        self.rate_slider.setFixedWidth(130)
         self.controls_layout.addWidget(self.rate_slider)
         
         self.rate_value_label = QLabel("1.00x")
-        self.rate_value_label.setFixedWidth(40)
+        self.rate_value_label.setFixedWidth(38)
         self.controls_layout.addWidget(self.rate_value_label)
         
         # Add reset button for playback rate
         self.rate_reset_button = QPushButton("Reset")
         self.rate_reset_button.setToolTip("Reset playback speed to 1x")
-        self.rate_reset_button.setFixedWidth(60)
+        self.rate_reset_button.setFixedWidth(56)
         self.rate_reset_button.clicked.connect(self.reset_playback_rate)
         # Prevent button from capturing focus, so space key will still work for play/pause
         self.rate_reset_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -238,8 +261,75 @@ class VideoPlayerView(QWidget):
         self.volume_slider.setVisible(False)
         self.controls_layout.addWidget(self.volume_slider)
         
-        # Add controls to main layout
-        self.layout.addLayout(self.controls_layout)
+        # Add controls to container
+        self.controls_container_layout.addLayout(self.controls_layout)
+        
+        # Add controls container to main layout
+        self.layout.addWidget(self.controls_container)
+        
+        # CRITICAL FIX: Force layout update
+        self.layout.activate()
+
+    def add_widgets_to_controls_row(self, widgets, leading_spacing=10):
+        """
+        Add external widgets to the playback controls row.
+
+        Args:
+            widgets (list[QWidget]): Widgets to append to the row
+            leading_spacing (int): Spacing before the inserted widget group
+        """
+        widgets = [widget for widget in widgets if widget is not None]
+        if not widgets:
+            return
+
+        self.controls_layout.addSpacing(leading_spacing)
+        for widget in widgets:
+            self.controls_layout.addWidget(widget)
+
+    def ensure_native_video_surface(self):
+        """Create the native child window only when VLC actually needs it."""
+        if self._native_video_surface_ready:
+            return
+
+        self.video_frame.setAttribute(Qt.WA_NativeWindow)
+        self.video_frame.setAttribute(Qt.WA_DontCreateNativeAncestors)
+        self.video_frame.winId()
+        self._native_video_surface_ready = True
+
+    def _apply_placeholder_background_style(self, drag_active=False):
+        """Style the idle placeholder surface independently of the VLC frame."""
+        if drag_active:
+            self.placeholder_background.setStyleSheet(
+                "background-color: #2a3f5f; border: 2px dashed #ffffff;"
+            )
+        else:
+            self.placeholder_background.setStyleSheet(
+                "background-color: #000000; border: none;"
+            )
+
+    def _sync_video_placeholder_geometry(self):
+        """Keep the idle placeholder surface aligned to the full video frame."""
+        self.placeholder_background.setGeometry(self.video_frame.rect())
+        self.drop_label.raise_()
+
+    def _update_empty_state_visibility(self):
+        """Show the drop placeholder only when no video is currently loaded."""
+        show_placeholder = not self._has_video
+        self.placeholder_background.setVisible(show_placeholder)
+        self.drop_label.setVisible(show_placeholder)
+        if show_placeholder:
+            self._sync_video_placeholder_geometry()
+
+    def refresh_empty_placeholder(self):
+        """Repaint the idle black drop area after page/view switches."""
+        if self._has_video:
+            return
+
+        self._apply_placeholder_background_style(drag_active=False)
+        self._update_empty_state_visibility()
+        self.placeholder_background.update()
+        self.placeholder_background.repaint()
+        self.update()
     
     def _reset_step_flag(self):
         """Reset the step in progress flag after a delay."""
@@ -366,7 +456,7 @@ class VideoPlayerView(QWidget):
             file_path = url.toLocalFile()
             
             # List of supported video extensions
-            video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv']
+            video_extensions = ['.mp4', '.avi', '.mpg', '.mpeg', '.m4v','.mkv', '.mov', '.wmv']
             
             # Accept the drag if the file has a video extension
             if any(file_path.lower().endswith(ext) for ext in video_extensions):
@@ -374,7 +464,7 @@ class VideoPlayerView(QWidget):
                 event.acceptProposedAction()
                 
                 # Highlight drop area
-                self.video_frame.setStyleSheet("background-color: #2a3f5f; border: 2px dashed #ffffff;")
+                self._apply_placeholder_background_style(drag_active=True)
                 self.drop_label.setStyleSheet("""
                     color: white; 
                     font-size: 18px; 
@@ -391,7 +481,7 @@ class VideoPlayerView(QWidget):
     def dragLeaveEvent(self, event):
         """Handle drag leave events."""
         # Reset styling when drag leaves
-        self.video_frame.setStyleSheet("background-color: black;")
+        self._apply_placeholder_background_style(drag_active=False)
         self.drop_label.setStyleSheet("""
             color: white; 
             font-size: 18px; 
@@ -414,7 +504,7 @@ class VideoPlayerView(QWidget):
             return
             
         # Reset styling
-        self.video_frame.setStyleSheet("background-color: black;")
+        self._apply_placeholder_background_style(drag_active=False)
         self.drop_label.setStyleSheet("""
             color: white; 
             font-size: 18px; 
@@ -618,6 +708,8 @@ class VideoPlayerView(QWidget):
         """
         # Ensure duration is positive
         self._duration = max(1, duration_ms)
+        self._has_video = duration_ms > 1
+        self._update_empty_state_visibility()
         
         # Format duration label
         self.format_time_label(self.duration_label, self._duration)
@@ -669,8 +761,17 @@ class VideoPlayerView(QWidget):
         # Update play/pause button text
         self.play_pause_button.setText("Pause" if is_playing else "Play")
         
-        # Hide drop label when video is loaded/playing
-        self.drop_label.setVisible(not is_playing)
+        self._update_empty_state_visibility()
+        
+        # CRITICAL FIX: Force layout update after state change
+        # This ensures that all widgets maintain their proper positions
+        self.layout.activate()
+        self.controls_container.update()
+        
+        # Force the parent widget to update its geometry
+        parent = self.parent()
+        if parent:
+            parent.updateGeometry()
         
     def reset_playback_rate(self):
         """Reset playback rate to 1x."""
@@ -692,5 +793,35 @@ class VideoPlayerView(QWidget):
     def resizeEvent(self, event):
         """Handle resize events to ensure overlay is properly sized."""
         super().resizeEvent(event)
+        
+        # CRITICAL FIX: Ensure minimum size is maintained
+        if self.height() < 300:
+            self.setMinimumHeight(300)
+        
+        # Update loading overlay if visible
         if hasattr(self, '_loading_overlay') and self._loading_overlay.isVisible():
             self._loading_overlay.resize(self.size())
+
+        self._sync_video_placeholder_geometry()
+            
+        # Force layout update
+        self.layout.activate()
+        
+        # Log resize event for debugging
+        self.logger.debug(f"VideoPlayerView resized to: {self.size()}")
+    
+    def showEvent(self, event):
+        """Handle show event to ensure layout stability."""
+        super().showEvent(event)
+        
+        # Force layout update when widget becomes visible
+        self.layout.activate()
+        self.updateGeometry()
+        
+        # Ensure controls container is visible
+        if hasattr(self, 'controls_container'):
+            self.controls_container.show()
+            self.controls_container.updateGeometry()
+
+        self._sync_video_placeholder_geometry()
+        QTimer.singleShot(0, self.refresh_empty_placeholder)

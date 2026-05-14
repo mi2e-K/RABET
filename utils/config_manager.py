@@ -1,8 +1,5 @@
 # utils/config_manager.py
-import os
-import json
 import logging
-from pathlib import Path
 from utils.config_path_manager import ConfigPathManager
 
 class ConfigManager:
@@ -17,13 +14,13 @@ class ConfigManager:
             "remember_last_directory": True,
             "auto_save_annotations": True,
             "auto_save_interval_min": 5,
-            "recent_files_max": 10
+            "recent_files_max": 10,
         },
         "video": {
             "default_step_size_ms": 100,
             "default_playback_rate": 1.0,
             "default_volume": 80,
-            "enable_frame_by_frame": True
+            "enable_frame_by_frame": False,
         },
         "annotation": {
             "timeline_zoom_level": 100,
@@ -32,32 +29,49 @@ class ConfigManager:
                 "social": "#1F77B4",   # Blue
                 "grooming": "#FF7F0E", # Orange
                 "feeding": "#2CA02C",  # Green
-                "locomotion": "#D62728" # Red
+                "locomotion": "#D62728",
             },
             "show_duration_labels": True,
-            "show_behavior_labels": True
+            "show_behavior_labels": True,
+            # Last "Timed Recording" duration shown in the recording panel,
+            # remembered across sessions. Stored as h:m:s parts so we don't
+            # need to import QTime here.
+            "last_recording_hours": 0,
+            "last_recording_minutes": 5,
+            "last_recording_seconds": 0,
+            "preserve_on_rewind": False,
         },
         "analysis": {
             "default_export_format": "csv",
             "include_statistics": True,
-            "include_raw_data": True
+            "include_raw_data": True,
+            # AnalysisView interval settings persisted across sessions.
+            "interval_enabled": False,
+            "interval_seconds": 60,
         },
         "ui": {
             "theme": "system",
             "font_size": 12,
             "show_toolbar": True,
-            "show_statusbar": True
+            "show_statusbar": True,
+            # Main-window geometry stored as [x, y, w, h]. Empty list means
+            # "use default and center on screen" on next startup.
+            "window_geometry": [],
+            # Last active top-level view: Annotation / Analysis / Visualization / Project.
+            "last_view": "Annotation",
+            # Splitter sizes for the annotation page (video vs right column).
+            "upper_splitter_sizes": [],
         },
         "directories": {
             "last_video_directory": "",
             "last_annotation_directory": "",
-            "last_config_directory": ""  # Changed from action_map_directory to config_directory
+            "last_config_directory": "",
         },
         "recent_files": {
             "videos": [],
-            "configs": [],              # Changed from action_maps to configs
-            "annotations": []
-        }
+            "configs": [],
+            "annotations": [],
+        },
     }
     
     def __init__(self, file_manager):

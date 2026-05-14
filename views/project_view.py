@@ -6,11 +6,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTabWidget, QLabel, QLineEdit, QTextEdit, QFileDialog,
     QTreeWidget, QTreeWidgetItem, QMessageBox, QMenu, QHeaderView,
-    QDialog, QDialogButtonBox, QFormLayout, QCheckBox, QSplitter,
-    QFrame, QGroupBox, QSizePolicy, QStyle
+    QDialog, QDialogButtonBox, QFormLayout, QCheckBox, QFrame, QGroupBox, QStyle
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize
-from PySide6.QtGui import QAction, QIcon, QCursor, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QAction, QCursor, QDragEnterEvent, QDropEvent
 
 class ProjectView(QWidget):
     """
@@ -603,7 +602,7 @@ class ProjectView(QWidget):
                 from datetime import datetime
                 dt = datetime.fromisoformat(created_date)
                 created_str = dt.strftime("%Y-%m-%d %H:%M")
-            except:
+            except (TypeError, ValueError):
                 created_str = created_date
             
             self.created_date_label.setText(f"Created: {created_str}")
@@ -616,7 +615,7 @@ class ProjectView(QWidget):
                 from datetime import datetime
                 dt = datetime.fromisoformat(modified_date)
                 modified_str = dt.strftime("%Y-%m-%d %H:%M")
-            except:
+            except (TypeError, ValueError):
                 modified_str = modified_date
                 
             self.modified_date_label.setText(f"Modified: {modified_str}")
@@ -664,7 +663,7 @@ class ProjectView(QWidget):
             video_id = os.path.splitext(name)[0]
             
             # Get status
-            status = annotation_status.get(video_id, "not_annotated")
+            status = annotation_status.get(video_path, annotation_status.get(video_id, "not_annotated"))
             status_text = "Annotated" if status == "annotated" else "Not Annotated"
             
             item = QTreeWidgetItem([name, video_path, status_text])

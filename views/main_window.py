@@ -3,18 +3,71 @@ import logging
 import os
 import sys
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QStackedWidget, QLabel, QStatusBar, QToolBar, 
-    QFileDialog, QMessageBox, QSplitter, QApplication
+    QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QToolBar, 
+    QMessageBox, QSplitter, QApplication, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, Slot, QSize, QRect, QTimer
-from PySide6.QtGui import QKeyEvent, QIcon, QAction
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QEvent
+from PySide6.QtGui import QIcon, QAction
 
 from views.video_player_view import VideoPlayerView
 from views.timeline_view import TimelineView
 from views.action_map_view import ActionMapView
 from views.recording_control_view import RecordingControlView
 from views.analysis_view import AnalysisView
+
+
+class CurrentPageStackedWidget(QStackedWidget):
+    """A stacked widget whose size hints follow only the currently visible page."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.currentChanged.connect(self._on_current_changed)
+
+    def addWidget(self, widget):
+        self._track_page(widget)
+        return super().addWidget(widget)
+
+    def insertWidget(self, index, widget):
+        self._track_page(widget)
+        return super().insertWidget(index, widget)
+
+    def _track_page(self, widget):
+        if widget is not None:
+            widget.installEventFilter(self)
+
+    def _on_current_changed(self, _index):
+        self.updateGeometry()
+
+    def eventFilter(self, watched, event):
+        if watched == self.currentWidget() and event.type() in (
+            QEvent.Type.LayoutRequest,
+            QEvent.Type.ShowToParent,
+            QEvent.Type.HideToParent,
+            QEvent.Type.StyleChange,
+            QEvent.Type.FontChange,
+        ):
+            self.updateGeometry()
+        return super().eventFilter(watched, event)
+
+    def sizeHint(self):
+        current = self.currentWidget()
+        if current is None:
+            return super().sizeHint()
+
+        hint = current.sizeHint()
+        if not hint.isValid():
+            return super().sizeHint()
+        return hint.expandedTo(current.minimumSizeHint())
+
+    def minimumSizeHint(self):
+        current = self.currentWidget()
+        if current is None:
+            return super().minimumSizeHint()
+
+        hint = current.minimumSizeHint()
+        if not hint.isValid():
+            return super().minimumSizeHint()
+        return hint
 
 class MainWindow(QMainWindow):
     """
@@ -30,9 +83,18 @@ class MainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
+        # These flags can be read by Qt event handlers before __init__ finishes.
+        self._layout_diagnostics_enabled = False
+        self._disable_manual_layout_stabilization = False
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing MainWindow")
-        
+
+        # Settings persistence is wired in via ``set_config_manager`` after
+        # construction (see AppController). Until then operations that depend
+        # on it must be no-ops.
+        self.config_manager = None
+        self._settings_restored = False
+
         self.setWindowTitle("RABET - Real-time Animal Behavior Event Tagger")
         # Increase default window size
         self.resize(1400, 900)
@@ -42,6 +104,12 @@ class MainWindow(QMainWindow):
         
         # Set strong focus policy to ensure main window can receive keyboard events
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+        # Accept drag-and-drop globally; the per-view drop targets
+        # (VideoPlayerView, AnalysisView, VisualizationView) keep their own
+        # finer-grained handlers, but the main window dispatches any drop
+        # that lands on the menubar, toolbar or empty regions.
+        self.setAcceptDrops(True)
         
         # Reference to annotation controller (will be set by app_controller)
         self.annotation_controller = None
@@ -56,13 +124,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         
         self.main_layout = QVBoxLayout(self.central_widget)
-        # Remove top and bottom margins to maximize space
-        self.main_layout.setContentsMargins(6, 0, 6, 0)
+        # Consistent margins on all sides
+        self.main_layout.setContentsMargins(6, 6, 6, 6)
         # Minimize spacing between elements
         self.main_layout.setSpacing(2)
         
-        # Create stacked widget instead of tab widget
-        self.stacked_widget = QStackedWidget()
+        # Keep the window minimum size tied to the visible page, not hidden pages.
+        self.stacked_widget = CurrentPageStackedWidget()
         self.main_layout.addWidget(self.stacked_widget)
         
         # Create annotation view
@@ -70,8 +138,8 @@ class MainWindow(QMainWindow):
         self.annotation_layout = QVBoxLayout(self.annotation_widget)
         # Remove margins to maximize space
         self.annotation_layout.setContentsMargins(0, 0, 0, 0)
-        # Minimize spacing between elements
-        self.annotation_layout.setSpacing(2)
+        # Small spacing between elements
+        self.annotation_layout.setSpacing(4)
         
         # Create views
         self.video_player_view = VideoPlayerView()
@@ -87,15 +155,26 @@ class MainWindow(QMainWindow):
         self.right_widget = QWidget()
         self.right_layout = QVBoxLayout(self.right_widget)
         self.right_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_layout.setSpacing(4)
+        self.right_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.right_widget.setMinimumHeight(0)
+        self.recording_control_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.action_map_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.action_map_view.setMinimumHeight(0)
         
         # Add recording control above action map
-        self.right_layout.addWidget(self.recording_control_view)
-        self.right_layout.addWidget(self.action_map_view)
+        self.right_layout.addWidget(self.recording_control_view, 0)
+        self.right_layout.addWidget(self.action_map_view, 1)
+        self.right_layout.setStretch(0, 0)
+        self.right_layout.setStretch(1, 1)
         
         # Add right widget to splitter
         self.upper_splitter.addWidget(self.right_widget)
         
         # Give more space to the video (increased ratio for video, reduced for action map)
+        self.upper_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.upper_splitter.setMinimumHeight(0)
+        self.upper_splitter.setChildrenCollapsible(False)
         self.upper_splitter.setStretchFactor(0, 6)  # Video gets more space
         self.upper_splitter.setStretchFactor(1, 1)  # Right side gets less space
         
@@ -111,7 +190,7 @@ class MainWindow(QMainWindow):
         
         # Set stretch factors to make the upper section expand but keep timeline fixed
         # Using larger stretch factor to give more emphasis to the video section
-        self.annotation_layout.setStretchFactor(self.upper_splitter, 5)
+        self.annotation_layout.setStretchFactor(self.upper_splitter, 10)  # More space for video
         self.annotation_layout.setStretchFactor(self.timeline_view, 0)
         
         # Create analysis view
@@ -127,16 +206,7 @@ class MainWindow(QMainWindow):
             "Analysis": 1
         }
         
-        # Create status bar
-        self.status_bar = QStatusBar()
-        self.status_bar.setContentsMargins(6, 0, 6, 0)  # Minimize top/bottom margins
-        self.setStatusBar(self.status_bar)
-        
-        self.status_message = QLabel("Ready")
-        self.status_bar.addWidget(self.status_message)
-        
-        self.video_info = QLabel("")
-        self.status_bar.addPermanentWidget(self.video_info)
+        # Status bar removed - status messages now integrated into timeline view
         
         # Create toolbar
         self.toolbar = QToolBar("Main Toolbar")
@@ -147,6 +217,7 @@ class MainWindow(QMainWindow):
         
         # Setup toolbar with quick access buttons
         self.setup_toolbar()
+        self._relocate_timeline_auxiliary_controls()
         
         # Step size for arrow keys in milliseconds
         self._arrow_key_step_size = 100
@@ -163,9 +234,42 @@ class MainWindow(QMainWindow):
         self._debug_timer = QTimer(self)
         self._debug_timer.setInterval(2000)  # Log every 2 seconds for debugging
         self._debug_timer.timeout.connect(self._log_current_states)
+
+        # Leave diagnostics off during normal use.
+        self._layout_diagnostics_enabled = False
+        self._disable_manual_layout_stabilization = True
         
         # Uncomment this line to enable state logging during development
         # self._debug_timer.start()
+
+    def _relocate_timeline_auxiliary_controls(self):
+        """Move timeline-adjacent controls into compact toolbar/playback rows."""
+        self.video_player_view.add_widgets_to_controls_row(
+            self.timeline_view.get_controls_for_playback_row(),
+            leading_spacing=8,
+        )
+
+        self.timeline_view.zoom_slider.setFixedWidth(110)
+        self.timeline_view.zoom_value.setFixedWidth(28)
+        self.timeline_view.zoom_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.timeline_view.toolbar_info_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        overlay_text_style = "color: white; background: transparent;"
+        self.timeline_view.zoom_label.setStyleSheet(overlay_text_style)
+        self.timeline_view.zoom_value.setStyleSheet(overlay_text_style)
+        self.timeline_view.toolbar_info_label.setStyleSheet(
+            "color: rgba(255, 255, 255, 220); background: transparent;"
+        )
+        self.timeline_view.toolbar_info_label.setMaximumWidth(420)
+        self.timeline_view.toolbar_info_label.setWordWrap(False)
+
+        self.toolbar.addSeparator()
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.toolbar.addWidget(spacer)
+        self.toolbar.addWidget(self.timeline_view.get_toolbar_info_widget())
+
+        self.timeline_view.use_external_auxiliary_controls()
     
     def setup_window_icon(self):
         """Set up the window and taskbar icon."""
@@ -229,6 +333,83 @@ class MainWindow(QMainWindow):
                 f"Current states - playing: {is_playing}, "
                 f"recording: {is_recording}, paused: {is_paused}"
             )
+
+    def _widget_size_summary(self, name, widget):
+        """Return a compact one-line summary for layout diagnostics.
+
+        Delegates to the shared helper in ``utils.layout_diagnostics`` so
+        the same primitive is used by ``RecordingControlView`` too.
+        """
+        from utils.layout_diagnostics import widget_summary
+        return widget_summary(name, widget)
+
+    def _window_state_summary(self):
+        """Return top-level window geometry and hint information for diagnostics."""
+        frame = self.frameGeometry()
+        normal = self.normalGeometry()
+        hint = self.sizeHint()
+        min_hint = self.minimumSizeHint()
+        return (
+            "main_window_state: "
+            f"window={self.width()}x{self.height()} "
+            f"frame={frame.width()}x{frame.height()} "
+            f"normal={normal.width()}x{normal.height()} "
+            f"hint={hint.width()}x{hint.height()} "
+            f"minHint={min_hint.width()}x{min_hint.height()} "
+            f"min={self.minimumWidth()}x{self.minimumHeight()} "
+            f"max={self.maximumWidth()}x{self.maximumHeight()} "
+            f"maximized={self.isMaximized()} active={self.isActiveWindow()}"
+        )
+
+    def log_annotation_layout_snapshot(self, reason):
+        """Log the current annotation-page layout state for diagnosis."""
+        if not getattr(self, '_layout_diagnostics_enabled', False):
+            return
+        if not hasattr(self, 'annotation_widget'):
+            return
+
+        splitter_sizes = self.upper_splitter.sizes() if hasattr(self, 'upper_splitter') else []
+        recording_state = getattr(self.recording_control_view, '_recording_state', None)
+        annotation_view_active = (
+            hasattr(self, 'stacked_widget') and
+            self.stacked_widget.currentWidget() == self.annotation_widget
+        )
+
+        lines = [
+            f"[LAYOUT_DIAG] {reason}",
+            f"  {self._window_state_summary()}",
+            f"  annotation_view_active={annotation_view_active} splitter_sizes={splitter_sizes}",
+            f"  recording_state={recording_state} waiting={self.recording_control_view.is_in_waiting_state()}",
+            "  " + self._widget_size_summary("central_widget", self.central_widget),
+            "  " + self._widget_size_summary("stacked_widget", self.stacked_widget),
+            "  " + self._widget_size_summary("menu_bar", self.menuBar()),
+            "  " + self._widget_size_summary("tool_bar", self.toolbar),
+            "  " + self._widget_size_summary("annotation_widget", self.annotation_widget),
+            "  " + self._widget_size_summary("upper_splitter", self.upper_splitter),
+            "  " + self._widget_size_summary("right_widget", self.right_widget),
+            "  " + self._widget_size_summary("recording_control_view", self.recording_control_view),
+            "  " + self._widget_size_summary("recording_group", self.recording_control_view.recording_group),
+            "  " + self._widget_size_summary("action_map_view", self.action_map_view),
+            "  " + self._widget_size_summary("mappings_table", self.action_map_view.mappings_table),
+            "  " + self._widget_size_summary("active_behaviors", self.action_map_view.active_behaviors),
+            "  " + self._widget_size_summary("timeline_view", self.timeline_view),
+            "  " + self._widget_size_summary("timeline_area", self.timeline_view.timeline_area),
+            "  " + self._widget_size_summary("timeline_canvas", self.timeline_view.timeline_canvas),
+        ]
+        self.logger.info("\n".join(lines))
+
+    def schedule_layout_diagnostic_snapshots(self, reason):
+        """Capture several snapshots around a state transition."""
+        from utils.layout_diagnostics import schedule_snapshot_burst
+        schedule_snapshot_burst(
+            self.log_annotation_layout_snapshot,
+            reason,
+            enabled=bool(getattr(self, '_layout_diagnostics_enabled', False)),
+        )
+
+    def on_record_button_clicked_layout_diagnostic(self):
+        """Record layout state immediately after the record button changes the UI."""
+        self.schedule_layout_diagnostic_snapshots("record_button_clicked")
     
     def center_on_screen(self):
         """Center the window on the screen."""
@@ -291,31 +472,47 @@ class MainWindow(QMainWindow):
     
     def create_menus(self):
         """Create application menus."""
+        from PySide6.QtWidgets import QMenu
+
         # File menu - Remove the ampersand (&) to disable menu mnemonics
         self.file_menu = self.menuBar().addMenu("File")
-        
+
         self.open_video_action = QAction("Open Video", self)
         self.open_video_action.setStatusTip("Open a video file")
         self.file_menu.addAction(self.open_video_action)
-        
+
+        # Recent Videos submenu - populated dynamically from ConfigManager.
+        self.recent_videos_menu = QMenu("Open Recent Video", self)
+        self.recent_videos_menu.aboutToShow.connect(self._populate_recent_videos_menu)
+        self.file_menu.addMenu(self.recent_videos_menu)
+
         self.load_action_map_action = QAction("Load Action Map", self)
         self.load_action_map_action.setStatusTip("Load an action map from a JSON file")
         self.file_menu.addAction(self.load_action_map_action)
-        
+
         self.save_action_map_action = QAction("Save Action Map", self)
         self.save_action_map_action.setStatusTip("Save action map to a JSON file")
         self.file_menu.addAction(self.save_action_map_action)
-        
+
+        self.reset_action_map_action = QAction("Reset Action Map to Default", self)
+        self.reset_action_map_action.setStatusTip("Reset action map to default settings")
+        self.file_menu.addAction(self.reset_action_map_action)
+
         self.file_menu.addSeparator()
-        
+
         self.export_annotations_action = QAction("Export Annotations", self)
         self.export_annotations_action.setStatusTip("Export annotations to a CSV file")
         self.file_menu.addAction(self.export_annotations_action)
-        
+
         self.import_annotations_action = QAction("Import Annotations", self)
         self.import_annotations_action.setStatusTip("Import annotations from a CSV file")
         self.file_menu.addAction(self.import_annotations_action)
-        
+
+        # Recent Annotations submenu - populated dynamically from ConfigManager.
+        self.recent_annotations_menu = QMenu("Recent Annotations", self)
+        self.recent_annotations_menu.aboutToShow.connect(self._populate_recent_annotations_menu)
+        self.file_menu.addMenu(self.recent_annotations_menu)
+
         self.file_menu.addSeparator()
         
         self.exit_action = QAction("Exit", self)
@@ -324,7 +521,16 @@ class MainWindow(QMainWindow):
         
         # Edit menu
         self.edit_menu = self.menuBar().addMenu("Edit")
-        
+
+        self.undo_annotation_action = QAction("Undo Last Annotation", self)
+        self.undo_annotation_action.setShortcut("Ctrl+Z")
+        self.undo_annotation_action.setStatusTip(
+            "Remove the most recently recorded annotation"
+        )
+        self.edit_menu.addAction(self.undo_annotation_action)
+
+        self.edit_menu.addSeparator()
+
         self.clear_annotations_action = QAction("Clear Annotations", self)
         self.clear_annotations_action.setStatusTip("Clear all annotations")
         self.edit_menu.addAction(self.clear_annotations_action)
@@ -363,7 +569,14 @@ class MainWindow(QMainWindow):
         
         # Help menu
         self.help_menu = self.menuBar().addMenu("Help")
-        
+
+        self.shortcuts_action = QAction("Show Shortcuts", self)
+        self.shortcuts_action.setShortcut("F1")
+        self.shortcuts_action.setStatusTip(
+            "Display a quick reference of every keyboard shortcut RABET recognises"
+        )
+        self.help_menu.addAction(self.shortcuts_action)
+
         self.about_action = QAction("About", self)
         self.about_action.setStatusTip("Show information about RABET")
         self.help_menu.addAction(self.about_action)
@@ -412,14 +625,11 @@ class MainWindow(QMainWindow):
         self.project_mode_action.setChecked(False)
         self.project_mode_toolbar_action.setChecked(False)
         
-        # Update status message
-        self.set_status_message("Video Mode: Annotation enabled")
-        
-        # Force an immediate update of the UI to ensure the video widget is visible
-        from PySide6.QtCore import QCoreApplication
-        QCoreApplication.processEvents()
-        
-        # Ensure the video player view has focus for key events
+        self._sync_toolbar_status_for_view("Annotation")
+
+        # Ensure the video player view has focus for key events. Qt
+        # delivers the focus change on the next event-loop iteration; an
+        # explicit ``processEvents`` is not needed for ``setFocus`` itself.
         self.video_player_view.setFocus()
         
         # Log transition completion
@@ -445,11 +655,27 @@ class MainWindow(QMainWindow):
             self.project_mode_action.setChecked(True)
             self.project_mode_toolbar_action.setChecked(True)
             
-            # Update status message
+            self.timeline_view.set_toolbar_context("Project")
             self.set_status_message("Project Mode: Manage videos and annotations")
         else:
             self.logger.warning("Project view not found in view index")
-    
+
+    def _sync_toolbar_status_for_view(self, view_name):
+        """Keep toolbar summary text aligned with the active top-level view."""
+        self.timeline_view.set_toolbar_context(view_name)
+        current_status = self.timeline_view.status_message.text().strip()
+        mode_specific_statuses = {
+            "Ready",
+            "Video Mode: Annotation enabled",
+            "Project Mode: Manage videos and annotations",
+        }
+
+        if view_name == "Annotation":
+            if current_status in {"", "Video Mode: Annotation enabled", "Project Mode: Manage videos and annotations"}:
+                self.set_status_message("Ready")
+        elif current_status in mode_specific_statuses:
+            self.set_status_message("")
+
     def set_annotation_mode_enabled(self, enabled):
         """
         Enable or disable annotation mode features.
@@ -516,6 +742,10 @@ class MainWindow(QMainWindow):
                         self.logger.debug("Resuming recording to match video play")
                         self.annotation_controller.resume_recording()
         
+        # CRITICAL FIX: Ensure timeline controls remain visible after state change
+        if hasattr(self, 'timeline_view'):
+            self.timeline_view.ensure_controls_visible()
+        
         # Log final states for verification
         self.logger.debug(f"Final video state: playing={is_playing}")
         if self.annotation_controller:
@@ -533,6 +763,124 @@ class MainWindow(QMainWindow):
         """Reset the space key processing flag."""
         self._space_key_processing = False
         self.logger.debug("Space key processing reset")
+
+    def stabilize_annotation_layout(self):
+        """Force the annotation page layouts to settle after dynamic UI changes."""
+        if getattr(self, '_disable_manual_layout_stabilization', False):
+            if getattr(self, '_layout_diagnostics_enabled', False):
+                self.logger.info("[LAYOUT_DIAG] stabilize_annotation_layout skipped (manual stabilization disabled)")
+            self.schedule_layout_diagnostic_snapshots("stabilize_skipped")
+            return
+        if not hasattr(self, 'annotation_layout'):
+            return
+
+        self.sync_annotation_panel_heights()
+        self.sync_right_column_panel_heights()
+
+        splitter_sizes = self.upper_splitter.sizes() if hasattr(self, 'upper_splitter') else None
+
+        widgets = [
+            self.recording_control_view,
+            self.action_map_view,
+            self.right_widget,
+            self.video_player_view,
+            self.upper_splitter,
+            self.timeline_view,
+            self.annotation_widget,
+            self.central_widget,
+        ]
+
+        for widget in widgets:
+            if widget is not None:
+                widget.updateGeometry()
+
+        if hasattr(self, 'right_layout'):
+            self.right_layout.activate()
+        self.annotation_layout.activate()
+
+        if splitter_sizes:
+            self.upper_splitter.setSizes(splitter_sizes)
+
+        self.sync_annotation_panel_heights()
+        self.sync_right_column_panel_heights()
+
+        if hasattr(self, 'timeline_view'):
+            self.timeline_view.ensure_controls_visible()
+
+        self.central_widget.updateGeometry()
+        self.central_widget.update()
+
+    def sync_annotation_panel_heights(self):
+        """Temporarily pin the upper annotation area so the timeline row keeps its space."""
+        if getattr(self, '_disable_manual_layout_stabilization', False):
+            return
+        if not hasattr(self, 'upper_splitter') or not hasattr(self, 'timeline_view'):
+            return
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.currentWidget() != self.annotation_widget:
+            return
+
+        available_height = self.annotation_widget.contentsRect().height()
+        if available_height <= 0:
+            return
+
+        spacing = self.annotation_layout.spacing()
+        timeline_height = self.timeline_view.maximumHeight()
+        if timeline_height < 0:
+            timeline_height = 0
+
+        upper_height = max(0, available_height - timeline_height - spacing)
+        if upper_height <= 0:
+            return
+
+        self.upper_splitter.setMinimumHeight(upper_height)
+        self.upper_splitter.setMaximumHeight(upper_height)
+        self.upper_splitter.updateGeometry()
+
+    def sync_right_column_panel_heights(self):
+        """Keep the Action Map confined to the remaining height in the right column."""
+        if getattr(self, '_disable_manual_layout_stabilization', False):
+            return
+        if not hasattr(self, 'right_widget') or not hasattr(self, 'action_map_view'):
+            return
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.currentWidget() != self.annotation_widget:
+            return
+
+        available_height = self.right_widget.contentsRect().height()
+        if available_height <= 0:
+            return
+
+        recording_height = self.recording_control_view.height()
+        if recording_height <= 0:
+            recording_height = self.recording_control_view.sizeHint().height()
+
+        spacing = self.right_layout.spacing()
+        action_map_height = max(120, available_height - recording_height - spacing)
+
+        self.action_map_view.setMinimumHeight(action_map_height)
+        self.action_map_view.setMaximumHeight(action_map_height)
+        self.action_map_view.updateGeometry()
+
+    def release_annotation_panel_height_constraints(self):
+        """Release temporary height constraints after the layout has stabilized."""
+        if getattr(self, '_disable_manual_layout_stabilization', False):
+            return
+        if not hasattr(self, 'upper_splitter'):
+            return
+        self.upper_splitter.setMinimumHeight(0)
+        self.upper_splitter.setMaximumHeight(16777215)
+        self.upper_splitter.updateGeometry()
+        self.sync_right_column_panel_heights()
+
+    def schedule_annotation_layout_stabilization(self):
+        """Run layout stabilization after recording-state UI changes, then release the temporary clamp."""
+        if getattr(self, '_disable_manual_layout_stabilization', False):
+            if getattr(self, '_layout_diagnostics_enabled', False):
+                self.logger.info("[LAYOUT_DIAG] schedule_annotation_layout_stabilization skipped (manual stabilization disabled)")
+            self.schedule_layout_diagnostic_snapshots("schedule_stabilization_skipped")
+            return
+        QTimer.singleShot(0, self.stabilize_annotation_layout)
+        QTimer.singleShot(50, self.stabilize_annotation_layout)
+        QTimer.singleShot(140, self.release_annotation_panel_height_constraints)
         
     def resetFocus(self):
         """Reset focus to the main window to handle keyboard shortcuts."""
@@ -541,18 +889,27 @@ class MainWindow(QMainWindow):
         self.logger.debug("Focus reset to main window")
     
     def installGlobalFocusTracking(self):
-        """Install event filters on key widgets to track and manage focus."""
-        self.logger.info("Installing global focus tracking")
-        
-        # Install event filter on the application to catch all events
-        QApplication.instance().installEventFilter(self)
-        
-        # List of widgets that should have focus management
+        """Install event filters on the specific widgets we need to monitor.
+
+        Previously we installed an event filter on ``QApplication.instance()``
+        which fires for every Qt event in the entire application. Now we only
+        watch the controls that should auto-return focus to the main window,
+        which significantly reduces event-filter overhead on every mouse move.
+        """
+        self.logger.info("Installing focus tracking on specific widgets")
+
+        # Single, reusable timer for resetting focus to the main window. Using
+        # one QTimer instance and re-arming it via ``start()`` avoids the
+        # allocation churn of ``QTimer.singleShot`` on every mouse click.
+        self._focus_reset_timer = QTimer(self)
+        self._focus_reset_timer.setSingleShot(True)
+        self._focus_reset_timer.setInterval(3000)
+        self._focus_reset_timer.timeout.connect(self.resetFocus)
+
         focus_managed_widgets = [
             # Recording control widgets
             self.recording_control_view.duration_time_edit,
             self.recording_control_view.record_button,
-            
             # Video player controls
             self.video_player_view.play_pause_button,
             self.video_player_view.step_forward_button,
@@ -560,67 +917,55 @@ class MainWindow(QMainWindow):
             self.video_player_view.step_size_spin,
             self.video_player_view.rate_slider,
             self.video_player_view.rate_reset_button,
-            
             # Action map widgets
             self.action_map_view.add_button,
             self.action_map_view.edit_button,
             self.action_map_view.remove_button,
             self.action_map_view.mappings_table,
-            self.action_map_view.active_behaviors
+            self.action_map_view.active_behaviors,
         ]
-        
-        # Install event filters on all these widgets
+
         for widget in focus_managed_widgets:
             widget.installEventFilter(self)
-            
-        # Add hover tracking to buttons
+
+        # Add hover tracking to step buttons
         self.video_player_view.step_forward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.video_player_view.step_backward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        
+
         self.logger.debug(f"Installed event filters on {len(focus_managed_widgets)} widgets")
-    
+
+    def _schedule_focus_reset(self):
+        """Re-arm the shared focus-reset timer (single allocation)."""
+        if not hasattr(self, '_focus_reset_timer'):
+            return
+        self._focus_reset_timer.start()
+
     def eventFilter(self, watched, event):
         """
-        Global event filter to manage focus for keyboard shortcuts.
-        
-        Args:
-            watched: The widget being watched
-            event: The event that occurred
-            
-        Returns:
-            bool: True if event was handled, False to pass to normal handler
+        Event filter for the specific widgets installed in
+        ``installGlobalFocusTracking``. Returns ``False`` so the event still
+        reaches the normal handler.
         """
-        # FIX: Exception for interval seconds spinner in analysis mode and other input widgets
-        # Check if we're in analysis mode and the watched widget is the interval seconds spinner
+        # Honour exclusions for input widgets in views that need to keep focus
         current_view = self.stacked_widget.currentWidget()
-        
-        # Check for special input fields that shouldn't auto-lose focus
-        if ((hasattr(self, 'analysis_view') and current_view == self.analysis_view and 
+
+        if ((hasattr(self, 'analysis_view') and current_view == self.analysis_view and
              hasattr(self.analysis_view, 'interval_seconds_spinner') and
              watched == self.analysis_view.interval_seconds_spinner) or
-            # Add more exclusions for other input widgets as needed
             (hasattr(self, 'visualization_view') and current_view == self.visualization_view)):
-            
-            # Allow normal focus behavior for these widgets
-            # Don't interfere with their focus management
             return super().eventFilter(watched, event)
-        
-        # Track when buttons are clicked
-        if event.type() == event.Type.MouseButtonRelease:
-            if watched != self:
-                self._last_clicked_widget = watched
+
+        event_type = event.type()
+        if event_type == event.Type.MouseButtonRelease and watched is not self:
+            self._last_clicked_widget = watched
+            self._need_focus_reset = True
+            self._schedule_focus_reset()
+        elif event_type == event.Type.FocusOut:
+            if watched in (self.video_player_view.step_size_spin,
+                           self.recording_control_view.duration_time_edit):
                 self._need_focus_reset = True
-                # FIX: Use longer delay (3 seconds) to allow more time for interaction
-                QTimer.singleShot(3000, self.resetFocus)
-                self.logger.debug(f"Focus to reset after interacting with: {watched}")
-        
-        # When values change in a spin box or time edit
-        elif event.type() == event.Type.FocusOut:
-            if watched in [self.video_player_view.step_size_spin, 
-                          self.recording_control_view.duration_time_edit]:
-                self._need_focus_reset = True
-                QTimer.singleShot(3000, self.resetFocus)
-        
+                self._schedule_focus_reset()
+
         return super().eventFilter(watched, event)
     
     def keyPressEvent(self, event):
@@ -699,6 +1044,7 @@ class MainWindow(QMainWindow):
             if key and not event.isAutoRepeat():
                 self.logger.debug("Starting recording from waiting state")
                 self.recording_control_view.start_recording()
+                self.schedule_layout_diagnostic_snapshots("waiting_key_started_recording")
                 
                 # Don't emit key press for this initial trigger
                 return
@@ -749,6 +1095,7 @@ class MainWindow(QMainWindow):
             index = self._view_index[view_name]
             self.stacked_widget.setCurrentIndex(index)
             self.logger.debug(f"Switched to {view_name} mode")
+            self._sync_toolbar_status_for_view(view_name)
             
             # Update action check state for both menu and toolbar
             for action in self.mode_group.actions():
@@ -763,6 +1110,7 @@ class MainWindow(QMainWindow):
                 self.visualization_mode_toolbar_action.setChecked(False)
                 if hasattr(self, 'project_mode_toolbar_action'):
                     self.project_mode_toolbar_action.setChecked(False)
+                QTimer.singleShot(0, self.video_player_view.refresh_empty_placeholder)
             elif view_name == "Analysis":
                 self.annotation_mode_toolbar_action.setChecked(False)
                 self.analysis_mode_toolbar_action.setChecked(True)
@@ -791,7 +1139,7 @@ class MainWindow(QMainWindow):
         Args:
             message (str): Status message
         """
-        self.status_message.setText(message)
+        self.timeline_view.set_status_message(message)
     
     def set_video_info(self, info):
         """
@@ -800,7 +1148,7 @@ class MainWindow(QMainWindow):
         Args:
             info (str): Video information
         """
-        self.video_info.setText(info)
+        self.timeline_view.set_video_info(info)
     
     def show_error(self, message):
         """
@@ -848,10 +1196,405 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to add view {name}: {str(e)}")
             return False
     
+    # ------------------------------------------------------------------ #
+    # Recent Files menus
+    # ------------------------------------------------------------------ #
+
+    def _populate_recent_videos_menu(self):
+        """Refresh the "Open Recent Video" submenu when it is about to show."""
+        self._populate_recent_menu(
+            self.recent_videos_menu,
+            file_type="videos",
+            on_select=self._open_recent_video,
+        )
+
+    def _populate_recent_annotations_menu(self):
+        """Refresh the "Recent Annotations" submenu when it is about to show."""
+        self._populate_recent_menu(
+            self.recent_annotations_menu,
+            file_type="annotations",
+            on_select=self._open_recent_annotation,
+        )
+
+    def _populate_recent_menu(self, menu, file_type, on_select):
+        """
+        Dynamically build a submenu of recent files.
+
+        Args:
+            menu (QMenu): Target submenu to clear and rebuild.
+            file_type (str): ConfigManager key (e.g. ``"videos"``).
+            on_select (callable): Function called with the selected path.
+        """
+        menu.clear()
+
+        config_manager = getattr(self, "config_manager", None)
+        if config_manager is None:
+            disabled = menu.addAction("(Settings unavailable)")
+            disabled.setEnabled(False)
+            return
+
+        try:
+            recent = config_manager.get_recent_files(file_type) or []
+        except Exception as exc:
+            self.logger.warning(f"Failed to read recent {file_type}: {exc}")
+            recent = []
+
+        if not recent:
+            disabled = menu.addAction("(No recent files)")
+            disabled.setEnabled(False)
+            return
+
+        # Action for each path. We capture ``path`` via default argument so the
+        # lambda doesn't close over the loop variable.
+        for path in recent:
+            label = os.path.basename(path) or path
+            action = menu.addAction(f"{label}    -    {path}")
+            action.setToolTip(path)
+            action.triggered.connect(lambda _checked=False, p=path: on_select(p))
+
+        menu.addSeparator()
+        clear_action = menu.addAction("Clear Recent Files")
+        clear_action.triggered.connect(lambda _checked=False, t=file_type: self._clear_recent_files(t))
+
+    def _open_recent_video(self, path):
+        """Trigger the video controller to load ``path``."""
+        video_controller = getattr(self, "video_controller", None)
+        if video_controller is None:
+            self.show_error("Video controller is unavailable.")
+            return
+        if not os.path.exists(path):
+            self.show_error(f"File not found:\n{path}")
+            return
+        video_controller.load_video(path)
+
+    def _open_recent_annotation(self, path):
+        """Trigger the annotation controller to import ``path``."""
+        annotation_controller = getattr(self, "annotation_controller", None)
+        if annotation_controller is None:
+            self.show_error("Annotation controller is unavailable.")
+            return
+        if not os.path.exists(path):
+            self.show_error(f"File not found:\n{path}")
+            return
+        # Drop existing annotations only after confirmation if any exist.
+        if annotation_controller._annotation_model.get_all_events():
+            from PySide6.QtWidgets import QMessageBox
+            result = QMessageBox.question(
+                self,
+                "Existing Annotations",
+                "Importing will replace the existing annotations. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if result != QMessageBox.StandardButton.Yes:
+                return
+        if annotation_controller._annotation_model.import_from_csv(path):
+            annotation_controller._record_recent_annotation(path)
+            self.set_status_message(f"Annotations imported from {path}")
+            annotation_controller._timeline_view.set_events(
+                annotation_controller._annotation_model.get_all_events_with_active()
+            )
+
+    def _clear_recent_files(self, file_type):
+        """Empty the recent-files list for the given category."""
+        config_manager = getattr(self, "config_manager", None)
+        if config_manager is None:
+            return
+        try:
+            config_manager.set("recent_files", file_type, [])
+            config_manager.save_config()
+            self.set_status_message(f"Cleared recent {file_type}.")
+        except Exception as exc:
+            self.logger.warning(f"Failed to clear recent {file_type}: {exc}")
+
+    def set_config_manager(self, config_manager):
+        """
+        Attach the application's ConfigManager and restore persisted settings.
+
+        Called by AppController once the rest of the GUI is wired up so that
+        restored settings can flow into child views (recording duration,
+        interval analysis options, etc.).
+        """
+        self.config_manager = config_manager
+        self._restore_settings()
+
+    def _restore_settings(self):
+        """Apply user-persisted settings to the window and child views."""
+        if self.config_manager is None or self._settings_restored:
+            return
+
+        try:
+            ui = self.config_manager.get("ui") or {}
+
+            geometry = ui.get("window_geometry")
+            if isinstance(geometry, (list, tuple)) and len(geometry) == 4:
+                try:
+                    x, y, w, h = (int(v) for v in geometry)
+                    self.move(x, y)
+                    self.resize(w, h)
+                except (TypeError, ValueError):
+                    self.logger.warning("Ignoring malformed window_geometry: %r", geometry)
+
+            last_view = ui.get("last_view")
+            if isinstance(last_view, str) and last_view in self._view_index:
+                # Defer the view switch until after the main loop is running
+                # so child widgets are fully laid out.
+                QTimer.singleShot(0, lambda v=last_view: self.switch_to_view(v))
+
+            # Propagate analysis interval settings to the AnalysisView so the
+            # spinner / checkbox come up with the user's previous choice.
+            analysis_section = self.config_manager.get("analysis") or {}
+            interval_enabled = bool(analysis_section.get("interval_enabled", False))
+            interval_seconds = int(analysis_section.get("interval_seconds", 60) or 60)
+            if hasattr(self, 'analysis_view') and hasattr(self.analysis_view, 'set_interval_settings'):
+                self.analysis_view.set_interval_settings(interval_enabled, interval_seconds)
+
+            # Restore recording-control preferences.
+            annotation_section = self.config_manager.get("annotation") or {}
+            if hasattr(self, 'recording_control_view'):
+                from PySide6.QtCore import QTime
+                rcv = self.recording_control_view
+                rcv.duration_time_edit.setTime(QTime(
+                    int(annotation_section.get("last_recording_hours", 0) or 0),
+                    int(annotation_section.get("last_recording_minutes", 5) or 5),
+                    int(annotation_section.get("last_recording_seconds", 0) or 0),
+                ))
+                rcv.preserve_annotations_checkbox.setChecked(
+                    bool(annotation_section.get("preserve_on_rewind", False))
+                )
+
+            # Video-player preferences (step size, playback rate, volume,
+            # frame-by-frame). Each control's blockSignals() / setValue() pair
+            # avoids re-emitting on restore. Slider values are integers in
+            # the same units the UI uses.
+            video_section = self.config_manager.get("video") or {}
+            if hasattr(self, 'video_player_view'):
+                vpv = self.video_player_view
+
+                step_ms = int(video_section.get("default_step_size_ms", 100) or 100)
+                vpv.step_size_spin.blockSignals(True)
+                vpv.step_size_spin.setValue(max(vpv.step_size_spin.minimum(),
+                                                min(step_ms, vpv.step_size_spin.maximum())))
+                vpv.step_size_spin.blockSignals(False)
+
+                rate = float(video_section.get("default_playback_rate", 1.0) or 1.0)
+                rate_value = int(round(rate * 100))
+                vpv.rate_slider.blockSignals(True)
+                vpv.rate_slider.setValue(max(vpv.rate_slider.minimum(),
+                                             min(rate_value, vpv.rate_slider.maximum())))
+                vpv.rate_slider.blockSignals(False)
+                vpv.rate_value_label.setText(f"{rate:.2f}x")
+
+                volume = int(video_section.get("default_volume", 80) or 80)
+                vpv.volume_slider.blockSignals(True)
+                vpv.volume_slider.setValue(max(0, min(volume, 100)))
+                vpv.volume_slider.blockSignals(False)
+
+                fbf = bool(video_section.get("enable_frame_by_frame", False))
+                vpv.frame_by_frame_checkbox.blockSignals(True)
+                vpv.frame_by_frame_checkbox.setChecked(fbf)
+                vpv.frame_by_frame_checkbox.blockSignals(False)
+                vpv._frame_by_frame_mode = fbf
+
+            # Timeline zoom level.
+            if hasattr(self, 'timeline_view'):
+                zoom = int(annotation_section.get("timeline_zoom_level",
+                                                  self.timeline_view._zoom_level)
+                           or self.timeline_view._zoom_level)
+                self.timeline_view.zoom_slider.blockSignals(True)
+                self.timeline_view.zoom_slider.setValue(
+                    max(self.timeline_view.zoom_slider.minimum(),
+                        min(zoom, self.timeline_view.zoom_slider.maximum()))
+                )
+                self.timeline_view.zoom_slider.blockSignals(False)
+                # Mirror the value into the internal state so subsequent
+                # repaints use the restored zoom even before the slider
+                # change signal is fired manually.
+                self.timeline_view._zoom_level = zoom
+
+            # Annotation page splitter (video / right column).
+            splitter_sizes = ui.get("upper_splitter_sizes")
+            if (isinstance(splitter_sizes, (list, tuple))
+                    and len(splitter_sizes) == 2
+                    and hasattr(self, 'upper_splitter')):
+                try:
+                    sizes = [int(v) for v in splitter_sizes]
+                    if all(s >= 0 for s in sizes) and sum(sizes) > 0:
+                        self.upper_splitter.setSizes(sizes)
+                except (TypeError, ValueError):
+                    self.logger.warning("Ignoring malformed upper_splitter_sizes: %r", splitter_sizes)
+
+            self._settings_restored = True
+            self.logger.info("Restored persisted UI settings")
+        except Exception as exc:
+            self.logger.warning("Failed to restore settings: %s", exc, exc_info=True)
+
+    def _persist_settings(self):
+        """Save current window/child settings to ConfigManager and disk."""
+        if self.config_manager is None:
+            return
+
+        try:
+            # Window geometry
+            frame = self.geometry()
+            self.config_manager.set("ui", "window_geometry",
+                                    [frame.x(), frame.y(), frame.width(), frame.height()])
+
+            # Last active view: look up the index → name mapping
+            current_index = self.stacked_widget.currentIndex()
+            for name, idx in self._view_index.items():
+                if idx == current_index:
+                    self.config_manager.set("ui", "last_view", name)
+                    break
+
+            # Analysis interval settings
+            if hasattr(self, 'analysis_view'):
+                enabled, seconds = self.analysis_view.get_interval_settings()
+                self.config_manager.set("analysis", "interval_enabled", bool(enabled))
+                self.config_manager.set("analysis", "interval_seconds", int(seconds))
+
+            # Recording-control preferences
+            if hasattr(self, 'recording_control_view'):
+                qtime = self.recording_control_view.duration_time_edit.time()
+                self.config_manager.set("annotation", "last_recording_hours", qtime.hour())
+                self.config_manager.set("annotation", "last_recording_minutes", qtime.minute())
+                self.config_manager.set("annotation", "last_recording_seconds", qtime.second())
+                self.config_manager.set(
+                    "annotation",
+                    "preserve_on_rewind",
+                    self.recording_control_view.preserve_annotations_checkbox.isChecked(),
+                )
+
+            # Video-player preferences. Slider values are stored in the same
+            # units the UI exposes them in (ms, percent, 0-100 volume).
+            if hasattr(self, 'video_player_view'):
+                vpv = self.video_player_view
+                self.config_manager.set("video", "default_step_size_ms",
+                                        int(vpv.step_size_spin.value()))
+                self.config_manager.set("video", "default_playback_rate",
+                                        float(vpv.rate_slider.value()) / 100.0)
+                self.config_manager.set("video", "default_volume",
+                                        int(vpv.volume_slider.value()))
+                self.config_manager.set("video", "enable_frame_by_frame",
+                                        bool(vpv.frame_by_frame_checkbox.isChecked()))
+
+            # Timeline zoom.
+            if hasattr(self, 'timeline_view'):
+                self.config_manager.set("annotation", "timeline_zoom_level",
+                                        int(self.timeline_view.zoom_slider.value()))
+
+            # Annotation page splitter sizes.
+            if hasattr(self, 'upper_splitter'):
+                self.config_manager.set("ui", "upper_splitter_sizes",
+                                        list(self.upper_splitter.sizes()))
+
+            self.config_manager.save_config()
+            self.logger.info("Persisted UI settings to disk")
+        except Exception as exc:
+            self.logger.warning("Failed to persist settings: %s", exc, exc_info=True)
+
+    def closeEvent(self, event):
+        """Persist user settings before the window actually closes."""
+        self._persist_settings()
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------ #
+    # Global Drag & Drop
+    # ------------------------------------------------------------------ #
+
+    # Recognised by the global handler. The per-view drop zones keep their
+    # own filters; this is purely a fallback so users do not have to aim
+    # at the right pane.
+    _VIDEO_EXTS = (".mp4", ".avi", ".mkv", ".mov", ".wmv", ".mpg", ".mpeg", ".m4v")
+    _CSV_EXTS = (".csv",)
+
+    def _classify_dropped_paths(self, urls):
+        """Split dropped URLs into recognised video / CSV / unsupported buckets."""
+        videos = []
+        csvs = []
+        for url in urls:
+            local_path = url.toLocalFile()
+            if not local_path:
+                continue
+            lower = local_path.lower()
+            if lower.endswith(self._VIDEO_EXTS):
+                videos.append(local_path)
+            elif lower.endswith(self._CSV_EXTS):
+                csvs.append(local_path)
+        return videos, csvs
+
+    def dragEnterEvent(self, event):
+        """Accept a drag if it contains at least one recognised file."""
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            event.ignore()
+            return
+
+        videos, csvs = self._classify_dropped_paths(mime.urls())
+        if videos or csvs:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        # Re-use the same classification so the cursor reflects acceptance.
+        if event.mimeData().hasUrls():
+            videos, csvs = self._classify_dropped_paths(event.mimeData().urls())
+            if videos or csvs:
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dropEvent(self, event):
+        """Route dropped files to the appropriate controller."""
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            event.ignore()
+            return
+
+        videos, csvs = self._classify_dropped_paths(mime.urls())
+        if not videos and not csvs:
+            event.ignore()
+            return
+
+        event.acceptProposedAction()
+
+        # Video drops: switch to the annotation view and load the first
+        # recognised file (RABET only handles a single active video).
+        if videos:
+            self.switch_to_view("Annotation")
+            video_controller = getattr(self, "video_controller", None)
+            if video_controller is not None:
+                video_controller.load_video(videos[0])
+            else:
+                self.show_error("Video controller is not available yet.")
+
+        # CSV drops are delivered to the analysis view's existing handler so
+        # behaviour stays consistent with dropping them directly on that pane.
+        if csvs:
+            self.switch_to_view("Analysis")
+            if hasattr(self, "analysis_view"):
+                self.analysis_view.files_dropped.emit(csvs)
+
     def showEvent(self, event):
         """Handle window show event to ensure icon is properly set."""
         super().showEvent(event)
-        
+
         # Ensure icon is properly set
         if self.windowIcon().isNull():
             self.setup_window_icon()
+        self.schedule_layout_diagnostic_snapshots("main_window_show")
+
+    def resizeEvent(self, event):
+        """Keep the right annotation column from claiming extra height after resizes."""
+        super().resizeEvent(event)
+        if not getattr(self, '_disable_manual_layout_stabilization', False):
+            self.sync_right_column_panel_heights()
+        if getattr(self, '_layout_diagnostics_enabled', False):
+            old_size = event.oldSize()
+            new_size = event.size()
+            self.logger.info(
+                "[LAYOUT_DIAG] main_window_resize_event "
+                f"old={old_size.width()}x{old_size.height()} "
+                f"new={new_size.width()}x{new_size.height()}"
+            )
+            self.log_annotation_layout_snapshot("main_window_resize")

@@ -1,9 +1,8 @@
 # models/video_model.py - Modified for threaded loading
 import logging
 import os
-import time
 import vlc
-from PySide6.QtCore import QObject, Signal, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Slot, QTimer, QEventLoop
 
 class VideoModel(QObject):
     """
@@ -27,22 +26,40 @@ class VideoModel(QObject):
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing VideoModel")
         
-        # Initialize VLC instance with minimal options
+        # Initialize VLC instance with platform-specific options
         try:
-            # Force specific video output modules that work better for embedding
-            # Different options work on different systems, so providing multiple
-            vlc_options = [
-                '--no-xlib',                  # No X11 dependency
+            # Import platform to detect OS
+            import platform
+            system = platform.system()
+            
+            # Base options that work on all platforms
+            base_vlc_options = [
                 '--no-video-title-show',      # Don't show the video title
                 '--no-osd',                   # No on-screen display
                 '--no-snapshot-preview',      # Don't show snapshot previews
                 '--no-stats',                 # Don't show stats
                 '--no-sub-autodetect-file',   # Don't auto-detect subtitle files
-                '--no-audio',                 # Disable audio temporarily
-                '--vout=vdummy',              # First try dummy output to prevent sep window
-                '--avcodec-hw=none',          # Disable hardware acceleration
                 '--quiet',                    # Reduce VLC's own logging
             ]
+            
+            # Platform-specific options
+            if system == 'Windows':
+                vlc_options = base_vlc_options + [
+                    '--no-xlib',              # No X11 dependency
+                    '--avcodec-hw=none',      # Disable hardware acceleration on Windows
+                ]
+            elif system == 'Darwin':  # macOS
+                vlc_options = base_vlc_options + [
+                    # macOS-specific options
+                    '--vout=macosx',          # Use macOS video output
+                    '--intf=dummy',           # No interface
+                ]
+            else:  # Linux
+                vlc_options = base_vlc_options + [
+                    '--no-xlib',              # No X11 dependency
+                ]
+            
+            self.logger.info(f"Initializing VLC on {system} with options: {vlc_options}")
             
             self.instance = vlc.Instance(' '.join(vlc_options))
             self.media_player = self.instance.media_player_new()
@@ -61,6 +78,11 @@ class VideoModel(QObject):
         self._is_playing = False
         self._media = None
         self._window_handle_set = False
+
+        # User-controlled volume preference (preserved across video loads).
+        # 0-100 range, matching the slider in VideoPlayerView.
+        self._volume = 80
+        self._muted = False
         
         # Tracking prev position for step operations
         self._last_seek_position = 0
@@ -72,26 +94,49 @@ class VideoModel(QObject):
         self._frame_rate = 0
         self._frame_duration_ms = 40  # Default to 25fps (40ms per frame)
         
-        # Setup position update timer
-        self.position_timer = QTimer()
+        # Setup position update timer.
+        # The timer is only running while playback is active (started in play(),
+        # stopped in pause()/stop()), and ``_update_position`` skips ``emit``
+        # when the value has not changed, so idle CPU usage stays near zero.
+        self.position_timer = QTimer(self)
         self.position_timer.setInterval(100)  # Update every 100ms
         self.position_timer.timeout.connect(self._update_position)
+        self._last_emitted_position = -1
         
         # Duration update timer
-        self.duration_timer = QTimer()
+        self.duration_timer = QTimer(self)
         self.duration_timer.setInterval(500)  # Check every 500ms
         self.duration_timer.timeout.connect(self._update_duration)
+        self._duration_poll_elapsed_ms = 0
         
         # Frame refresh timer to ensure refresh completes
-        self._refresh_timer = QTimer()
+        self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._delayed_refresh_frame)
         
         # Operation timer for coordinating VLC operations
-        self._operation_timer = QTimer()
+        self._operation_timer = QTimer(self)
         self._operation_timer.setSingleShot(True)
         self._operation_timer.timeout.connect(self._release_operation_lock)
+        
+        # CRITICAL FIX: Add flag to track if we're setting window handle
+        self._setting_window_handle = False
     
+    def _qt_wait_ms(self, ms):
+        """
+        Yield to the Qt event loop for the given duration without blocking the UI.
+
+        Unlike ``time.sleep`` this still pumps paint and timer events so that the
+        application window does not freeze. User input is excluded so that
+        accidental clicks during VLC initialisation cannot trigger reentrant
+        media-player operations.
+        """
+        if ms <= 0:
+            return
+        loop = QEventLoop()
+        QTimer.singleShot(int(ms), loop.quit)
+        loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
     def _release_operation_lock(self):
         """Release the operation lock after a delay."""
         self._operation_in_progress = False
@@ -112,40 +157,49 @@ class VideoModel(QObject):
             return False
             
         try:
-            self.logger.debug(f"Setting window handle: {handle}")
+            import platform
+            system = platform.system()
             
-            # Give VLC some time to initialize
-            time.sleep(0.1)
+            self.logger.debug(f"Setting window handle on {system}: {handle}")
+            self._setting_window_handle = True
             
-            # Different methods based on platform (handle already handled by controller)
-            self.media_player.set_hwnd(handle)
+            # Platform-specific window handle setting
+            if system == 'Windows':
+                # Windows uses HWND
+                self.media_player.set_hwnd(handle)
+            elif system == 'Darwin':  # macOS
+                # macOS uses NSObject
+                self.media_player.set_nsobject(handle)
+            else:  # Linux
+                # Linux uses XWindow
+                self.media_player.set_xwindow(handle)
             
-            # Re-play media if it was already loaded to apply changes
+            # Restore the user's preferred audio settings (do not force defaults)
             if self._media is not None:
-                # Make sure audio is enabled
-                self.media_player.audio_set_mute(False)
-                self.media_player.audio_set_volume(80)
-                
-                # This ensures the video actually shows in the embedded window
-                was_playing = self._is_playing
-                self.media_player.stop()
-                time.sleep(0.1)
-                self.media_player.play()
-                time.sleep(0.1)
-                if not was_playing:
-                    self.media_player.pause()
-            
+                self.media_player.audio_set_mute(self._muted)
+                self.media_player.audio_set_volume(self._volume)
+
             self._window_handle_set = True
+            self._setting_window_handle = False
+            
+            # Use a timer to refresh the display after window handle is set
+            if self._media is not None and not self._is_playing:
+                QTimer.singleShot(100, self.refresh_frame)
+            
+            self.logger.info(f"Successfully set window handle for {system}")
             return True
         except Exception as e:
             self.logger.error(f"Error setting window handle: {str(e)}", exc_info=True)
             self.error_occurred.emit(f"Failed to set video window: {str(e)}")
+            self._setting_window_handle = False
             return False
     
+    @Slot(str)
     def load_video(self, video_path):
         """
         Public method to load a video file.
-        This is now just a wrapper around the internal method that can be called from a worker thread.
+        This must be executed on the VideoModel's owning Qt thread because the
+        underlying VLC objects and timers are not thread-safe across threads.
         
         Args:
             video_path (str): Path to the video file
@@ -153,13 +207,12 @@ class VideoModel(QObject):
         Returns:
             bool: True if video was loaded successfully, False otherwise
         """
-        # This method should be called by the loader thread, not directly
-        self.logger.info(f"Delegating video loading to threaded loader: {video_path}")
+        self.logger.info(f"Loading video through the coordinated loader: {video_path}")
         return self._load_video_internal(video_path)
     
     def _load_video_internal(self, video_path):
         """
-        Internal method to load a video file. Can be called from a worker thread.
+        Internal method to load a video file on the model's owning thread.
         
         Args:
             video_path (str): Path to the video file
@@ -181,6 +234,8 @@ class VideoModel(QObject):
         
         try:
             self.logger.info(f"Loading video: {video_path}")
+            self.duration_timer.stop()
+            self._duration_poll_elapsed_ms = 0
             
             # Stop any current playback
             if self._is_playing:
@@ -189,8 +244,11 @@ class VideoModel(QObject):
             # Load media from file
             self._media = self.instance.media_new(video_path)
             
-            # Force software decoding
-            self._media.add_option(':avcodec-hw=none')
+            # Platform-specific media options
+            import platform
+            if platform.system() != 'Darwin':  # Not macOS
+                # Force software decoding on non-macOS platforms
+                self._media.add_option(':avcodec-hw=none')
             
             # Set the media
             self.media_player.set_media(self._media)
@@ -198,10 +256,12 @@ class VideoModel(QObject):
             # Parse media in a separate thread
             self._media.parse_with_options(vlc.MediaParseFlag.network, 5000)
             
-            # Start the media to initialize it, then pause
-            time.sleep(0.2)  # Give VLC time to initialize
+            # Start the media to initialize it, then pause. We use a
+            # ``QEventLoop`` based wait so the UI keeps repainting while VLC
+            # finishes its asynchronous initialisation.
+            self._qt_wait_ms(200)  # Give VLC time to initialize
             self.media_player.play()
-            time.sleep(0.5)  # Give VLC time to start playing
+            self._qt_wait_ms(500)  # Give VLC time to start playing
             self.media_player.pause()
             
             # Try to get duration
@@ -225,13 +285,14 @@ class VideoModel(QObject):
             self._video_path = video_path
             self._last_seek_position = 0
             
-            # This is called from a worker thread, so we need to use invokeMethod or similar
-            # to emit the signal safely. For simplicity in this example, we're emitting directly.
             self.video_loaded.emit(video_path)
-            
-            # Re-enable audio now that the video is loaded
-            self.media_player.audio_set_mute(False)
-            self.media_player.audio_set_volume(80)
+
+            # Restore the user's preferred audio settings now that the video
+            # is loaded. VLC resets these when switching media, so we
+            # explicitly re-apply the stored values rather than forcing a
+            # default of 80 / unmuted.
+            self.media_player.audio_set_mute(self._muted)
+            self.media_player.audio_set_volume(self._volume)
             
             return True
         except Exception as e:
@@ -242,7 +303,7 @@ class VideoModel(QObject):
     
     def play(self):
         """Start or resume video playback."""
-        if self.media_player is None:
+        if self.media_player is None or self._setting_window_handle:
             return
             
         self.logger.debug("Play command received")
@@ -258,7 +319,7 @@ class VideoModel(QObject):
     
     def pause(self):
         """Pause video playback."""
-        if self.media_player is None:
+        if self.media_player is None or self._setting_window_handle:
             return
             
         self.logger.debug("Pause command received")
@@ -378,7 +439,7 @@ class VideoModel(QObject):
         Force refresh of the current frame.
         This is especially useful when seeking while paused.
         """
-        if self.media_player is None or self._is_playing or self._operation_in_progress:
+        if self.media_player is None or self._is_playing or self._operation_in_progress or self._setting_window_handle:
             return
         
         self._operation_in_progress = True
@@ -391,21 +452,21 @@ class VideoModel(QObject):
             # IMPROVED REFRESH SEQUENCE:
             # 1. Use next_frame to update the display
             self.media_player.next_frame()
-            
-            # 2. Small delay to allow VLC to process
-            time.sleep(0.05)
-            
+
+            # 2. Small delay to allow VLC to process (UI stays responsive)
+            self._qt_wait_ms(50)
+
             # 3. Get current position (may have moved forward)
             current_pos = self.get_position()
-            
+
             # 4. If position moved too much, seek back to original
             if pos_before != current_pos:
                 self.logger.debug(f"Frame refresh moved position from {pos_before}ms to {current_pos}ms, restoring original position")
                 self.media_player.set_position(pos_before / max(1, self._duration))
-                
+
                 # Another small delay
-                time.sleep(0.05)
-                
+                self._qt_wait_ms(50)
+
                 # Another next_frame to ensure display is updated
                 self.media_player.next_frame()
             
@@ -602,16 +663,44 @@ class VideoModel(QObject):
     
     def set_volume(self, volume):
         """
-        Set audio volume.
-        
+        Set audio volume and remember the choice across video loads.
+
         Args:
             volume (int): Volume level (0-100)
         """
+        try:
+            volume = int(volume)
+        except (TypeError, ValueError):
+            self.logger.warning(f"Ignoring invalid volume value: {volume!r}")
+            return
+
+        volume = max(0, min(100, volume))
+        self._volume = volume
+
         if self.media_player is None:
             return
-            
+
         self.logger.debug(f"Setting volume to {volume}")
         self.media_player.audio_set_volume(volume)
+
+    def set_muted(self, muted):
+        """
+        Set the mute state and remember it across video loads.
+
+        Args:
+            muted (bool): Whether audio should be muted
+        """
+        self._muted = bool(muted)
+        if self.media_player is not None:
+            self.media_player.audio_set_mute(self._muted)
+
+    def get_volume(self):
+        """Return the current preferred audio volume (0-100)."""
+        return self._volume
+
+    def is_muted(self):
+        """Return whether audio is currently muted."""
+        return self._muted
     
     def get_frame_rate(self):
         """
@@ -631,27 +720,43 @@ class VideoModel(QObject):
     
     @Slot()
     def _update_position(self):
-        """Update current position and emit signal."""
+        """Update current position and emit only when the value actually changes."""
         position = self.get_position()
-        self.position_changed.emit(position)
+        if position != self._last_emitted_position:
+            self._last_emitted_position = position
+            self.position_changed.emit(position)
     
     @Slot()
     def _update_duration(self):
         """Periodically check if duration is available and update if needed."""
         if self.media_player is None:
             self.duration_timer.stop()
+            self._duration_poll_elapsed_ms = 0
             return
-            
+
         current_duration = self.media_player.get_length()
-        
+
         if current_duration > 0:
             self._duration = current_duration
             self.logger.debug(f"Updated video duration: {self._duration}ms")
             self.duration_changed.emit(self._duration)
             self.duration_timer.stop()
-        elif self.duration_timer.interval() * self.duration_timer.timerId() > 10000:
-            # Fallback after 10 seconds
-            self._duration = 60000  # Default to 1 minute
-            self.logger.warning(f"Could not determine duration, using fallback: {self._duration}ms")
-            self.duration_changed.emit(self._duration)
+            self._duration_poll_elapsed_ms = 0
+        else:
+            self._duration_poll_elapsed_ms += self.duration_timer.interval()
+
+        if self._duration_poll_elapsed_ms > 10000:
+            # Could not determine duration after 10 seconds of polling. Stop
+            # the timer and surface this as an error rather than silently
+            # falling back to "1 minute" - that fallback made long videos
+            # appear truncated and is worse than failing the load cleanly.
+            error_msg = (
+                "Could not determine the video's duration. The file may be "
+                "corrupt or its container may not be supported by the "
+                "installed VLC. Please try a different file."
+            )
+            self.logger.error(error_msg)
             self.duration_timer.stop()
+            self._duration_poll_elapsed_ms = 0
+            self._duration = 0
+            self.error_occurred.emit(error_msg)

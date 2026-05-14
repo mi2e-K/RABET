@@ -1,6 +1,6 @@
 # utils/auto_close_message.py
-from PySide6.QtWidgets import QMessageBox, QDialog
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QTimer
 
 
 class AutoCloseMessageBox(QMessageBox):

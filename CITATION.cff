@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use RABET in academic work, please cite it as below."
+title: "RABET — Real-time Animal Behavior Event Tagger"
+abstract: >
+  RABET is a cross-platform desktop application for behavioural annotation of
+  animal videos. Researchers play back recordings, tag behaviours with
+  configurable keyboard shortcuts in real time, visualise event timelines and
+  export per-session and per-interval summaries for downstream statistical
+  analysis.
+authors:
+  - family-names: "Mitsui"
+    given-names: "Koshiro"
+    orcid: "https://orcid.org/0009-0009-0556-3906"
+type: software
+version: "1.2.1"
+date-released: "2026-05-14"
+license: MIT
+repository-code: "https://github.com/mi2e-K/RABET"
+url: "https://github.com/mi2e-K/RABET"
+# Zenodo issues two DOIs for this project:
+#   - a "concept DOI" that always resolves to the latest version
+#     (10.5281/zenodo.15313025), and
+#   - a "version DOI" specific to each release (10.5281/zenodo.15313026 for
+#     v1.0.0; the v1.2.x version DOI will be issued when v1.2.x is
+#     uploaded to Zenodo).
+# Cite the concept DOI in papers so the reference auto-updates as new
+# RABET versions are released.
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.15313025"
+    description: "Zenodo concept DOI - resolves to the latest RABET release."
+  - type: doi
+    value: "10.5281/zenodo.15313026"
+    description: "Zenodo version DOI for RABET v1.0.0."
+keywords:
+  - ethology
+  - behavioural-annotation
+  - video-coding
+  - neuroscience
+  - desktop-application
+  - python
+  - qt

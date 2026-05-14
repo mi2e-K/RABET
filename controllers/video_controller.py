@@ -1,9 +1,7 @@
 # controllers/video_controller.py - Enhanced for reliable loading and improved state handling
 import logging
 import os
-import platform
-import time
-from PySide6.QtCore import QObject, Slot, QTimer, QEventLoop
+from PySide6.QtCore import QObject, Slot, QTimer
 from PySide6.QtWidgets import QFileDialog, QProgressDialog, QApplication, QMessageBox
 
 from utils.threaded_loader import ThreadedVideoLoader
@@ -20,7 +18,11 @@ class VideoController(QObject):
         
         self._video_model = video_model
         self._view = video_player_view
-        
+
+        # Optional ConfigManager reference used for recent-files tracking.
+        # AppController calls ``set_config_manager`` once construction is done.
+        self.config_manager = None
+
         # Create threaded loader
         self._loader = ThreadedVideoLoader(self._video_model)
         
@@ -88,12 +90,11 @@ class VideoController(QObject):
         self._progress_dialog.setAutoClose(True)
         self._progress_dialog.setAutoReset(True)
         
-        # Ensure the view's loading overlay is shown
+        # Ensure the view's loading overlay is shown. Qt's own event loop
+        # will paint these widgets on the next dispatch; an explicit
+        # ``processEvents`` here was redundant.
         self._view.show_loading_overlay(True)
         self._view.set_loading_progress(0)
-        
-        # Process events to update UI
-        QApplication.processEvents()
     
     def _on_loading_progress(self, progress):
         """
@@ -129,11 +130,14 @@ class VideoController(QObject):
         self._view.set_loading_progress(100)
         
         if success:
+            # Record the freshly loaded file in the Recent Files menu.
+            self._record_recent_video()
+
             # Do not hide the loading overlay yet - wait for VLC to stabilize
             # Instead, update the message to indicate we're finalizing
             self._view.show_loading_overlay(True)
             self._view.loading_overlay.set_message("Initializing video player...")
-            
+
             # Set the video window handle with a delay
             # This sequence is critical for proper VLC initialization
             QTimer.singleShot(300, self._set_window_handle)
@@ -149,6 +153,19 @@ class VideoController(QObject):
             self._view.show_loading_overlay(False)
             self._video_initializing = False
     
+    def _record_recent_video(self):
+        """Append the current video path to the Recent Videos list."""
+        if self.config_manager is None:
+            return
+        try:
+            video_path = self._video_model._video_path
+            if not video_path:
+                return
+            self.config_manager.add_recent_file('videos', video_path)
+            self.config_manager.save_config()
+        except Exception as exc:
+            self.logger.warning(f"Failed to record recent video: {exc}")
+
     def _on_vlc_stabilized(self):
         """
         Called when VLC is considered stabilized after initialization.
@@ -173,12 +190,11 @@ class VideoController(QObject):
         # Force a frame refresh
         self._video_model.refresh_frame()
         
-        # Resume playback if it was playing
+        # Resume playback if it was playing. The QTimer.singleShot call
+        # already yields back to the Qt event loop, so a manual
+        # ``processEvents`` here was unnecessary.
         if was_playing:
             QTimer.singleShot(200, self._video_model.play)
-            
-        # Process pending events
-        QApplication.processEvents()
         
         # Reset focus to main window after loading completes
         # This ensures keyboard shortcuts work immediately after video loads
@@ -235,6 +251,9 @@ class VideoController(QObject):
     
     def _delayed_set_window_handle(self):
         """Set window handle after a short delay."""
+        if self._video_model._media is None and not self._video_initializing:
+            self.logger.debug("Skipping initial window handle setup until a video is loaded")
+            return
         self.logger.debug("Setting window handle after initialization delay")
         self._set_window_handle()
     
@@ -251,6 +270,9 @@ class VideoController(QObject):
             return False
         
         try:
+            if hasattr(self._view, 'ensure_native_video_surface'):
+                self._view.ensure_native_video_surface()
+
             # Make sure widget is visible and ready
             if not video_widget.isVisible():
                 self.logger.warning("Video widget is not visible yet")
@@ -279,6 +301,12 @@ class VideoController(QObject):
         except Exception as e:
             self.logger.error(f"Error setting window handle: {str(e)}", exc_info=True)
             return False
+
+    def _prepare_embedded_video_surface(self):
+        """Ensure VLC has a valid embedded target before the first playback frame."""
+        if hasattr(self._view, 'ensure_native_video_surface'):
+            self._view.ensure_native_video_surface()
+        return self._set_window_handle()
     
     def _connect_model_signals(self):
         """Connect signals from the model."""
@@ -466,157 +494,47 @@ class VideoController(QObject):
             # Set flag to false directly since this is a simple operation
             self._stepping_in_progress = False
     
-    def _perform_multiple_forward_steps(self, total_ms):
-        """
-        Break a large step into multiple smaller steps for better precision.
-        
-        Args:
-            total_ms (int): Total step size in milliseconds
-        """
-        # Calculate number of steps (use 100ms per step)
-        step_size = 100
-        num_steps = max(1, total_ms // step_size)
-        
-        self.logger.debug(f"Breaking {total_ms}ms step into {num_steps} steps of {step_size}ms each")
-        
-        # Store whether video was playing
-        was_playing = self._video_model.is_playing()
-        if was_playing:
-            self._video_model.pause()
-        
-        # Perform first step immediately
-        initial_pos = self._video_model.get_position()
-        self._video_model.seek(initial_pos + step_size)
-        
-        # Schedule remaining steps with delays
-        remaining_steps = num_steps - 1
-        if remaining_steps > 0:
-            QTimer.singleShot(50, lambda: self._continue_multiple_steps(remaining_steps, step_size, was_playing))
-        else:
-            # Only one step needed, finalize now
-            QTimer.singleShot(100, self._finalize_step_operation)
-            
-            # Resume if needed
-            if was_playing:
-                QTimer.singleShot(150, self._video_model.play)
-    
-    def _continue_multiple_steps(self, steps_left, step_size, resume_playing):
-        """
-        Continue a multi-step operation.
-        
-        Args:
-            steps_left (int): Number of steps remaining
-            step_size (int): Size of each step in milliseconds
-            resume_playing (bool): Whether to resume playback when done
-        """
-        if steps_left <= 0:
-            # All steps complete, finalize
-            self._finalize_step_operation()
-            
-            # Resume if needed
-            if resume_playing:
-                QTimer.singleShot(50, self._video_model.play)
-            return
-        
-        # Get current position
-        current_pos = self._video_model.get_position()
-        
-        # Perform next step
-        self._video_model.seek(current_pos + step_size)
-        
-        # Schedule next step or finalization
-        if steps_left > 1:
-            QTimer.singleShot(50, lambda: self._continue_multiple_steps(steps_left - 1, step_size, resume_playing))
-        else:
-            # Last step, finalize
-            QTimer.singleShot(100, self._finalize_step_operation)
-            
-            # Resume if needed
-            if resume_playing:
-                QTimer.singleShot(150, self._video_model.play)
-    
     def handle_step_backward(self, time_ms=100):
         """
-        Handle step backward request with improved frame handling.
-        
+        Handle step backward request.
+
         Args:
             time_ms (int): Time to step backward in milliseconds
         """
-        # Guard against overlapping operations
         if self._stepping_in_progress or self._video_initializing:
             self.logger.debug("Step backward request ignored - operation in progress")
             return
-            
+
         self._stepping_in_progress = True
-        
+
         try:
-            # Need to ensure we're using exact step size from UI
-            actual_step_ms = time_ms
-            
-            # Use multiple steps for larger intervals to improve precision
-            if actual_step_ms > 200:
-                self.logger.debug(f"Breaking large step backward of {actual_step_ms}ms into multiple smaller steps")
-                self._perform_multiple_backward_steps(actual_step_ms)
-                return
-            
-            # Log the step operation
-            self.logger.debug(f"Performing step backward of {actual_step_ms}ms")
-            
-            # Get current position
             before_pos = self._video_model.get_position()
-            
+
             # Make sure video is paused for frame stepping
             was_playing = self._video_model.is_playing()
             if was_playing:
                 self._video_model.pause()
-            
-            # Calculate target position precisely - ensure we don't go below 0
-            target_pos = max(0, before_pos - actual_step_ms)
-            
-            # Perform the step
-            self._video_model.seek(target_pos)
-            
-            # Schedule finalization with a delay to ensure seek completes
-            self._step_complete_timer.start(100)
-            
+
+            target_pos = max(0, before_pos - time_ms)
+            self.logger.debug(
+                f"Stepping backward from {before_pos}ms to {target_pos}ms "
+                f"({time_ms}ms)"
+            )
+
+            # Use precision seeking so the resulting frame matches the target.
+            self._video_model.seek_with_retry(target_pos)
+
+            # Larger backward steps need a slightly longer delay before
+            # finalising so the VLC seek can settle.
+            finalize_delay = 150 if time_ms > 200 else 100
+            self._step_complete_timer.start(finalize_delay)
+
             # Resume playback if it was playing before
             if was_playing:
                 QTimer.singleShot(200, self._video_model.play)
         except Exception as e:
             self.logger.error(f"Error in handle_step_backward: {str(e)}")
             self._stepping_in_progress = False
-    
-    def _perform_multiple_backward_steps(self, total_ms):
-        """
-        Break a large backward step into multiple smaller steps for better precision.
-        
-        Args:
-            total_ms (int): Total step size in milliseconds
-        """
-        # Calculate number of steps (use 100ms per step)
-        step_size = 100
-        num_steps = max(1, total_ms // step_size)
-        
-        self.logger.debug(f"Breaking {total_ms}ms backward step into {num_steps} steps of {step_size}ms each")
-        
-        # Store whether video was playing
-        was_playing = self._video_model.is_playing()
-        if was_playing:
-            self._video_model.pause()
-        
-        # Get starting position
-        initial_pos = self._video_model.get_position()
-        
-        # For backward steps, we'll do a direct seek to the final position first
-        target_pos = max(0, initial_pos - (num_steps * step_size))
-        self._video_model.seek(target_pos)
-        
-        # Finalize after a delay to ensure seek completes
-        self._step_complete_timer.start(150)
-        
-        # Resume if needed
-        if was_playing:
-            QTimer.singleShot(200, self._video_model.play)
     
     @Slot()
     def open_video_dialog(self):
@@ -665,6 +583,13 @@ class VideoController(QObject):
         # Ensure the loading overlay is shown before starting the load
         self._view.show_loading_overlay(True)
         self._view.set_loading_progress(0)
+
+        # Critical: the model briefly calls play() during load initialization.
+        # If VLC has no window handle yet, it falls back to a separate popup window.
+        if not self._prepare_embedded_video_surface():
+            self.logger.error("Failed to prepare embedded video surface before loading")
+            self._view.show_loading_overlay(False)
+            return False
         
         # Start loading in background thread
         return self._loader.load_video(file_path)

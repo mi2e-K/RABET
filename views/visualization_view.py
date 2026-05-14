@@ -5,11 +5,14 @@ import colorsys
 import warnings
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')  # Use Qt5 backend
+try:
+    matplotlib.use('QtAgg')  # Preferred backend for Qt5/Qt6 bindings.
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+except (ImportError, ValueError):
+    matplotlib.use('Qt5Agg')
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.colors as mcolors
-import matplotlib.gridspec as gridspec
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QComboBox, QScrollArea, QPushButton, QFileDialog, 
@@ -17,9 +20,8 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QMessageBox, QSplitter,
     QSizePolicy, QSpinBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QCoreApplication, QTimer
+from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer
 from PySide6.QtGui import QColor
-import json
 
 # Custom reorderable list widget
 class ReorderableListWidget(QListWidget):
@@ -1265,7 +1267,7 @@ class RasterPlotWidget(QWidget):
                 max_time = max(max_time, file_max_time)
         
         # Plot each file
-        for file_idx, (file_path, ax) in enumerate(zip(selected_files, axes_list)):
+        for file_idx, (file_path, ax) in enumerate(zip(selected_files, axes_list, strict=False)):
             df = self._data[file_path]
             recording_start = file_recording_starts[file_path]
             event_count = 0

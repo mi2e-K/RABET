@@ -1,8 +1,8 @@
 # controllers/action_map_controller.py
 import logging
-import os
 from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QMenu
+from PySide6.QtGui import QAction
 
 class ActionMapController(QObject):
     """
@@ -22,6 +22,9 @@ class ActionMapController(QObject):
         
         # Connect view signals
         self._connect_view_signals()
+        
+        # Trigger initial view update now that connections are established
+        self._model.initialize_view()
     
     def _connect_model_signals(self):
         """Connect signals from the model."""
@@ -31,7 +34,6 @@ class ActionMapController(QObject):
     
     def _connect_view_signals(self):
         """Connect signals from the view."""
-        self._view.add_mapping_requested.connect(self.on_add_mapping_requested)
         self._view.edit_mapping_requested.connect(self.on_edit_mapping_requested)
         self._view.remove_mapping_requested.connect(self.on_remove_mapping_requested)
     
@@ -53,12 +55,6 @@ class ActionMapController(QObject):
         active_behaviors = self._model.get_active_behaviors()
         self._view.update_active_behaviors(active_behaviors)
         self.logger.debug(f"Active behaviors updated: {active_behaviors}")
-    
-    @Slot()
-    def on_add_mapping_requested(self):
-        """Handle request to add a new mapping."""
-        # View will show dialog and emit edit_mapping_requested signal
-        pass
     
     @Slot(str, str)
     def on_edit_mapping_requested(self, key, behavior):
@@ -105,13 +101,13 @@ class ActionMapController(QObject):
                 if result != QMessageBox.Yes:
                     return
             
-            # Load the action map
-            if self._model.load_from_json(file_path):
+            # Load the action map (auto_save=True will persist it as user map)
+            if self._model.load_from_json(file_path, auto_save=True):
                 self.logger.info(f"Action map loaded from: {file_path}")
                 QMessageBox.information(
                     self._view,
                     "Action Map Loaded",
-                    f"Action map loaded from {file_path}."
+                    f"Action map loaded successfully from {file_path}."
                 )
             else:
                 self.logger.error(f"Failed to load action map from: {file_path}")
@@ -147,3 +143,57 @@ class ActionMapController(QObject):
                 )
             else:
                 self.logger.error(f"Failed to save action map to: {file_path}")
+    
+    @Slot()
+    def reset_to_default(self):
+        """Reset action map to default configuration."""
+        # Confirm reset
+        result = QMessageBox.question(
+            self._view,
+            "Reset to Default",
+            "Are you sure you want to reset the action map to default settings?\n"
+            "This will replace all current mappings.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if result == QMessageBox.Yes:
+            if self._model.reset_to_default():
+                QMessageBox.information(
+                    self._view,
+                    "Reset Complete",
+                    "Action map has been reset to default settings."
+                )
+            else:
+                QMessageBox.warning(
+                    self._view,
+                    "Reset Failed",
+                    "Failed to reset action map to default settings."
+                )
+    
+    def create_action_map_menu(self):
+        """
+        Create a menu with action map operations.
+        
+        Returns:
+            QMenu: Menu with action map operations
+        """
+        menu = QMenu("Action Map", self._view)
+        
+        # Load action
+        load_action = QAction("Load from file...", self._view)
+        load_action.triggered.connect(self.load_action_map_dialog)
+        menu.addAction(load_action)
+        
+        # Save action
+        save_action = QAction("Save to file...", self._view)
+        save_action.triggered.connect(self.save_action_map_dialog)
+        menu.addAction(save_action)
+        
+        menu.addSeparator()
+        
+        # Reset to default action
+        reset_action = QAction("Reset to default", self._view)
+        reset_action.triggered.connect(self.reset_to_default)
+        menu.addAction(reset_action)
+        
+        return menu

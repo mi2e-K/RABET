@@ -1,11 +1,10 @@
 # controllers/visualization_controller.py - Completely independent controller for visualization features
 import logging
 import os
-import pandas as pd
-import numpy as np
 import json
 from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QMessageBox, QFileDialog
+from PySide6.QtWidgets import QMessageBox
+from utils.annotation_csv_parser import load_event_dataframe
 
 class VisualizationController(QObject):
     """
@@ -217,53 +216,7 @@ class VisualizationController(QObject):
             pd.DataFrame or None: Loaded data or None if failed
         """
         try:
-            # Read file content
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Find event data section
-            lines = content.split('\n')
-            start_line = -1
-            end_line = len(lines)
-            
-            # Look for event data header
-            for i, line in enumerate(lines):
-                if line.startswith('Event,Onset,Offset'):
-                    start_line = i
-                    break
-            
-            # Find end of event data
-            if start_line >= 0:
-                for i in range(start_line + 1, len(lines)):
-                    if not lines[i].strip() or lines[i].startswith('Behavior,'):
-                        end_line = i
-                        break
-                
-                # Extract CSV section
-                csv_content = '\n'.join(lines[start_line:end_line])
-                
-                # Parse CSV
-                df = pd.read_csv(pd.io.common.StringIO(csv_content), dtype=str)
-                
-                # Convert numeric columns
-                if 'Onset' in df.columns:
-                    df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
-                if 'Offset' in df.columns:
-                    df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
-                
-                return df
-            
-            else:
-                # Try to read entire file as CSV
-                df = pd.read_csv(file_path, dtype=str)
-                
-                # Convert numeric columns
-                if 'Onset' in df.columns:
-                    df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
-                if 'Offset' in df.columns:
-                    df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
-                
-                return df
+            return load_event_dataframe(file_path, logger=self.logger)
         
         except Exception as e:
             self.logger.error(f"Error loading CSV {file_path}: {e}")

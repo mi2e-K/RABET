@@ -18,6 +18,7 @@ class FileManager:
         
         # Get application data directory
         self.app_data_dir = self._get_app_data_dir()
+        self._migrate_legacy_app_data()
         
         # Ensure application directories exist
         self._ensure_app_directories()
@@ -34,19 +35,62 @@ class FileManager:
         
         # Determine platform-specific app data directory
         if os.name == 'nt':  # Windows
-            app_data = home_dir / 'AppData' / 'Local' / 'BETA'
+            app_data = home_dir / 'AppData' / 'Local' / 'RABET'
         elif os.name == 'posix':  # macOS / Linux
             # macOS
             if os.path.exists(home_dir / 'Library' / 'Application Support'):
-                app_data = home_dir / 'Library' / 'Application Support' / 'BETA'
+                app_data = home_dir / 'Library' / 'Application Support' / 'RABET'
             # Linux
             else:
-                app_data = home_dir / '.beta'
+                app_data = home_dir / '.rabet'
         else:
             # Fallback to a directory in the home folder
-            app_data = home_dir / '.beta'
+            app_data = home_dir / '.rabet'
         
         return app_data
+
+    def _get_legacy_app_data_dir(self):
+        """Get the legacy BETA app data directory, if any."""
+        home_dir = Path.home()
+
+        if os.name == 'nt':
+            return home_dir / 'AppData' / 'Local' / 'BETA'
+        if os.name == 'posix':
+            if os.path.exists(home_dir / 'Library' / 'Application Support'):
+                return home_dir / 'Library' / 'Application Support' / 'BETA'
+            return home_dir / '.beta'
+
+        return home_dir / '.beta'
+
+    def _migrate_legacy_app_data(self):
+        """
+        Copy forward essential user-created assets from the legacy BETA
+        directory the first time RABET starts using the new location.
+        """
+        legacy_dir = self._get_legacy_app_data_dir()
+        if legacy_dir == self.app_data_dir or not legacy_dir.exists():
+            return
+
+        try:
+            self.app_data_dir.mkdir(exist_ok=True, parents=True)
+
+            for child_name in ('action_maps', 'config'):
+                source = legacy_dir / child_name
+                target = self.app_data_dir / child_name
+                if source.exists() and not target.exists():
+                    shutil.copytree(source, target, dirs_exist_ok=True)
+
+            self.logger.info(
+                "Migrated legacy application data from %s to %s",
+                legacy_dir,
+                self.app_data_dir,
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to migrate legacy application data from %s: %s",
+                legacy_dir,
+                exc,
+            )
     
     def _ensure_app_directories(self):
         """Ensure that application directories exist."""

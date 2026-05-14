@@ -1,0 +1,135 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rabet"
+description = "RABET — Real-time Animal Behavior Event Tagger (desktop video annotation tool)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Koshiro Mitsui" }
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Multimedia :: Video :: Display",
+]
+keywords = [
+    "ethology",
+    "behaviour-annotation",
+    "video-coding",
+    "neuroscience",
+    "qt",
+]
+dynamic = ["version"]
+dependencies = [
+    "PySide6>=6.8",
+    "shiboken6>=6.8",
+    "python-vlc>=3.0",
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.4",
+    "PyInstaller>=6.0",
+]
+
+[project.scripts]
+rabet = "main:main"
+
+[project.urls]
+Homepage = "https://github.com/mi2e-K/RABET"
+Repository = "https://github.com/mi2e-K/RABET"
+Documentation = "https://github.com/mi2e-K/RABET/blob/main/docs/BUILD_MACOS_LINUX.md"
+Changelog = "https://github.com/mi2e-K/RABET/blob/main/CHANGELOG.md"
+Issues = "https://github.com/mi2e-K/RABET/issues"
+# Concept DOI - always resolves to the latest RABET version on Zenodo.
+"Zenodo (all versions)" = "https://doi.org/10.5281/zenodo.15313025"
+# Version-specific DOI for the v1.0.0 deposit.
+"Zenodo (v1.0.0)" = "https://doi.org/10.5281/zenodo.15313026"
+
+# Single-source the version from version.py so bump_version.py keeps it in
+# one place.
+[tool.setuptools.dynamic]
+version = { attr = "version.__version__" }
+
+[tool.setuptools]
+# This project layout is a flat collection of top-level packages (models,
+# views, controllers, utils) rather than a single root package.
+py-modules = ["main", "version", "bump_version"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["models*", "views*", "controllers*", "utils*"]
+exclude = ["tests*", "build*", "dist*", "logs*", "projects*"]
+
+# ----------------------------------------------------------------------- #
+# Ruff (linter + formatter check). Run via ``ruff check .`` from the
+# repository root. The configuration is intentionally conservative: a small
+# select set so the lint job catches genuine bugs without flooding the
+# diff. Tightening can happen incrementally per release.
+# ----------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    "build",
+    "dist",
+    "logs",
+    "projects",
+    "configs",
+    "__pycache__",
+    # Build scripts are developer-side tooling and not shipped; they intentionally
+    # use less-strict patterns (e.g. ``os.walk`` with placeholder loop vars).
+    "build_windows_optimized.py",
+    "build_macos_optimized.py",
+    "build_linux_optimized.py",
+    "build_packaging_common.py",
+    "bump_version.py",
+]
+
+[tool.ruff.lint]
+# Conservative initial rule set: focus on real bugs (pyflakes) and a few
+# high-signal pycodestyle/bugbear checks. Whitespace/cosmetic rules are
+# intentionally NOT enabled so a future reformat pass can land separately
+# without being entangled with bug-fixing work.
+select = [
+    "F",     # pyflakes (undefined names, unused imports, etc.)
+    "E711",  # comparison to None should be `is None`
+    "E712",  # comparison to True/False
+    "E713",  # `not in` test
+    "E714",  # `not is` test
+    "E722",  # bare `except`
+    "B007",  # loop control variable not used
+    "B904",  # raise ... from None / from err inside except
+    "B905",  # zip() without explicit strict=
+]
+ignore = [
+    "E501",  # Line length is enforced loosely.
+    "E741",  # Ambiguous variable names (legacy code).
+    "B008",  # Function-call default args (used heavily with Qt classes).
+    "F541",  # f-string without placeholders (noisy in log lines).
+    # F841 / B007 currently flag harmless leftover variables from past
+    # refactors; they are slated for a follow-up sweep rather than blocking
+    # CI today.
+    "F841",
+    "B007",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately reach into private attributes / unused imports.
+"tests/*" = ["F401", "F811"]

@@ -5,8 +5,14 @@ import os
 import pandas as pd
 import numpy as np
 import re
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal
 from models.analysis_config import AnalysisMetricsConfig
+from utils.annotation_csv_parser import extract_event_dataframe
+
+from version import __version__ as RABET_VERSION
+
+# Schema version stamped into the exported summary CSVs.
+SUMMARY_CSV_SCHEMA = "v1"
 
 class AnalysisModel(QObject):
     """
@@ -31,6 +37,7 @@ class AnalysisModel(QObject):
         
         self._file_paths = []
         self._raw_data = {}  # File path -> data
+        self._analysis_inputs = {}  # File path -> analysis context
         self._results = {}  # File path -> metrics
         
         # Interval analysis settings
@@ -76,7 +83,7 @@ class AnalysisModel(QObject):
         self.logger.info("Updated metrics configuration")
         
         # Re-analyze with new metrics if we have data
-        if self._raw_data:
+        if self._analysis_inputs:
             self.analyze_all_files()
 
     def set_interval_analysis(self, enabled, interval_seconds=60):
@@ -93,24 +100,79 @@ class AnalysisModel(QObject):
         
         # FIX: Re-analyze existing data with new settings if we have files loaded
         # We need to actually reprocess each file, not just emit existing results
-        if self._raw_data:
+        if self._analysis_inputs:
             self.logger.info("Reanalyzing existing files with new interval settings")
-            
-            # Clear existing results and interval results
-            old_results = self._results.copy()
-            self._results = {}
-            self._interval_results = {}
-            
-            # Reanalyze each file with the new interval settings
-            for file_path, df in self._raw_data.items():
-                # Get test duration from existing results if available
-                test_duration = old_results.get(file_path, {}).get('test_duration', 300)
-                
-                # Re-run the analysis for this file
-                self._analyze_file(file_path, df, test_duration)
-            
-            # After all files are reanalyzed, emit the complete signal
             self.analyze_all_files()
+
+    def _create_analysis_context(self, df, summary_data, test_duration):
+        """
+        Store the exact inputs needed to reproduce an analysis run.
+
+        Args:
+            df (pd.DataFrame): Raw event data (may be empty)
+            summary_data (dict or None): Parsed summary table if available
+            test_duration (float): Session duration in seconds
+
+        Returns:
+            dict: Serializable-in-memory analysis context
+        """
+        if df is None:
+            df = pd.DataFrame(columns=['Event', 'Onset', 'Offset'])
+
+        return {
+            "dataframe": df.copy(deep=True),
+            "summary_data": summary_data.copy() if summary_data is not None else None,
+            "test_duration": test_duration,
+        }
+
+    def _rebuild_behavior_catalog(self):
+        """Rebuild the behavior catalog from the stored analysis inputs."""
+        self._behaviors = self._default_behaviors.copy()
+        self._custom_behaviors = set()
+
+        for context in self._analysis_inputs.values():
+            df = context.get("dataframe")
+            if df is not None and not df.empty:
+                self._extract_behaviors_from_data(df)
+
+            summary_data = context.get("summary_data") or {}
+            for behavior in summary_data.keys():
+                if behavior and behavior not in self._default_behaviors:
+                    self._custom_behaviors.add(behavior)
+
+        self._update_behaviors_list()
+
+    def _reanalyze_loaded_files(self):
+        """
+        Recompute all loaded files from their stored analysis inputs.
+
+        Returns:
+            bool: True if reanalysis ran, False otherwise
+        """
+        if not self._analysis_inputs:
+            self.logger.warning("No analysis inputs available")
+            return False
+
+        self._results = {}
+        self._interval_results = {}
+        self._rebuild_behavior_catalog()
+
+        analysis_order = self._file_paths or list(self._analysis_inputs.keys())
+        for file_path in analysis_order:
+            context = self._analysis_inputs.get(file_path)
+            if context is None:
+                continue
+
+            df = context["dataframe"].copy(deep=True)
+            summary_data = context.get("summary_data")
+            test_duration = context.get("test_duration", 300)
+
+            if summary_data is not None:
+                self._analyze_file_with_summary(file_path, df, summary_data, test_duration)
+            else:
+                self._analyze_file(file_path, df, test_duration)
+
+        return True
 
     def get_interval_settings(self):
         """
@@ -136,6 +198,7 @@ class AnalysisModel(QObject):
         # Reset data
         self._file_paths = []
         self._raw_data = {}
+        self._analysis_inputs = {}
         self._results = {}
         self._interval_results = {}
         successful_loads = 0
@@ -187,6 +250,25 @@ class AnalysisModel(QObject):
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 
+            # Detect the producing RABET version and schema if present.
+            # Older files (pre-1.2.0) have no such rows; that's fine, just log.
+            version_match = re.search(r'RABET Version\s*,\s*([^\r\n,]+)', content)
+            schema_match = re.search(r'Format Schema\s*,\s*([^\r\n,]+)', content)
+            if version_match:
+                producing_version = version_match.group(1).strip()
+                self.logger.info(
+                    f"CSV produced by RABET {producing_version} (current: {RABET_VERSION})"
+                )
+            else:
+                self.logger.debug("CSV has no RABET version row (pre-1.2.0 format)")
+            if schema_match:
+                schema_id = schema_match.group(1).strip()
+                if schema_id != SUMMARY_CSV_SCHEMA:
+                    self.logger.warning(
+                        f"CSV schema '{schema_id}' differs from this RABET's '{SUMMARY_CSV_SCHEMA}' - "
+                        "parsing will continue but consider updating the tool"
+                    )
+
             # Extract test duration from metadata section if present
             test_duration = 300  # Default 5 minutes (300 seconds)
             metadata_match = re.search(r'Test Duration \(seconds\),\s*(\d+\.?\d*)', content)
@@ -228,6 +310,12 @@ class AnalysisModel(QObject):
                 else:
                     # Otherwise analyze from raw events
                     self._analyze_file(file_path, df, test_duration)
+
+                self._analysis_inputs[file_path] = self._create_analysis_context(
+                    df,
+                    summary_data if summary_data else None,
+                    test_duration,
+                )
                 
                 return True
             elif summary_data:
@@ -245,6 +333,12 @@ class AnalysisModel(QObject):
                 
                 # Process the summary data directly
                 self._analyze_file_with_summary(file_path, df, summary_data, test_duration)
+
+                self._analysis_inputs[file_path] = self._create_analysis_context(
+                    df,
+                    summary_data,
+                    test_duration,
+                )
                 
                 return True
             else:
@@ -267,76 +361,22 @@ class AnalysisModel(QObject):
             pd.DataFrame: Dataframe containing event data
         """
         try:
-            # Find the line where the actual CSV data starts
-            lines = content.split('\n')
-            start_line = 0
-            end_line = len(lines)
-            
-            # Look for the 'Event,Onset,Offset' line
-            for i, line in enumerate(lines):
-                if line.startswith('Event,Onset,Offset'):
-                    start_line = i
-                    break
-            
-            # Look for the end of the event data section
-            # This could be an empty line or the start of the summary section
-            for i in range(start_line + 1, len(lines)):
-                # Check for empty line or summary section header
-                if not lines[i].strip() or lines[i].startswith('Behavior,'):
-                    end_line = i
-                    self.logger.debug(f"Found end of event data at line {i}")
-                    break
-            
-            # If we found the header, read CSV data from start line to end line
-            if start_line > 0:
-                # Create a new file-like object with just the CSV part
-                csv_content = '\n'.join(lines[start_line:end_line])
-                
-                # CRITICAL FIX: Use dtype=str to prevent automatic type conversion on import
-                # This ensures all values are kept as strings initially to avoid decimal/float parsing issues
-                df = pd.read_csv(pd.io.common.StringIO(csv_content), dtype=str)
-                
-                # Now manually convert to proper types
-                # This is the key fix - we need to explicitly convert time values to float
-                if 'Onset' in df.columns:
-                    df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
-                if 'Offset' in df.columns:
-                    df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
-                    
-                # Log extracted data for debugging
-                self.logger.debug(f"Extracted raw event data - {len(df)} rows")
-                
-                # Check for RecordingStart and Attack bites
+            df = extract_event_dataframe(content, logger=self.logger)
+            self.logger.debug(f"Extracted raw event data - {len(df)} rows")
+
+            if 'Event' in df.columns:
                 rs_events = df[df['Event'] == 'RecordingStart']
                 if not rs_events.empty:
                     self.logger.debug(f"Found RecordingStart at {rs_events['Onset'].iloc[0]}s")
-                
+
                 attack_events = df[df['Event'] == 'Attack bites']
                 if not attack_events.empty:
                     self.logger.debug(f"Found first Attack bites at {attack_events['Onset'].min()}s")
-                    
-                return df
-            else:
-                # Otherwise, try to read the whole file and let pandas handle it
-                df = pd.read_csv(pd.io.common.StringIO(content), dtype=str)
-                # Convert numeric columns
-                if 'Onset' in df.columns:
-                    df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
-                if 'Offset' in df.columns:
-                    df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
-                    
-                return df
+
+            return df
         except Exception as e:
             self.logger.warning(f"Error extracting raw event data: {str(e)}")
-            # Fallback to standard CSV reading with explicit dtype settings
-            df = pd.read_csv(pd.io.common.StringIO(content), dtype=str)
-            # Convert numeric columns
-            if 'Onset' in df.columns:
-                df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
-            if 'Offset' in df.columns:
-                df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
-                
-            return df
+            return extract_event_dataframe(content, logger=self.logger)
     
     def _extract_summary_data(self, content):
         """
@@ -753,59 +793,45 @@ class AnalysisModel(QObject):
         
         # Initialize results for each interval
         interval_results = []
-        
+
+        # Pre-compute per-behavior onset/offset numpy arrays exactly once so
+        # the per-interval inner loop stays branch-free and free of pandas
+        # filtering overhead. This replaces the original three-level
+        # (interval x behavior x iterrows) loop with vectorised numpy math.
+        behavior_arrays = {}
+        for behavior in self._behaviors:
+            behavior_df = df[df['Event'] == behavior]
+            if not behavior_df.empty:
+                onsets = behavior_df['Onset'].astype(float).to_numpy()
+                offsets = behavior_df['Offset'].astype(float).to_numpy()
+                behavior_arrays[behavior] = (onsets, offsets)
+
         # Process each interval starting from RecordingStart
         for i in range(num_intervals):
-            # FIX: Calculate interval boundaries relative to RecordingStart
             start_time = recording_start_time + (i * self._interval_seconds)
             end_time = min(recording_start_time + ((i + 1) * self._interval_seconds), analysis_end_time)
-            
+
             self.logger.debug(f"Interval {i+1}: {start_time}s to {end_time}s")
-            
-            # Initialize metrics for this interval
+
             interval_metrics = {
                 "interval_number": i + 1,
                 "start_time": start_time,
                 "end_time": end_time,
-                "duration": end_time - start_time
+                "duration": end_time - start_time,
             }
-            
-            # For each behavior, calculate metrics within this interval
+
             for behavior in self._behaviors:
-                behavior_df = df[df['Event'] == behavior]
-                
-                if not behavior_df.empty:
-                    # Calculate duration and count within this interval
-                    interval_duration = 0
-                    interval_count = 0
-                    
-                    for _, event in behavior_df.iterrows():
-                        onset = float(event['Onset'])
-                        offset = float(event['Offset'])
-                        
-                        # Check how the event overlaps with the interval
-                        if onset >= end_time or offset <= start_time:
-                            # Event is completely outside the interval
-                            continue
-                        
-                        # Calculate the overlapping portion
-                        overlap_start = max(onset, start_time)
-                        overlap_end = min(offset, end_time)
-                        overlap_duration = overlap_end - overlap_start
-                        
-                        if overlap_duration > 0:
-                            interval_duration += overlap_duration
-                            # FIX: Count each event only once per interval
-                            # An event should be counted in an interval if it has ANY overlap with that interval
-                            interval_count += 1
-                            
-                            self.logger.debug(f"  {behavior} event {onset}-{offset}s overlaps with interval {start_time}-{end_time}s by {overlap_duration:.2f}s")
-                    
-                    # Store metrics for this behavior in this interval
-                    interval_metrics[f"{behavior}_duration"] = float(interval_duration)
-                    interval_metrics[f"{behavior}_count"] = int(interval_count)
+                if behavior in behavior_arrays:
+                    onsets, offsets = behavior_arrays[behavior]
+                    overlap_start = np.maximum(onsets, start_time)
+                    overlap_end = np.minimum(offsets, end_time)
+                    overlap_duration = np.maximum(0.0, overlap_end - overlap_start)
+                    interval_metrics[f"{behavior}_duration"] = float(overlap_duration.sum())
+                    # An event counts toward an interval whenever it has
+                    # any positive overlap with that interval, matching the
+                    # pre-existing semantics (see B9 / Frequency column).
+                    interval_metrics[f"{behavior}_count"] = int((overlap_duration > 0).sum())
                 else:
-                    # No events for this behavior in the dataset
                     interval_metrics[f"{behavior}_duration"] = 0.0
                     interval_metrics[f"{behavior}_count"] = 0
             
@@ -1068,42 +1094,38 @@ class AnalysisModel(QObject):
             if behaviors_df.empty:
                 return 0
             
-            # Timeline approach to account for overlaps
-            # Create a list of events (start and end points)
-            events = []
-            for _, row in behaviors_df.iterrows():
-                # Ensure the values are float for consistency
-                onset = float(row['Onset'])
-                offset = float(row['Offset'])
-                
-                # Add start and end events to the timeline
-                events.append((onset, 1))    # 1 = onset (start of behavior)
-                events.append((offset, -1))  # -1 = offset (end of behavior)
-            
-            # Sort events chronologically
-            events.sort(key=lambda x: (x[0], -x[1]))  # Sort by time, then event type (starts before ends)
-            
-            if not events:
+            # Timeline approach to account for overlaps - fully vectorised.
+            # Build sorted arrays of (time, delta) events without iterrows.
+            onsets = behaviors_df['Onset'].to_numpy(dtype=float)
+            offsets = behaviors_df['Offset'].to_numpy(dtype=float)
+
+            if onsets.size == 0:
                 return 0
-            
-            # Traverse the timeline, tracking active behaviors
-            active_count = 0
-            last_time = events[0][0]  # Start with the first event time
-            total_time = 0
-            
-            for time, event_type in events:
-                # If we have at least one active behavior, add the elapsed time
-                if active_count > 0:
-                    elapsed = time - last_time
-                    if elapsed > 0:  # Only add positive durations
-                        total_time += elapsed
-                
-                # Update the count of active behaviors
-                active_count += event_type
-                # Update the last time point
-                last_time = time
-            
-            return total_time
+
+            times = np.concatenate([onsets, offsets])
+            deltas = np.concatenate([
+                np.ones(onsets.size, dtype=np.int64),
+                -np.ones(offsets.size, dtype=np.int64),
+            ])
+
+            # Sort primarily by time ascending; for ties, starts (+1) precede
+            # ends (-1) so half-open ranges are handled correctly. lexsort
+            # uses the LAST key as the primary, so we pass (-deltas, times).
+            order = np.lexsort((-deltas, times))
+            sorted_times = times[order]
+            sorted_deltas = deltas[order]
+
+            if sorted_times.size < 2:
+                return 0
+
+            # ``active_during[i]`` is the active behaviour count in the
+            # segment that begins at ``sorted_times[i]`` and ends at
+            # ``sorted_times[i + 1]``.
+            active_during = np.cumsum(sorted_deltas)
+            segment_lengths = np.diff(sorted_times)
+            covered_mask = active_during[:-1] > 0
+
+            return float(np.sum(segment_lengths[covered_mask]))
             
         except Exception as e:
             self.logger.warning(f"Error calculating total time for behaviors {behaviors}: {str(e)}")
@@ -1116,11 +1138,13 @@ class AnalysisModel(QObject):
         Returns:
             bool: True if analysis was successful, False otherwise
         """
-        if not self._raw_data:
+        if not self._analysis_inputs:
             self.logger.warning("No data to analyze")
             return False
         
         try:
+            self._reanalyze_loaded_files()
+
             # Log summary of analysis results
             for file_path, metrics in self._results.items():
                 file_name = os.path.basename(file_path)
@@ -1171,6 +1195,21 @@ class AnalysisModel(QObject):
             dict: Analysis results for whole sessions
         """
         return self._results
+
+    def get_file_paths(self):
+        """Get the file paths used in the current analysis session."""
+        return self._file_paths.copy()
+
+    def clear_loaded_data(self):
+        """Clear all loaded analysis inputs and results."""
+        self._file_paths = []
+        self._raw_data = {}
+        self._analysis_inputs = {}
+        self._results = {}
+        self._interval_results = {}
+        self._behaviors = self._default_behaviors.copy()
+        self._custom_behaviors = set()
+        self._source_view_for_next_load = None
     
     def get_interval_results(self):
         """
@@ -1227,13 +1266,18 @@ class AnalysisModel(QObject):
             # Create a specialized CSV writer that preserves the exact format we want
             with open(file_path, 'w', newline='') as f:
                 writer = csv.writer(f)
-                
+
+                # Provenance: emit a single header row with the producing
+                # RABET version and schema identifier. Downstream tools can
+                # detect/parse this to handle future format revisions.
+                writer.writerow([f"RABET {RABET_VERSION} summary export (schema {SUMMARY_CSV_SCHEMA})"])
+
                 # Get all behaviors for the header (both default and custom)
                 behaviors_list = self._behaviors
-                
+
                 # Calculate the number of behaviors for the header row formatting
                 num_behaviors = len(behaviors_list)
-                
+
                 # Write the header row with Duration and Frequency sections
                 # Each section needs entries for each behavior plus one empty spacer
                 header_row = [''] + ['Duration'] + [''] * num_behaviors + ['Frequency'] + [''] * num_behaviors + [''] * len(self._metrics_config.get_enabled_latency_metrics() + self._metrics_config.get_enabled_total_time_metrics())
@@ -1270,10 +1314,12 @@ class AnalysisModel(QObject):
                 self.logger.info(f"Summary table structure: {len(behaviors_list)} behaviors + {len(latency_metrics)} latency metrics + {len(total_time_metrics)} total time metrics")
                 self.logger.info(f"Behaviors included: {behaviors_list}")
                 
-                # Write data rows and validate metrics for each file
-                for file_path, metrics in self._results.items():
+                # Write data rows and validate metrics for each file. We use
+                # ``source_path`` here to avoid shadowing the ``file_path``
+                # argument of this method, which refers to the export target.
+                for source_path, metrics in self._results.items():
                     # Get animal ID from filename without _annotations suffix
-                    animal_id = os.path.splitext(os.path.basename(file_path))[0]
+                    animal_id = os.path.splitext(os.path.basename(source_path))[0]
                     if animal_id.endswith("_annotations"):
                         animal_id = animal_id[:-12]  # Remove "_annotations"
                     
@@ -1343,20 +1389,29 @@ class AnalysisModel(QObject):
             # Create a specialized CSV writer that preserves the exact format we want
             with open(file_path, 'w', newline='') as f:
                 writer = csv.writer(f)
-                
+
+                # Provenance row: producing app version and schema identifier.
+                writer.writerow([f"RABET {RABET_VERSION} interval-summary export (schema {SUMMARY_CSV_SCHEMA})"])
+
                 # Get all behaviors for the header (both default and custom)
                 behaviors_list = self._behaviors
-                
+
                 # Write a title row indicating this is an interval-based analysis
                 writer.writerow([f"Interval analysis ({self._interval_seconds}-second intervals)"])
                 # FIX: Remove the unnecessary blank line on the second row
                 
-                # Write structured headers with Duration/Frequency sections
-                # First header row - spanning headers
+                # Write structured headers with Duration/Frequency sections.
+                # Note: in interval analysis, an event that spans multiple
+                # intervals is counted once per overlapping interval (i.e.
+                # this Frequency column reports the number of events
+                # overlapping each interval, not the number of onsets).
                 header_row1 = ['', '', '', '']  # animal_id, Interval, Time (min), blank column
                 header_row1.extend(['Duration'] + [''] * (len(behaviors_list) - 1))  # Duration section
                 header_row1.append('')  # Blank column between sections
-                header_row1.extend(['Frequency'] + [''] * (len(behaviors_list) - 1))  # Frequency section
+                header_row1.extend(
+                    ['Frequency (events overlapping interval)']
+                    + [''] * (len(behaviors_list) - 1)
+                )  # Frequency section
                 # FIX: Add blank column before additional metrics
                 total_time_metrics = self._metrics_config.get_enabled_total_time_metrics()
                 if total_time_metrics:
@@ -1387,10 +1442,12 @@ class AnalysisModel(QObject):
                 
                 writer.writerow(column_headers)
                 
-                # Write data rows for each file and each interval
-                for file_path, intervals in self._interval_results.items():
+                # Write data rows for each file and each interval. We use
+                # ``source_path`` here to avoid shadowing the ``file_path``
+                # argument of this method, which refers to the export target.
+                for source_path, intervals in self._interval_results.items():
                     # Get animal ID from filename
-                    animal_id = os.path.splitext(os.path.basename(file_path))[0]
+                    animal_id = os.path.splitext(os.path.basename(source_path))[0]
                     if animal_id.endswith("_annotations"):
                         animal_id = animal_id[:-12]  # Remove "_annotations"
                     

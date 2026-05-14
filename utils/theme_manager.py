@@ -1,6 +1,6 @@
 # utils/theme_manager.py
 import logging
-from PySide6.QtGui import QPalette, QColor, QBrush
+from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 

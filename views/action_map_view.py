@@ -1,24 +1,25 @@
 # views/action_map_view.py
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QTableWidget, QTableWidgetItem, QHeaderView,
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy,
+    QAbstractScrollArea,
     QDialog, QLineEdit, QLabel, QDialogButtonBox, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QColor, QBrush, QFont
+from PySide6.QtCore import Signal, Slot, QRegularExpression
+from PySide6.QtGui import QFont, QRegularExpressionValidator
 
 class ActionMapView(QWidget):
     """
     View for displaying and editing action map.
-    
+
     Signals:
-        add_mapping_requested: Emitted when add mapping is requested
-        edit_mapping_requested: Emitted when edit mapping is requested (key, new_behavior)
-        remove_mapping_requested: Emitted when remove mapping is requested (key)
+        edit_mapping_requested: Emitted when a key/behavior pair is added or
+            edited via the dialog (carries key, new_behavior).
+        remove_mapping_requested: Emitted when a mapping should be removed
+            (carries the key).
     """
-    
-    add_mapping_requested = Signal()
+
     edit_mapping_requested = Signal(str, str)
     remove_mapping_requested = Signal(str)
     
@@ -34,6 +35,10 @@ class ActionMapView(QWidget):
         """Set up user interface."""
         # Main layout
         self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(4)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.setMinimumHeight(0)
         
         # Title
         self.title_label = QLabel("Action Map")
@@ -47,6 +52,9 @@ class ActionMapView(QWidget):
         self.mappings_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.mappings_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.mappings_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.mappings_table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        self.mappings_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.mappings_table.setMinimumHeight(0)
         self.layout.addWidget(self.mappings_table)
         
         # Buttons layout
@@ -78,8 +86,11 @@ class ActionMapView(QWidget):
         self.active_behaviors.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.active_behaviors.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.active_behaviors.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.active_behaviors.setMaximumHeight(150)
+        self.active_behaviors.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        self.active_behaviors.setFixedHeight(100)
+        self.active_behaviors.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.layout.addWidget(self.active_behaviors)
+        self.layout.setStretch(1, 1)
     
     def connect_signals(self):
         """Connect widget signals to slots."""
@@ -89,15 +100,35 @@ class ActionMapView(QWidget):
     
     def on_add_clicked(self):
         """Handle add button clicked."""
-        dialog = ActionMapDialog(self)
+        # Collect the keys already in use so the dialog can warn the user
+        # before they overwrite an existing mapping.
+        existing_keys = {
+            self.mappings_table.item(row, 0).text()
+            for row in range(self.mappings_table.rowCount())
+            if self.mappings_table.item(row, 0) is not None
+        }
+
+        dialog = ActionMapDialog(self, existing_keys=existing_keys)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            key = dialog.key_edit.text()
-            behavior = dialog.behavior_edit.text()
-            
-            if key and behavior:
-                self.edit_mapping_requested.emit(key, behavior)
-            else:
+            key = dialog.key_edit.text().strip()
+            behavior = dialog.behavior_edit.text().strip()
+
+            if not key or not behavior:
                 QMessageBox.warning(self, "Invalid Input", "Key and behavior cannot be empty.")
+                return
+
+            if key in existing_keys:
+                confirm = QMessageBox.question(
+                    self,
+                    "Overwrite existing mapping?",
+                    f"The key '{key}' is already mapped. Overwrite the existing assignment?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if confirm != QMessageBox.StandardButton.Yes:
+                    return
+
+            self.edit_mapping_requested.emit(key, behavior)
     
     def on_edit_clicked(self):
         """Handle edit button clicked."""
@@ -198,38 +229,69 @@ class ActionMapView(QWidget):
 
 
 class ActionMapDialog(QDialog):
-    """Dialog for adding or editing action map entries."""
-    
-    def __init__(self, parent=None, key="", behavior=""):
+    """Dialog for adding or editing action map entries.
+
+    The key input is restricted to a single alphanumeric character via a
+    regular-expression validator so users cannot enter control characters,
+    whitespace or multi-character strings. ``existing_keys`` is used by the
+    caller to warn about overwriting a key that already has a mapping.
+    """
+
+    KEY_PATTERN = QRegularExpression(r"^[A-Za-z0-9]$")
+
+    def __init__(self, parent=None, key="", behavior="", existing_keys=None):
         super().__init__(parent)
-        
+
+        self._existing_keys = set(existing_keys or set())
+
         self.setWindowTitle("Action Map Entry")
-        self.resize(300, 150)
-        
+        self.resize(320, 160)
+
         # Main layout
         self.layout = QVBoxLayout(self)
-        
+
         # Key input
         self.key_layout = QHBoxLayout()
         self.key_label = QLabel("Key:")
         self.key_edit = QLineEdit(key)
         self.key_edit.setMaxLength(1)
+        self.key_edit.setPlaceholderText("a-z, A-Z, 0-9")
+        self.key_edit.setValidator(QRegularExpressionValidator(self.KEY_PATTERN, self))
         self.key_layout.addWidget(self.key_label)
         self.key_layout.addWidget(self.key_edit)
         self.layout.addLayout(self.key_layout)
-        
+
         # Behavior input
         self.behavior_layout = QHBoxLayout()
         self.behavior_label = QLabel("Behavior:")
         self.behavior_edit = QLineEdit(behavior)
+        self.behavior_edit.setPlaceholderText("e.g. Attack bites")
         self.behavior_layout.addWidget(self.behavior_label)
         self.behavior_layout.addWidget(self.behavior_edit)
         self.layout.addLayout(self.behavior_layout)
-        
+
         # Buttons
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        self.buttons.accepted.connect(self.accept)
+        self.buttons.accepted.connect(self._on_accept)
         self.buttons.rejected.connect(self.reject)
         self.layout.addWidget(self.buttons)
+
+    def _on_accept(self):
+        """Validate inputs before accepting the dialog."""
+        key = self.key_edit.text().strip()
+        behavior = self.behavior_edit.text().strip()
+
+        if not key:
+            QMessageBox.warning(self, "Invalid Input",
+                                "Please enter a single alphanumeric key.")
+            self.key_edit.setFocus()
+            return
+        if not behavior:
+            QMessageBox.warning(self, "Invalid Input",
+                                "Behavior label cannot be empty.")
+            self.behavior_edit.setFocus()
+            return
+
+        self.accept()

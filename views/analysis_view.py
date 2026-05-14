@@ -1,15 +1,13 @@
 # views/analysis_view.py - Enhanced with metrics configuration, file management, and export options
 import logging
 import os
-import pandas as pd
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox, QProgressBar, QPushButton,
-    QGroupBox, QSpinBox, QCheckBox
+    QGroupBox, QSpinBox, QCheckBox, QTabWidget, QApplication,
 )
-from PySide6.QtCore import Qt, QRect, QPoint, Signal, Slot
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt, Signal, Slot
 
 class AnalysisView(QWidget):
     """
@@ -116,30 +114,82 @@ class AnalysisView(QWidget):
         
         # Add settings group to main layout
         self.layout.addWidget(self.settings_group)
-        
-        # Create a parent widget with no layout for absolute positioning
-        self.files_area = QWidget()
-        self.layout.addWidget(self.files_area)
-        
-        # Place the label using absolute positioning
-        self.files_label = QLabel("Loaded Files:", self.files_area)
+
+        # Tabbed area: Files / Summary / Intervals
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setMinimumHeight(400)
+
+        # --- Files tab ---------------------------------------------------
+        self.files_tab = QWidget()
+        files_layout = QVBoxLayout(self.files_tab)
+        files_layout.setContentsMargins(6, 6, 6, 6)
+        files_layout.setSpacing(4)
+
+        self.files_label = QLabel("Loaded Files:")
         self.files_label.setStyleSheet("font-weight: bold;")
-        # Let's position the label 10 pixels from the top of the container
-        self.files_label.setGeometry(10, 10, 100, 20)  # x, y, width, height
-        
-        # Position the table directly below the label with a small margin (5px)
-        self.files_table = QTableWidget(self.files_area)
+        files_layout.addWidget(self.files_label)
+
+        self.files_table = QTableWidget()
         self.files_table.setColumnCount(2)
         self.files_table.setHorizontalHeaderLabels(["File Name", "Path"])
         self.files_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.files_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        # Position 5px below the label (label height + 5px margin)
-        self.files_table.setGeometry(10, 35, self.files_area.width() - 20, 350)
-        self.files_area.setMinimumHeight(400)  # Set minimum height to accommodate the table + label
-        
-        # We need to handle resizing for this absolute positioning approach
-        self.files_area.resizeEvent = self.on_files_area_resize
-        
+        files_layout.addWidget(self.files_table)
+
+        self.tab_widget.addTab(self.files_tab, "Files")
+
+        # --- Summary tab -------------------------------------------------
+        self.summary_tab = QWidget()
+        summary_layout = QVBoxLayout(self.summary_tab)
+        summary_layout.setContentsMargins(6, 6, 6, 6)
+        summary_layout.setSpacing(4)
+
+        summary_header = QHBoxLayout()
+        summary_title = QLabel("Whole-session summary:")
+        summary_title.setStyleSheet("font-weight: bold;")
+        summary_header.addWidget(summary_title)
+        summary_header.addStretch()
+
+        self.copy_summary_button = QPushButton("Copy to Clipboard")
+        self.copy_summary_button.setToolTip("Copy the summary table to the clipboard as TSV")
+        summary_header.addWidget(self.copy_summary_button)
+        summary_layout.addLayout(summary_header)
+
+        self.summary_table = QTableWidget()
+        self.summary_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.summary_table.setAlternatingRowColors(True)
+        summary_layout.addWidget(self.summary_table)
+
+        self.tab_widget.addTab(self.summary_tab, "Summary")
+
+        # --- Intervals tab ----------------------------------------------
+        self.intervals_tab = QWidget()
+        intervals_layout = QVBoxLayout(self.intervals_tab)
+        intervals_layout.setContentsMargins(6, 6, 6, 6)
+        intervals_layout.setSpacing(4)
+
+        intervals_header = QHBoxLayout()
+        intervals_title = QLabel("Per-interval summary:")
+        intervals_title.setStyleSheet("font-weight: bold;")
+        intervals_header.addWidget(intervals_title)
+        intervals_header.addStretch()
+
+        self.copy_intervals_button = QPushButton("Copy to Clipboard")
+        self.copy_intervals_button.setToolTip("Copy the interval table to the clipboard as TSV")
+        intervals_header.addWidget(self.copy_intervals_button)
+        intervals_layout.addLayout(intervals_header)
+
+        self.intervals_table = QTableWidget()
+        self.intervals_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.intervals_table.setAlternatingRowColors(True)
+        intervals_layout.addWidget(self.intervals_table)
+
+        self.tab_widget.addTab(self.intervals_tab, "Intervals")
+        # Intervals tab is only meaningful when interval analysis is enabled.
+        self._set_intervals_tab_enabled(False)
+
+        self.layout.addWidget(self.tab_widget)
+
         # File management buttons layout
         self.buttons_layout = QHBoxLayout()
         
@@ -173,9 +223,12 @@ class AnalysisView(QWidget):
         self.export_layout.addStretch()
         self.layout.addLayout(self.export_layout)
         
-        # Status message area with bright yellow color
+        # Status message area. We avoid a hard-coded text color so the
+        # label remains readable under both light and dark Qt palettes;
+        # only the font weight is forced for emphasis. Themed colours come
+        # from the application's QPalette.
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #FFFF00; font-weight: bold;")
+        self.status_label.setStyleSheet("font-weight: bold;")
         self.layout.addWidget(self.status_label)
         
         # Set initial state for interval controls
@@ -186,31 +239,39 @@ class AnalysisView(QWidget):
         is_enabled = self.interval_checkbox.isChecked()
         self.interval_seconds_spinner.setEnabled(is_enabled)
         self.interval_seconds_label.setEnabled(is_enabled)
-    
-    def on_files_area_resize(self, event):
-        """Handle resizing of the files area to maintain layout."""
-        # Update table width when container is resized
-        width = event.size().width()
-        height = event.size().height()
-        
-        # Keep the table width responsive
-        self.files_table.setGeometry(10, 35, width - 20, 350)
-    
+        # Mirror the same state on the Intervals tab; an empty/disabled tab
+        # gives the user a clear hint about why interval data is missing.
+        self._set_intervals_tab_enabled(is_enabled)
+
+    def _set_intervals_tab_enabled(self, enabled):
+        """Enable/disable the Intervals tab in the tab bar."""
+        index = self.tab_widget.indexOf(self.intervals_tab)
+        if index != -1:
+            self.tab_widget.setTabEnabled(index, enabled)
+
     def connect_signals(self):
         """Connect widget signals to slots."""
         self.load_button.clicked.connect(self.load_files_requested)
         self.remove_button.clicked.connect(self.on_remove_button_clicked)
         self.clear_button.clicked.connect(self.clear_files_requested)
         self.export_button.clicked.connect(self.export_table_requested)
-        
+
         # Connect interval analysis controls
         self.interval_checkbox.stateChanged.connect(self.on_interval_settings_changed)
         self.interval_seconds_spinner.valueChanged.connect(self.on_interval_settings_changed)
-        
+
         # Connect metrics configuration buttons
         self.configure_metrics_button.clicked.connect(self.configure_metrics_requested)
         self.export_metrics_button.clicked.connect(self.export_metrics_config_requested)
         self.import_metrics_button.clicked.connect(self.import_metrics_config_requested)
+
+        # Copy-to-clipboard buttons on the result tabs
+        self.copy_summary_button.clicked.connect(
+            lambda: self._copy_table_to_clipboard(self.summary_table)
+        )
+        self.copy_intervals_button.clicked.connect(
+            lambda: self._copy_table_to_clipboard(self.intervals_table)
+        )
     
     def on_interval_settings_changed(self):
         """Handle changes to interval analysis settings."""
@@ -339,17 +400,174 @@ class AnalysisView(QWidget):
             self.files_table.setItem(row, 1, path_item)
     
     @Slot(dict)
-    def update_summary_table(self, results):
+    def update_summary_table(self, results, behaviors=None,
+                             latency_metric_names=None,
+                             total_time_metric_names=None):
         """
-        Update the summary table with analysis results.
-        
+        Populate the Summary tab with whole-session metrics.
+
         Args:
-            results (dict): Dictionary containing analysis results for each file
-                {file_name: {metrics}, ...}
+            results (dict): {file_path: {metric_key: value, ...}, ...}
+            behaviors (list, optional): Ordered behavior names (duration/freq
+                columns). Falls back to keys present in ``results``.
+            latency_metric_names (list, optional): Custom latency metric names.
+            total_time_metric_names (list, optional): Custom total-time metric
+                names.
         """
-        # In this version, we don't actually display the summary table in the view
-        # But we'll log that we received the results
-        self.logger.info(f"Received analysis results for {len(results)} files")
+        self.logger.info(f"Updating summary table for {len(results)} files")
+
+        if not results:
+            self.summary_table.clear()
+            self.summary_table.setRowCount(0)
+            self.summary_table.setColumnCount(0)
+            return
+
+        # Determine the behaviour set if the caller did not pass one
+        if not behaviors:
+            inferred = set()
+            for metrics in results.values():
+                for key in metrics:
+                    if key.endswith('_duration'):
+                        inferred.add(key[:-len('_duration')])
+            behaviors = sorted(inferred)
+
+        latency_metric_names = list(latency_metric_names or [])
+        total_time_metric_names = list(total_time_metric_names or [])
+
+        # Build column headers: animal_id + duration[*] + frequency[*] + custom metrics
+        columns = ['animal_id']
+        columns.extend(f"{b} (s)" for b in behaviors)
+        columns.extend(f"{b} (n)" for b in behaviors)
+        columns.extend(f"{m} (s)" for m in latency_metric_names)
+        columns.extend(f"{m} (s)" for m in total_time_metric_names)
+
+        self.summary_table.clear()
+        self.summary_table.setColumnCount(len(columns))
+        self.summary_table.setHorizontalHeaderLabels(columns)
+        self.summary_table.setRowCount(len(results))
+
+        for row_idx, (file_path, metrics) in enumerate(results.items()):
+            animal_id = os.path.splitext(os.path.basename(file_path))[0]
+            if animal_id.endswith('_annotations'):
+                animal_id = animal_id[: -len('_annotations')]
+
+            col_idx = 0
+            self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(animal_id))
+            col_idx += 1
+
+            for behavior in behaviors:
+                value = float(metrics.get(f"{behavior}_duration", 0.0))
+                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
+                col_idx += 1
+            for behavior in behaviors:
+                value = int(metrics.get(f"{behavior}_count", 0))
+                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
+                col_idx += 1
+            for metric_name in latency_metric_names:
+                key = metric_name.lower().replace(' ', '_')
+                value = float(metrics.get(key, metrics.get('test_duration', 0.0)))
+                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
+                col_idx += 1
+            for metric_name in total_time_metric_names:
+                key = metric_name.lower().replace(' ', '_')
+                value = float(metrics.get(key, 0.0))
+                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
+                col_idx += 1
+
+        self.summary_table.resizeColumnsToContents()
+
+    @Slot(dict)
+    def update_interval_table(self, interval_results, behaviors=None,
+                              total_time_metric_names=None):
+        """
+        Populate the Intervals tab.
+
+        Args:
+            interval_results (dict): {file_path: [interval_dict, ...]}
+            behaviors (list, optional): Ordered behavior names.
+            total_time_metric_names (list, optional): Custom total-time
+                metric names.
+        """
+        self.logger.info(
+            f"Updating interval table ({len(interval_results)} files)"
+        )
+
+        if not interval_results:
+            self.intervals_table.clear()
+            self.intervals_table.setRowCount(0)
+            self.intervals_table.setColumnCount(0)
+            return
+
+        if not behaviors:
+            inferred = set()
+            for intervals in interval_results.values():
+                for interval in intervals:
+                    for key in interval:
+                        if key.endswith('_duration'):
+                            inferred.add(key[:-len('_duration')])
+            behaviors = sorted(inferred)
+
+        total_time_metric_names = list(total_time_metric_names or [])
+
+        columns = ['animal_id', 'Interval', 'Time (sec)']
+        columns.extend(f"{b} (s)" for b in behaviors)
+        columns.extend(f"{b} (n)" for b in behaviors)
+        columns.extend(f"{m} (s)" for m in total_time_metric_names)
+
+        rows = []
+        for source_path, intervals in interval_results.items():
+            animal_id = os.path.splitext(os.path.basename(source_path))[0]
+            if animal_id.endswith('_annotations'):
+                animal_id = animal_id[: -len('_annotations')]
+
+            for interval in intervals:
+                row = [animal_id,
+                       str(interval.get('interval_number', '')),
+                       f"{interval.get('start_time', 0):.1f}-"
+                       f"{interval.get('end_time', 0):.1f}"]
+                for behavior in behaviors:
+                    row.append(f"{float(interval.get(f'{behavior}_duration', 0.0)):.2f}")
+                for behavior in behaviors:
+                    row.append(str(int(interval.get(f'{behavior}_count', 0))))
+                for metric_name in total_time_metric_names:
+                    key = metric_name.lower().replace(' ', '_')
+                    row.append(f"{float(interval.get(key, 0.0)):.2f}")
+                rows.append(row)
+
+        self.intervals_table.clear()
+        self.intervals_table.setColumnCount(len(columns))
+        self.intervals_table.setHorizontalHeaderLabels(columns)
+        self.intervals_table.setRowCount(len(rows))
+
+        for r, row in enumerate(rows):
+            for c, cell in enumerate(row):
+                self.intervals_table.setItem(r, c, QTableWidgetItem(cell))
+
+        self.intervals_table.resizeColumnsToContents()
+
+    def _copy_table_to_clipboard(self, table):
+        """Copy a ``QTableWidget`` to the clipboard as tab-separated text."""
+        if table is None or table.rowCount() == 0 or table.columnCount() == 0:
+            return
+
+        rows = []
+        headers = []
+        for col in range(table.columnCount()):
+            header_item = table.horizontalHeaderItem(col)
+            headers.append(header_item.text() if header_item else '')
+        rows.append('\t'.join(headers))
+
+        for r in range(table.rowCount()):
+            cells = []
+            for c in range(table.columnCount()):
+                item = table.item(r, c)
+                cells.append(item.text() if item else '')
+            rows.append('\t'.join(cells))
+
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText('\n'.join(rows))
+            self.set_status_message("Table copied to clipboard")
     
     def show_progress(self, visible=True, value=0):
         """

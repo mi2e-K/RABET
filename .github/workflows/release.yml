@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    # Triggered by ``git push origin v1.2.1`` and similar version tags.
+    # Pre-release tags (e.g. v1.2.1-rc1) are also matched.
+    tags:
+      - "v*"
+
+# The release job needs ``contents: write`` so the workflow can upload the
+# built archives to the GitHub Release the tag creates.
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows distribution
+    runs-on: windows-latest
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install VLC (Windows runner)
+        run: choco install vlc --no-progress -y
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run the test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/ -v --benchmark-skip
+
+      - name: Build Windows package
+        run: python build_windows_optimized.py
+
+      - name: Archive distribution folder
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $zipName = "RABET-Windows-$version.zip"
+          if (Test-Path "dist/RABET") {
+            Compress-Archive -Path "dist/RABET/*" -DestinationPath "dist/$zipName" -Force
+          } elseif (Test-Path "dist/RABET.exe") {
+            # ``--onefile`` builds: ship just the exe.
+            Compress-Archive -Path "dist/RABET.exe" -DestinationPath "dist/$zipName" -Force
+          } else {
+            Write-Error "Expected dist/RABET or dist/RABET.exe not found"
+            exit 1
+          }
+          "ASSET_PATH=dist/$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "ASSET_NAME=$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Upload artefact for the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: ${{ env.ASSET_PATH }}
+          retention-days: 30
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4
+
+      - name: Download Windows artefact
+        uses: actions/download-artifact@v4
+        with:
+          # Artefact name matches the ASSET_NAME exported in build-windows.
+          # Using a glob makes the workflow tolerant of small naming tweaks.
+          pattern: "RABET-Windows-*.zip"
+          path: dist
+          merge-multiple: true
+
+      - name: Extract changelog entry for this version
+        id: changelog
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          # Pull the section for [<version>] from CHANGELOG.md, stopping at the
+          # next ``## [`` heading or end of file.
+          awk -v ver="$version" '
+            $0 ~ ("## \\[" ver "\\]") {flag=1; next}
+            flag && /^## \[/ {exit}
+            flag {print}
+          ' CHANGELOG.md > release_body.md
+          if [ ! -s release_body.md ]; then
+            echo "No CHANGELOG entry found for $version - using a placeholder." >&2
+            echo "Automated release for $version. See CHANGELOG.md for details." > release_body.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release_body.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          files: dist/RABET-Windows-*.zip

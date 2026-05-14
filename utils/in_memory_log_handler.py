@@ -1,6 +1,5 @@
 # utils/in_memory_log_handler.py
 import logging
-import time
 from collections import deque
 
 class InMemoryLogHandler(logging.Handler):

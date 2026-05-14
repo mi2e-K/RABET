@@ -1,6 +1,5 @@
 # views/log_viewer_dialog.py - Updated for in-memory logs
 import logging
-import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, 
     QPushButton, QComboBox, QLabel, QSplitter, 

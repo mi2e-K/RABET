@@ -5,8 +5,7 @@ from PySide6.QtWidgets import (
     QLabel, QGroupBox, QTimeEdit, QProgressBar, QSizePolicy,
     QCheckBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QTime
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, Slot, QTime, QTimer
 
 class RecordingControlView(QWidget):
     """
@@ -28,16 +27,49 @@ class RecordingControlView(QWidget):
     STATE_RECORDING = 2
     STATE_PAUSED = 3
     
+    # Consolidated style sheet for the recording panel. Each state's visual
+    # treatment is selected via the ``state`` dynamic property on the button
+    # and the ``role`` property on the status label, so changing state means
+    # toggling a property rather than swapping a whole style string.
+    _PANEL_STYLE = """
+        QPushButton#recordButton {
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 8px 15px;
+        }
+        QPushButton#recordButton[state="idle"],
+        QPushButton#recordButton[state="complete"] {
+            background-color: #2ecc71;  /* green */
+        }
+        QPushButton#recordButton[state="waiting"],
+        QPushButton#recordButton[state="recording"],
+        QPushButton#recordButton[state="paused"] {
+            background-color: #e74c3c;  /* red */
+        }
+        QLabel#recordingStatusLabel { font-weight: bold; }
+        QLabel#recordingStatusLabel[role="idle"]     { color: gray; }
+        QLabel#recordingStatusLabel[role="waiting"]  { color: #3498db; }
+        QLabel#recordingStatusLabel[role="active"]   { color: red; }
+        QLabel#recordingStatusLabel[role="paused"]   { color: #f39c12; }
+        QLabel#recordingStatusLabel[role="complete"] { color: blue; }
+    """
+
     def __init__(self):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing RecordingControlView")
-        
+        self._layout_diagnostics_enabled = False
+
         self._recording_state = self.STATE_IDLE
-        
+
         self.setup_ui()
+        # Single consolidated style sheet; state-specific colouring is
+        # driven by ``state`` / ``role`` dynamic properties further down.
+        self.setStyleSheet(self._PANEL_STYLE)
         self.connect_signals()
-        
+        QTimer.singleShot(0, self._freeze_stable_height)
+
         # Prevent space key from triggering the button
         self.record_button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
     
@@ -71,20 +103,24 @@ class RecordingControlView(QWidget):
         # Recording control layout
         self.recording_control_layout = QHBoxLayout()
         
-        # Start/Stop recording button - MADE LARGER
+        # Start/Stop recording button. Visual styling is driven by the
+        # ``state`` dynamic property (see ``_PANEL_STYLE``).
         self.record_button = QPushButton("Start Recording")
-        self.record_button.setStyleSheet(
-            "QPushButton { background-color: #2ecc71; color: white; font-weight: bold; font-size: 14px; padding: 8px 15px; }"
-        )
+        self.record_button.setObjectName("recordButton")
+        self.record_button.setProperty("state", "idle")
         # Make button height larger
         self.record_button.setMinimumHeight(40)
         # Set preferred size policy
         self.record_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.recording_control_layout.addWidget(self.record_button)
         
-        # Recording status label
+        # Recording status label. Styling is driven by the ``role`` dynamic
+        # property (see ``_PANEL_STYLE``).
         self.status_label = QLabel("Not Recording")
-        self.status_label.setStyleSheet("color: gray;")
+        self.status_label.setObjectName("recordingStatusLabel")
+        self.status_label.setProperty("role", "idle")
+        self.status_label.setWordWrap(False)
+        self.status_label.setMinimumHeight(22)
         self.recording_control_layout.addWidget(self.status_label, 1)
         
         # Add recording control layout to recording layout
@@ -95,6 +131,11 @@ class RecordingControlView(QWidget):
         self.progress_bar.setTextVisible(True)
         self.progress_bar.setFormat("Time remaining: %v seconds")
         self.progress_bar.setValue(0)
+        self.progress_bar.setFixedHeight(18)
+        progress_bar_policy = self.progress_bar.sizePolicy()
+        progress_bar_policy.setVerticalPolicy(QSizePolicy.Policy.Fixed)
+        progress_bar_policy.setRetainSizeWhenHidden(True)
+        self.progress_bar.setSizePolicy(progress_bar_policy)
         self.progress_bar.setVisible(False)
         self.recording_layout.addWidget(self.progress_bar)
         
@@ -106,6 +147,8 @@ class RecordingControlView(QWidget):
             "When unchecked (default), annotations in rewound video sections will be removed. "
             "When checked, annotations will be preserved when rewinding."
         )
+        # CRITICAL FIX: Set focus policy to prevent space key from toggling the checkbox
+        self.preserve_annotations_checkbox.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.options_layout.addWidget(self.preserve_annotations_checkbox)
         self.options_layout.addStretch()  # Add stretch to push checkbox to the left
         self.recording_layout.addLayout(self.options_layout)
@@ -115,9 +158,63 @@ class RecordingControlView(QWidget):
         
         # Set a fixed size policy
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.recording_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         
         # Add recording group to main layout
         self.layout.addWidget(self.recording_group)
+
+    def _freeze_stable_height(self):
+        """Keep the recording panel height stable across idle/waiting/recording states."""
+        stable_height = self.sizeHint().height()
+        if stable_height > 0:
+            self.setMinimumHeight(stable_height)
+            self.setMaximumHeight(stable_height)
+            if self._layout_diagnostics_enabled:
+                self.logger.info(
+                    f"[LAYOUT_DIAG] recording_control stable_height frozen at {stable_height}px"
+                )
+            self.schedule_layout_diagnostic_snapshots("stable_height_frozen")
+
+    def _widget_diag_summary(self, name, widget):
+        """Return a compact one-line summary for recording-control diagnostics."""
+        from utils.layout_diagnostics import widget_summary
+        return widget_summary(name, widget)
+
+    def log_layout_diagnostic(self, reason):
+        """Log internal recording-control geometry and size hints."""
+        if not self._layout_diagnostics_enabled:
+            return
+        duration_text = self.duration_time_edit.time().toString("hh:mm:ss")
+        lines = [
+            (
+                f"[LAYOUT_DIAG] recording_control::{reason} "
+                f"state={self._recording_state} duration={duration_text} "
+                f"button={self.record_button.text()!r} "
+                f"status={self.status_label.text()!r} "
+                f"progressVisible={self.progress_bar.isVisible()}"
+            ),
+            "  " + self._widget_diag_summary("recording_control_view", self),
+            "  " + self._widget_diag_summary("recording_group", self.recording_group),
+            "  " + self._widget_diag_summary("duration_label", self.duration_label),
+            "  " + self._widget_diag_summary("duration_time_edit", self.duration_time_edit),
+            "  " + self._widget_diag_summary("record_button", self.record_button),
+            "  " + self._widget_diag_summary("status_label", self.status_label),
+            "  " + self._widget_diag_summary("progress_bar", self.progress_bar),
+            "  " + self._widget_diag_summary(
+                "preserve_annotations_checkbox",
+                self.preserve_annotations_checkbox
+            ),
+        ]
+        self.logger.info("\n".join(lines))
+
+    def schedule_layout_diagnostic_snapshots(self, reason):
+        """Capture several recording-control snapshots around a state transition."""
+        from utils.layout_diagnostics import schedule_snapshot_burst
+        schedule_snapshot_burst(
+            self.log_layout_diagnostic,
+            reason,
+            enabled=bool(self._layout_diagnostics_enabled),
+        )
     
     def connect_signals(self):
         """Connect widget signals to slots."""
@@ -172,23 +269,34 @@ class RecordingControlView(QWidget):
         """
         self.preserve_annotations_checkbox.setChecked(enabled)
     
+    def _apply_button_state(self, state):
+        """Re-evaluate the record button's stylesheet after a state change."""
+        self.record_button.setProperty("state", state)
+        self.record_button.style().unpolish(self.record_button)
+        self.record_button.style().polish(self.record_button)
+
+    def _apply_status_role(self, role):
+        """Re-evaluate the status label's stylesheet after a state change."""
+        self.status_label.setProperty("role", role)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
     def set_waiting_state(self, duration_seconds):
         """
         Set the view to waiting state.
-        
+
         Args:
             duration_seconds (int): Duration in seconds for the recording
         """
+        self.log_layout_diagnostic("set_waiting_state_before_ui_change")
         self._recording_state = self.STATE_WAITING
         self._duration_seconds = duration_seconds
-        
+
         # Update UI
         self.record_button.setText("Cancel")
-        self.record_button.setStyleSheet(
-            "QPushButton { background-color: #e74c3c; color: white; font-weight: bold; font-size: 14px; padding: 8px 15px; }"
-        )
+        self._apply_button_state("waiting")
         self.status_label.setText("Press any key to start...")
-        self.status_label.setStyleSheet("color: #3498db; font-weight: bold;")
+        self._apply_status_role("waiting")
         
         # Hide progress bar
         self.progress_bar.setVisible(False)
@@ -200,6 +308,14 @@ class RecordingControlView(QWidget):
         # self.preserve_annotations_checkbox.setEnabled(False)  # Removed
         
         self.logger.info(f"Entered waiting state for {duration_seconds} seconds recording")
+        if self._layout_diagnostics_enabled:
+            self.logger.info(
+                "[LAYOUT_DIAG] set_waiting_state "
+                f"sizeH={self.height()} hintH={self.sizeHint().height()} "
+                f"groupH={self.recording_group.height()} progressVisible={self.progress_bar.isVisible()}"
+            )
+        self.log_layout_diagnostic("set_waiting_state_after_ui_change")
+        self.schedule_layout_diagnostic_snapshots("set_waiting_state")
     
     def start_recording(self):
         """
@@ -211,12 +327,14 @@ class RecordingControlView(QWidget):
         if self._recording_state != self.STATE_WAITING:
             return 0
         
+        self.log_layout_diagnostic("start_recording_before_ui_change")
         self._recording_state = self.STATE_RECORDING
-        
+
         # Update UI
+        self._apply_button_state("recording")
         self.status_label.setText("Recording Active")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
-        
+        self._apply_status_role("active")
+
         # Show progress bar
         self.progress_bar.setMaximum(self._duration_seconds)
         self.progress_bar.setValue(self._duration_seconds)
@@ -226,6 +344,14 @@ class RecordingControlView(QWidget):
         self.timed_recording_requested.emit(self._duration_seconds)
         
         self.logger.info(f"Started actual recording for {self._duration_seconds} seconds")
+        if self._layout_diagnostics_enabled:
+            self.logger.info(
+                "[LAYOUT_DIAG] start_recording "
+                f"sizeH={self.height()} hintH={self.sizeHint().height()} "
+                f"groupH={self.recording_group.height()} progressVisible={self.progress_bar.isVisible()}"
+            )
+        self.log_layout_diagnostic("start_recording_after_ui_change")
+        self.schedule_layout_diagnostic_snapshots("start_recording")
         
         return self._duration_seconds
     
@@ -235,10 +361,11 @@ class RecordingControlView(QWidget):
             return
             
         self._recording_state = self.STATE_PAUSED
-        
+
         # Update UI
+        self._apply_button_state("paused")
         self.status_label.setText("Recording Paused")
-        self.status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+        self._apply_status_role("paused")
         
         # Show pause indicator on progress bar
         self.progress_bar.setFormat("PAUSED - Time remaining: %v seconds")
@@ -251,11 +378,12 @@ class RecordingControlView(QWidget):
             return
             
         self._recording_state = self.STATE_RECORDING
-        
+
         # Update UI
+        self._apply_button_state("recording")
         self.status_label.setText("Recording Active")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
-        
+        self._apply_status_role("active")
+
         # Reset progress bar format
         self.progress_bar.setFormat("Time remaining: %v seconds")
         
@@ -263,26 +391,27 @@ class RecordingControlView(QWidget):
     
     def set_idle_state(self):
         """Set the view to idle state."""
+        self.log_layout_diagnostic("set_idle_state_before_ui_change")
         self._recording_state = self.STATE_IDLE
         
         # Update UI
         self.record_button.setText("Start Recording")
-        self.record_button.setStyleSheet(
-            "QPushButton { background-color: #2ecc71; color: white; font-weight: bold; font-size: 14px; padding: 8px 15px; }"
-        )
+        self._apply_button_state("idle")
         self.status_label.setText("Not Recording")
-        self.status_label.setStyleSheet("color: gray;")
-        
+        self._apply_status_role("idle")
+
         # Hide progress bar
         self.progress_bar.setVisible(False)
-        
+
         # Enable duration edit
         self.duration_time_edit.setEnabled(True)
-        
+
         # The preserve annotations checkbox remains enabled throughout
         # self.preserve_annotations_checkbox.setEnabled(True)  # Removed
-        
+
         self.logger.info("Returned to idle state")
+        self.log_layout_diagnostic("set_idle_state_after_ui_change")
+        self.schedule_layout_diagnostic_snapshots("set_idle_state")
     
     def set_complete_state(self):
         """Set the view to recording completed state."""
@@ -290,11 +419,9 @@ class RecordingControlView(QWidget):
         
         # Update UI
         self.record_button.setText("Start Recording")
-        self.record_button.setStyleSheet(
-            "QPushButton { background-color: #2ecc71; color: white; font-weight: bold; font-size: 14px; padding: 8px 15px; }"
-        )
+        self._apply_button_state("complete")
         self.status_label.setText("Recording Complete")
-        self.status_label.setStyleSheet("color: blue;")
+        self._apply_status_role("complete")
         
         # Hide progress bar
         self.progress_bar.setVisible(False)

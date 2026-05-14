@@ -1,13 +1,15 @@
 # views/metrics_config_dialog.py
 import logging
+import os
+import sys
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTabWidget, QWidget, QTableWidget, QTableWidgetItem,
     QHeaderView, QMessageBox, QCheckBox, QComboBox, QLineEdit,
-    QGroupBox, QListWidget, QListWidgetItem, QAbstractItemView,
-    QDialogButtonBox, QFormLayout, QInputDialog, QFrame
+    QGroupBox, QListWidget, QListWidgetItem, QDialogButtonBox, QFormLayout,
+    QInputDialog, QFrame, QFileDialog
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 
 class MetricsConfigDialog(QDialog):
     """

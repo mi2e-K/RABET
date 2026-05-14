@@ -2,8 +2,9 @@
 import json
 import logging
 from pathlib import Path
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, QTimer
 from utils.config_path_manager import ConfigPathManager  # Import the new class
+from defaults import default_action_map
 
 class ActionMapModel(QObject):
     """
@@ -18,6 +19,10 @@ class ActionMapModel(QObject):
     map_changed = Signal()
     active_behaviors_changed = Signal()  # New signal for active behavior changes
     error_occurred = Signal(str)
+
+    mapping_added = Signal(str, str)
+    mapping_updated = Signal(str, str)
+    mapping_removed = Signal(str)  # Emits the behavior name
     
     def __init__(self):
         super().__init__()
@@ -31,7 +36,41 @@ class ActionMapModel(QObject):
         self._action_map = {}
         self._active_behaviors = set()  # Currently active behaviors
         
-        # Try to load default action map
+        # Setup auto-save timer
+        self._auto_save_timer = QTimer()
+        self._auto_save_timer.setSingleShot(True)
+        self._auto_save_timer.timeout.connect(self._auto_save)
+        self._auto_save_pending = False
+        
+        # Flag to track if we've loaded successfully
+        self._loaded_successfully = False
+        
+        # Try to load user's action map or default
+        self._load_action_map()
+        
+        # Don't emit signals during initialization - the view will be updated
+        # when the controller connects the signals
+    
+    def _load_action_map(self):
+        """
+        Load the action map. Priority:
+        1. User's saved action map
+        2. Default action map
+        3. Create new default if nothing exists
+        """
+        # First, try to load user's action map
+        user_map_path = self._config_path_manager.get_action_map_config_path("user_action_map.json")
+        
+        if user_map_path and user_map_path.exists():
+            self.logger.info(f"Loading user action map from {user_map_path}")
+            if self.load_from_json(user_map_path, auto_save=False, emit_signal=False):
+                self.logger.info("Successfully loaded user action map")
+                self._loaded_successfully = True
+                return
+            else:
+                self.logger.warning("Failed to load user action map, trying default")
+        
+        # If no user map, try default
         self._try_load_default_map()
     
     def _try_load_default_map(self):
@@ -44,8 +83,11 @@ class ActionMapModel(QObject):
             
             if config_path and config_path.exists():
                 self.logger.info(f"Found default action map: {config_path}")
-                if self.load_from_json(config_path):
+                if self.load_from_json(config_path, auto_save=False, emit_signal=False):
                     self.logger.info(f"Loaded default action map from {config_path}")
+                    self._loaded_successfully = True
+                    # Save as user map for future sessions
+                    self._schedule_auto_save()
                     return
                 else:
                     self.logger.warning(f"Failed to load default action map from {config_path}")
@@ -58,42 +100,39 @@ class ActionMapModel(QObject):
             self.logger.warning(f"Error loading default action map: {str(e)}")
             
         # If we get here, no valid action map was found
-        # Create a default action map in the configs directory
-        self.logger.info("Creating default action map in configs directory")
+        # Create a default action map
+        self.logger.info("Creating default action map")
         try:
-            # Create a default action map
-            default_map = {
-                "o": "Attack bites",
-                "j": "Sideways threats",
-                "p": "Tail rattles",
-                "q": "Chasing",
-                "a": "Social contact",
-                "e": "Self-grooming",
-                "t": "Locomotion",
-                "r": "Rearing"
-            }
+            # Single source of truth: ``defaults.DEFAULT_ACTION_MAP``.
+            default_map = default_action_map()
+
+            self._action_map = default_map
+            self._loaded_successfully = True
             
-            # Save to the configs directory
-            new_path = self._config_path_manager.get_action_map_config_path("default_action_map.json")
-            if new_path:
-                # Ensure parent directory exists
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                with open(new_path, 'w') as f:
+            # Don't emit signal during initialization
+            
+            # Save both as default and user map
+            default_path = self._config_path_manager.get_action_map_config_path("default_action_map.json")
+            if default_path:
+                default_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(default_path, 'w') as f:
                     json.dump(default_map, f, indent=2)
-                
-                self._action_map = default_map
-                self.map_changed.emit()
-                self.logger.info(f"Created default action map at {new_path}")
+                self.logger.info(f"Created default action map at {default_path}")
+            
+            # Also save as user map
+            self._schedule_auto_save()
+            
         except Exception as e:
             self.logger.error(f"Failed to create default action map: {str(e)}")
     
-    def load_from_json(self, json_path):
+    def load_from_json(self, json_path, auto_save=True, emit_signal=True):
         """
         Load action map from a JSON file.
         
         Args:
             json_path (str): Path to the JSON file
+            auto_save (bool): Whether to trigger auto-save after loading
+            emit_signal (bool): Whether to emit map_changed signal
             
         Returns:
             bool: True if loaded successfully, False otherwise
@@ -115,7 +154,14 @@ class ActionMapModel(QObject):
                     raise ValueError(f"Invalid behavior label for key {key}: {value}")
             
             self._action_map = data
-            self.map_changed.emit()
+            
+            if emit_signal:
+                self.map_changed.emit()
+            
+            # Save as user map if auto_save is enabled (for manual loads)
+            if auto_save:
+                self._schedule_auto_save()
+            
             return True
         except Exception as e:
             error_msg = f"Failed to load action map: {str(e)}"
@@ -135,6 +181,9 @@ class ActionMapModel(QObject):
         """
         try:
             self.logger.info(f"Saving action map to: {json_path}")
+            # Ensure parent directory exists
+            Path(json_path).parent.mkdir(parents=True, exist_ok=True)
+            
             with open(json_path, 'w') as f:
                 json.dump(self._action_map, f, indent=2)
             return True
@@ -143,6 +192,24 @@ class ActionMapModel(QObject):
             self.logger.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
             return False
+    
+    def _schedule_auto_save(self):
+        """Schedule an auto-save operation."""
+        if not self._auto_save_pending:
+            self._auto_save_pending = True
+            self._auto_save_timer.stop()
+            self._auto_save_timer.start(500)  # Save after 500ms of inactivity
+    
+    def _auto_save(self):
+        """Automatically save the current action map to user storage."""
+        self._auto_save_pending = False
+        user_map_path = self._config_path_manager.get_action_map_config_path("user_action_map.json")
+        
+        if user_map_path:
+            if self.save_to_json(user_map_path):
+                self.logger.debug("Auto-saved user action map")
+            else:
+                self.logger.error("Failed to auto-save user action map")
     
     def add_mapping(self, key, behavior):
         """
@@ -172,6 +239,11 @@ class ActionMapModel(QObject):
         self.logger.debug(f"Adding mapping: {key} -> {behavior}")
         self._action_map[key] = behavior
         self.map_changed.emit()
+        self.mapping_added.emit(key, behavior)
+        
+        # Schedule auto-save
+        self._schedule_auto_save()
+        
         return True
     
     def remove_mapping(self, key):
@@ -184,10 +256,24 @@ class ActionMapModel(QObject):
         Returns:
             bool: True if removed successfully, False otherwise
         """
-        if key in self._action_map:
-            self.logger.debug(f"Removing mapping for key: {key}")
+        if key in self._action_map:  # Use correct attribute name
+            behavior = self._action_map[key]  # Get behavior before deletion
+            self.logger.debug(f"Removing mapping for key: {key} -> {behavior}")
+            was_active = key in self._active_behaviors
+            
             del self._action_map[key]
-            self.map_changed.emit()
+            self._active_behaviors.discard(key)
+            
+            # Emit both signals for compatibility
+            self.map_changed.emit()  # Keep existing signal
+            self.mapping_removed.emit(behavior)  # Add new signal for timeline
+            if was_active:
+                self.active_behaviors_changed.emit()
+            
+            # Schedule auto-save
+            self._schedule_auto_save()
+            
+            self.logger.info(f"Removed mapping: {key} -> {behavior}")
             return True
         else:
             self.logger.warning(f"Key not found in action map: {key}")
@@ -266,3 +352,50 @@ class ActionMapModel(QObject):
         if self._active_behaviors:
             self._active_behaviors.clear()
             self.active_behaviors_changed.emit()
+    
+    def is_loaded(self):
+        """
+        Check if action map has been loaded successfully.
+        
+        Returns:
+            bool: True if action map was loaded, False otherwise
+        """
+        return self._loaded_successfully and bool(self._action_map)
+    
+    def initialize_view(self):
+        """
+        Trigger initial view update after controller is connected.
+        This should be called after all signal connections are established.
+        """
+        if self._action_map:
+            self.map_changed.emit()
+            self.logger.debug("Triggered initial view update")
+    
+    def reset_to_default(self):
+        """
+        Reset action map to default configuration.
+        
+        Returns:
+            bool: True if reset successfully, False otherwise
+        """
+        try:
+            # Load default action map
+            default_path = self._config_path_manager.get_action_map_config_path("default_action_map.json")
+            
+            if default_path and default_path.exists():
+                if self.load_from_json(default_path, auto_save=True):
+                    self.logger.info("Reset action map to default")
+                    return True
+                    
+            # If default doesn't exist, use the centralised fallback.
+            self._action_map = default_action_map()
+            
+            self.map_changed.emit()
+            self._schedule_auto_save()
+            
+            self.logger.info("Reset action map to hardcoded default")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reset to default: {str(e)}")
+            return False

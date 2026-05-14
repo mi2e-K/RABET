@@ -20,6 +20,10 @@ class AnnotationController(QObject):
         self._video_model = video_model
         self._main_window = main_window
         self._timeline_view = timeline_view
+
+        # Optional ConfigManager reference used for recent-files tracking.
+        # AppController calls ``set_config_manager`` once construction is done.
+        self.config_manager = None
         
         # Timer for timed recording
         self._recording_timer = QTimer(self)
@@ -61,6 +65,9 @@ class AnnotationController(QObject):
         self._current_video_id = None
         self._auto_export_path = None
         
+        # Auto-save preference (default: True)
+        self._auto_save_enabled = True
+        
         # Connect signals
         self._connect_signals()
     
@@ -95,6 +102,16 @@ class AnnotationController(QObject):
         recording_control_view.timed_recording_canceled.connect(self.stop_timed_recording)
         recording_control_view.preserve_annotations_changed.connect(self.set_preserve_annotations)
     
+    def _record_recent_annotation(self, file_path):
+        """Append a file path to the Recent Annotations list."""
+        if self.config_manager is None or not file_path:
+            return
+        try:
+            self.config_manager.add_recent_file('annotations', file_path)
+            self.config_manager.save_config()
+        except Exception as exc:
+            self.logger.warning(f"Failed to record recent annotation: {exc}")
+
     # Project mode methods
     def set_project_mode(self, enabled):
         """
@@ -118,13 +135,29 @@ class AnnotationController(QObject):
     
     def set_current_video_id(self, video_id):
         """
-        Set the ID of the current video being annotated.
+        Set the project video reference of the current video being annotated.
         
         Args:
-            video_id (str): ID of the video (basename without extension)
+            video_id (str): Stored project video reference or legacy video ID
         """
         self._current_video_id = video_id
         self.logger.info(f"Set current video ID: {video_id}")
+
+    def _is_path_in_project(self, file_path):
+        """Check whether a path resolves inside the current project directory."""
+        if not self._project_model:
+            return False
+
+        project_path = self._project_model.get_project_path()
+        if not project_path:
+            return False
+
+        try:
+            normalized_file = os.path.normcase(os.path.abspath(file_path))
+            normalized_project = os.path.normcase(os.path.abspath(project_path))
+            return os.path.commonpath([normalized_file, normalized_project]) == normalized_project
+        except ValueError:
+            return False
     
     def set_auto_export_path(self, export_path):
         """
@@ -146,6 +179,16 @@ class AnnotationController(QObject):
         self._preserve_annotations_on_rewind = enabled
         self.logger.info(f"Preserve annotations on rewind: {enabled}")
     
+    def set_auto_save_enabled(self, enabled):
+        """
+        Set whether to automatically save annotations when recording completes.
+        
+        Args:
+            enabled (bool): Whether to enable auto-save
+        """
+        self._auto_save_enabled = enabled
+        self.logger.info(f"Auto-save enabled: {enabled}")
+    
     @Slot(bool)
     def _on_playback_state_changed(self, is_playing):
         """
@@ -160,6 +203,14 @@ class AnnotationController(QObject):
             return
             
         self.logger.debug(f"Video playback state changed: is_playing={is_playing}")
+        
+        # Ensure timeline controls remain visible during state changes. The
+        # singleShot below already returns control to Qt's event loop, which
+        # naturally flushes pending paint events - an explicit
+        # ``processEvents()`` call was redundant and could cause re-entrant
+        # signal handling.
+        if hasattr(self._timeline_view, 'ensure_controls_visible'):
+            QTimer.singleShot(10, self._timeline_view.ensure_controls_visible)
         
         # Only perform sync if recording is active
         if self._is_recording:
@@ -185,6 +236,10 @@ class AnnotationController(QObject):
         """Complete state synchronization process."""
         self._synchronizing_states = False
         self.logger.debug("State synchronization complete")
+        
+        # CRITICAL FIX: Final check to ensure controls are visible
+        if hasattr(self._timeline_view, 'ensure_controls_visible'):
+            self._timeline_view.ensure_controls_visible()
     
     @Slot(int)
     def on_position_changed(self, position):
@@ -194,31 +249,43 @@ class AnnotationController(QObject):
         Args:
             position (int): New position in milliseconds
         """
-        # Update timeline view
+        # Always update timeline position for smooth playback indicator.
+        # ``set_position`` repaints the canvas, and active events (offset=None)
+        # are drawn against ``_current_position`` automatically, so we do NOT
+        # need to rebuild the full event list every frame here. Triggering
+        # ``should_update`` is still useful to keep the throttle counter
+        # advancing for any code paths that depend on it.
         self._timeline_view.set_position(position)
-        
+        self._timeline_view.should_update()
+
         # Check for rewind during any recording state (paused or active)
         if self._is_recording:
             # If position changed backward (rewind operation)
             # Use a smaller threshold (100ms) to catch more rewind operations
             if self._last_position - position > 100:
                 self.logger.debug(f"Rewind detected: {self._last_position}ms -> {position}ms")
-                
+
                 # Only remove annotations if preservation is not enabled
                 if not self._preserve_annotations_on_rewind:
                     self.remove_future_annotations(position)
-        
+
         # Update last position
         self._last_position = position
-        
-        # If there are active events, we need to update the timeline to reflect
-        # the current position as the temporary end point
-        if self._annotation_model.get_active_events() and self._is_recording and not self._is_recording_paused:
-            self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
-        
+
         # If we're recording but not paused, update recording time
         if self._is_recording and not self._is_recording_paused:
             self._update_recording_time_display()
+
+        # Ensure controls remain visible during position updates. Reuse a
+        # single QTimer (parented to self) instead of leaking a new one.
+        if hasattr(self._timeline_view, 'ensure_controls_visible'):
+            if not hasattr(self, '_ensure_visible_timer'):
+                self._ensure_visible_timer = QTimer(self)
+                self._ensure_visible_timer.setSingleShot(True)
+                self._ensure_visible_timer.timeout.connect(self._timeline_view.ensure_controls_visible)
+
+            # Reset timer to call after 50ms of no position changes
+            self._ensure_visible_timer.start(50)
     
     def remove_future_annotations(self, current_position=None):
         """
@@ -249,7 +316,6 @@ class AnnotationController(QObject):
         for i, event in enumerate(events):
             # Check for RecordingStart event
             if event.behavior == "RecordingStart":
-                recording_start_index = i
                 recording_start_event = event
                 continue
                 
@@ -306,22 +372,27 @@ class AnnotationController(QObject):
         if self._preserve_annotations_on_rewind:
             self.logger.debug("Annotations preserved on rewind (toggle enabled)")
             return False
-            
+
+        # Discard active (still-pressed) events whose onset is now in the
+        # "future" relative to the rewound position. Without this step those
+        # events would later be finalised with a wildly inconsistent onset.
+        discarded_active = 0
+        for key, active_event in list(self._annotation_model.get_active_events().items()):
+            if active_event.onset > current_position:
+                if self._annotation_model.discard_active_event(key):
+                    self._key_press_times.pop(key, None)
+                    discarded_active += 1
+
+        if discarded_active:
+            self.logger.info(
+                f"Discarded {discarded_active} active event(s) whose onset was "
+                f"after the rewind point ({current_position}ms)"
+            )
+
         # First truncate annotations that overlap with the current position
         truncated_count = 0
         for i, event in annotations_to_truncate:
-            # Create a copy of the event with updated offset
-            from models.annotation_model import BehaviorEvent
-            truncated_event = BehaviorEvent(
-                event.key,
-                event.behavior,
-                event.onset,
-                current_position,  # Truncate to current position
-                event.system_onset_time,
-                time.time()  # New system time for offset
-            )
-            
-            # Replace the old event with the truncated one
+            # Replace the old event's offset; AnnotationModel handles the rest.
             if self._annotation_model.update_event(i, offset=current_position):
                 truncated_count += 1
                 self.logger.debug(f"Truncated event {event.behavior} at position {current_position}ms")
@@ -357,14 +428,16 @@ class AnnotationController(QObject):
     def _on_video_loaded(self, video_path):
         """
         Handle video loaded event.
-        
+
         Args:
             video_path (str): Path to the loaded video
         """
         self._current_video_path = video_path
         self._last_position = 0
         self.logger.debug(f"Video loaded: {video_path}")
-        
+
+        has_existing_events = bool(self._annotation_model.get_all_events())
+
         # In project mode, try to load existing annotations
         if self._project_mode and self._auto_export_path and os.path.exists(self._auto_export_path):
             # Ask if user wants to load existing annotations
@@ -374,27 +447,50 @@ class AnnotationController(QObject):
                 f"Existing annotations found for this video. Load them?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
-            
+
             if result == QMessageBox.StandardButton.Yes:
-                # Clear existing annotations first
+                # Clear in-memory annotations first, then import saved ones
                 self._annotation_model.clear_events()
-                # Import existing annotations
                 self._annotation_model.import_from_csv(self._auto_export_path)
                 self.logger.info(f"Loaded existing annotations from {self._auto_export_path}")
-                
+
                 # Update timeline
                 self._timeline_view.set_events(self._annotation_model.get_all_events())
-            else:
-                # New feature: Clear existing annotations when a new video is loaded
-                self.logger.info("Clearing existing annotations due to new video load")
-                self._annotation_model.clear_events()
-                self._main_window.set_status_message("Annotations cleared for new video")
+            elif has_existing_events:
+                # User declined to load saved annotations. Confirm before
+                # discarding any in-memory annotations from a previous session.
+                discard = QMessageBox.question(
+                    self._main_window,
+                    "Discard Existing Annotations?",
+                    "Discard the annotations currently in memory? They are not "
+                    "associated with this video.\n\nChoose No to keep them as-is.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if discard == QMessageBox.StandardButton.Yes:
+                    self.logger.info("User confirmed clearing existing annotations (project mode)")
+                    self._annotation_model.clear_events()
+                    self._main_window.set_status_message("Annotations cleared for new video")
+                else:
+                    self.logger.info("User kept existing annotations (project mode)")
         else:
-            # New feature: Clear existing annotations when a new video is loaded
-            if self._annotation_model.get_all_events():
-                self.logger.info("Clearing existing annotations due to new video load")
-                self._annotation_model.clear_events()
-                self._main_window.set_status_message("Annotations cleared for new video")
+            # Non-project mode: ask before discarding any pre-existing annotations.
+            if has_existing_events:
+                discard = QMessageBox.question(
+                    self._main_window,
+                    "Discard Existing Annotations?",
+                    "Annotations from the previous video are still loaded. "
+                    "Discard them to start fresh for the new video?\n\n"
+                    "Choose No to keep them (e.g. if you want to export them first).",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if discard == QMessageBox.StandardButton.Yes:
+                    self.logger.info("User confirmed clearing existing annotations")
+                    self._annotation_model.clear_events()
+                    self._main_window.set_status_message("Annotations cleared for new video")
+                else:
+                    self.logger.info("User kept existing annotations")
         
         # Update frame duration based on the loaded video
         if hasattr(self._video_model, '_frame_duration_ms'):
@@ -413,10 +509,10 @@ class AnnotationController(QObject):
         if not self._video_model.is_playing() or not self._is_recording or self._is_recording_paused:
             return
         
-        # Get current video position and system time
+        # Get current video position and monotonic system time
         position = self._video_model.get_position()
-        system_time = time.time()
-        
+        system_time = time.monotonic()
+
         # Store both position and system time
         self._key_press_times[key] = (position, system_time)
         
@@ -430,22 +526,39 @@ class AnnotationController(QObject):
     def on_key_released(self, key):
         """
         Handle key release event.
-        
+
+        The acceptance checks mirror ``on_key_pressed`` so that a key press
+        that was admitted is always finalised by exactly one of the paths
+        below, regardless of whether the user paused playback between the
+        press and the release. Previously the asymmetry meant that releases
+        could fire with an offset captured *after* an auto-pause, producing
+        misleading duration values.
+
         Args:
             key (str): Key character
         """
-        # Only process if video is loaded and recording is active and not paused
-        if self._video_model.get_duration() == 0 or not self._is_recording or self._is_recording_paused:
-            return
-        
-        # Get current video position and system time
-        current_position = self._video_model.get_position()
-        current_system_time = time.time()
-        
-        # Check if we have a stored press time for this key
+        # Drop releases entirely when nothing was tracked - keeps idle key
+        # events (Tab, modifier keys, etc.) from generating warnings.
         if key not in self._key_press_times:
-            self.logger.warning(f"No key press recorded for key {key}")
             return
+
+        # If recording is not currently active, finalise the event using the
+        # information captured at press time so that onset/offset remain
+        # internally consistent. This mirrors the press-time gating in
+        # ``on_key_pressed``.
+        if (self._video_model.get_duration() == 0
+                or not self._is_recording
+                or self._is_recording_paused):
+            press_position, _press_system_time = self._key_press_times.pop(key)
+            # Ensure the event satisfies the minimum-duration requirement.
+            self._annotation_model.end_event(
+                key, press_position + self._frame_duration_ms
+            )
+            return
+
+        # Get current video position and monotonic system time
+        current_position = self._video_model.get_position()
+        current_system_time = time.monotonic()
             
         # Get the stored position and system time
         press_position, press_system_time = self._key_press_times[key]
@@ -601,6 +714,10 @@ class AnnotationController(QObject):
         
         # Update UI
         self._main_window.set_status_message(f"Recording started. Duration: {duration_seconds} seconds")
+        if hasattr(self._main_window, 'schedule_layout_diagnostic_snapshots'):
+            self._main_window.schedule_layout_diagnostic_snapshots("annotation_controller_start_timed_recording")
+        if hasattr(self._main_window, 'schedule_annotation_layout_stabilization'):
+            self._main_window.schedule_annotation_layout_stabilization()
         self.logger.info(f"Started timed recording for {duration_seconds} seconds")
         
         # Initial update of recording time display
@@ -632,10 +749,9 @@ class AnnotationController(QObject):
             self._main_window.recording_control_view.set_idle_state()
             self.logger.info("Recording stopped manually")
             
-            # Automatically export annotations if we have a video path
-            # and auto-export hasn't been skipped and we're in project mode
-            if self._current_video_path and not self._skip_auto_export and self._project_mode and self._auto_export_path:
-                self._auto_export_annotations()
+            # Automatically export annotations
+            if not self._skip_auto_export:
+                self._auto_save_annotations()
             
             # Reset the skip flag
             self._skip_auto_export = False
@@ -804,12 +920,91 @@ class AnnotationController(QObject):
         self._main_window.recording_control_view.set_complete_state()
         self.logger.info("Recording completed automatically")
         
-        # Automatically export annotations if in project mode
-        if self._project_mode and self._auto_export_path and not self._skip_auto_export:
-            self._auto_export_annotations()
+        # Automatically save annotations
+        if not self._skip_auto_export:
+            self._auto_save_annotations()
             
         # Reset the skip flag
         self._skip_auto_export = False
+    
+    def _auto_save_annotations(self):
+        """
+        Automatically save annotations when recording completes.
+        Works in both project mode and non-project mode.
+        """
+        # Don't save if no annotations exist
+        if not self._annotation_model.get_all_events():
+            self.logger.info("No annotations to save")
+            return
+        
+        # Don't save if auto-save is disabled
+        if not self._auto_save_enabled:
+            self.logger.info("Auto-save is disabled")
+            return
+        
+        # In project mode, use the auto-export path
+        if self._project_mode and self._auto_export_path:
+            self._auto_export_annotations()
+        else:
+            # In non-project mode, save to default location based on video filename
+            if self._current_video_path:
+                self._auto_export_non_project_annotations()
+    
+    def _auto_export_non_project_annotations(self):
+        """Automatically export annotations in non-project mode."""
+        if not self._current_video_path:
+            self.logger.warning("No video path available for auto-export")
+            return
+        
+        try:
+            # Generate default export path based on video filename
+            video_dir = os.path.dirname(self._current_video_path)
+            video_name = os.path.splitext(os.path.basename(self._current_video_path))[0]
+            
+            # Create timestamp for uniqueness if file exists
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Try without timestamp first
+            export_path = os.path.join(video_dir, f"{video_name}_annotations.csv")
+            
+            # If file exists, add timestamp
+            if os.path.exists(export_path):
+                export_path = os.path.join(video_dir, f"{video_name}_annotations_{timestamp}.csv")
+            
+            # Export annotations
+            if self._annotation_model.export_to_csv(export_path, include_header=True):
+                self._record_recent_annotation(export_path)
+                self._main_window.set_status_message(f"Annotations auto-saved to {os.path.basename(export_path)}")
+                self.logger.info(f"Annotations automatically saved to {export_path}")
+                
+                # Show information message that auto-closes after 2 seconds
+                AutoCloseMessageBox.information(
+                    self._main_window,
+                    "Auto-Save Successful",
+                    f"Annotations have been automatically saved to:\n{export_path}",
+                    timeout=2000  # Auto-close after 2 seconds
+                )
+            else:
+                self._main_window.set_status_message("Failed to auto-save annotations")
+                self.logger.error(f"Failed to auto-save annotations to {export_path}")
+                
+                # Prompt user to save manually
+                QMessageBox.warning(
+                    self._main_window,
+                    "Auto-Save Failed",
+                    "Failed to automatically save annotations.\nPlease save manually using File > Export Annotations."
+                )
+        except Exception as e:
+            self._main_window.set_status_message(f"Error auto-saving annotations: {str(e)}")
+            self.logger.error(f"Error in auto-save: {str(e)}", exc_info=True)
+            
+            # Prompt user to save manually
+            QMessageBox.warning(
+                self._main_window,
+                "Auto-Save Error",
+                f"Error auto-saving annotations: {str(e)}\nPlease save manually using File > Export Annotations."
+            )
     
     def _auto_export_annotations(self):
         """Automatically export annotations to the project directory."""
@@ -822,6 +1017,7 @@ class AnnotationController(QObject):
             
             # Export annotations
             if self._annotation_model.export_to_csv(self._auto_export_path, include_header=True):
+                self._record_recent_annotation(self._auto_export_path)
                 self._main_window.set_status_message(f"Annotations exported to {self._auto_export_path}")
                 self.logger.info(f"Annotations automatically exported to {self._auto_export_path}")
                 
@@ -835,8 +1031,10 @@ class AnnotationController(QObject):
                 
                 # Update the project if in project mode
                 if self._project_model:
-                    # Get relative path for proper project tracking
-                    project_path = self._project_model.get_project_path()
+                    # Compute the relative path used for project tracking. The
+                    # absolute project root used to be kept in a local
+                    # ``project_path`` variable; it is no longer needed since
+                    # ``add_annotation`` resolves the project root itself.
                     rel_path = os.path.join("annotations", os.path.basename(self._auto_export_path))
                     
                     # Add annotation to project if not already there
@@ -875,33 +1073,47 @@ class AnnotationController(QObject):
             video_name = os.path.splitext(os.path.basename(self._current_video_path))[0]
             default_export_path = os.path.join(video_dir, f"{video_name}_annotations.csv")
         
-        # Get save file path
-        file_path, _ = QFileDialog.getSaveFileName(
-            self._main_window, "Export Annotations", default_export_path, "CSV Files (*.csv)"
-        )
-        
-        if file_path:
+        # Get save file path, looping until the user picks a non-conflicting
+        # filename or cancels. Using a loop (instead of recursion) keeps the
+        # call stack bounded if the user repeatedly declines to overwrite.
+        file_path = None
+        current_default = default_export_path
+        while True:
+            chosen_path, _ = QFileDialog.getSaveFileName(
+                self._main_window,
+                "Export Annotations",
+                current_default,
+                "CSV Files (*.csv)",
+            )
+            if not chosen_path:
+                return  # User cancelled
+
             # Add .csv extension if not present
-            if not file_path.lower().endswith('.csv'):
-                file_path += '.csv'
-            
+            if not chosen_path.lower().endswith('.csv'):
+                chosen_path += '.csv'
+
             # Check if file already exists
-            if os.path.exists(file_path):
+            if os.path.exists(chosen_path):
                 result = QMessageBox.question(
                     self._main_window,
                     "File Already Exists",
-                    f"The file {os.path.basename(file_path)} already exists.\nDo you want to overwrite it?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    f"The file {os.path.basename(chosen_path)} already exists.\nDo you want to overwrite it?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
-                
+
                 if result == QMessageBox.StandardButton.No:
-                    # Offer to choose a different filename
+                    # Re-open the dialog so the user can pick another name.
                     self.logger.info("User chose not to overwrite file. Reopening save dialog.")
-                    self.export_annotations_dialog()
-                    return
-            
+                    current_default = chosen_path
+                    continue
+
+            file_path = chosen_path
+            break
+
+        if file_path:
             # Export annotations
             if self._annotation_model.export_to_csv(file_path):
+                self._record_recent_annotation(file_path)
                 self._main_window.set_status_message(f"Annotations exported to {file_path}")
                 
                 # Show information message that auto-closes after 1.5 seconds
@@ -914,10 +1126,8 @@ class AnnotationController(QObject):
                 
                 # If in project mode, check if we need to update the project
                 if self._project_mode and self._project_model:
-                    project_path = self._project_model.get_project_path()
-                    
                     # If not saved in project directory, ask if user wants to add to project
-                    if not file_path.startswith(project_path):
+                    if not self._is_path_in_project(file_path):
                         result = QMessageBox.question(
                             self._main_window,
                             "Add to Project",
@@ -982,6 +1192,7 @@ class AnnotationController(QObject):
         if file_path:
             # Import annotations
             if self._annotation_model.import_from_csv(file_path):
+                self._record_recent_annotation(file_path)
                 self._main_window.set_status_message(f"Annotations imported from {file_path}")
                 
                 # Update timeline with imported events
@@ -1005,8 +1216,7 @@ class AnnotationController(QObject):
                         
                         if result == QMessageBox.StandardButton.Yes:
                             # Determine if file should be copied
-                            project_path = self._project_model.get_project_path()
-                            copy_to_project = not file_path.startswith(project_path)
+                            copy_to_project = not self._is_path_in_project(file_path)
                             
                             # Add to project
                             self._project_model.add_annotation(file_path, copy_to_project)
@@ -1014,6 +1224,47 @@ class AnnotationController(QObject):
             else:
                 self._main_window.set_status_message("Failed to import annotations")
     
+    @Slot()
+    def undo_last_annotation(self):
+        """
+        Remove the most recently recorded annotation.
+
+        Triggered by ``Edit -> Undo Last Annotation`` / Ctrl+Z. Skips the
+        synthetic ``RecordingStart`` marker so the user can keep undoing real
+        events without ever wiping the recording session itself. The model
+        emits ``annotation_removed`` so the timeline and project status
+        update automatically.
+        """
+        events = self._annotation_model.get_all_events()
+        if not events:
+            self._main_window.set_status_message("Nothing to undo.")
+            return
+
+        # Find the most recent index that isn't the RecordingStart marker.
+        target_index = -1
+        for i in range(len(events) - 1, -1, -1):
+            if events[i].behavior != "RecordingStart":
+                target_index = i
+                break
+
+        if target_index < 0:
+            self._main_window.set_status_message(
+                "Only the recording-start marker remains; nothing to undo."
+            )
+            return
+
+        removed_event = events[target_index]
+        if self._annotation_model.remove_event(target_index):
+            self.logger.info(
+                f"Undid annotation #{target_index}: {removed_event.behavior} "
+                f"({removed_event.onset}-{removed_event.offset}ms)"
+            )
+            self._main_window.set_status_message(
+                f"Undid: {removed_event.behavior}"
+            )
+        else:
+            self.logger.warning(f"Failed to undo annotation at index {target_index}")
+
     @Slot()
     def clear_annotations(self):
         """Clear all annotations after confirmation."""

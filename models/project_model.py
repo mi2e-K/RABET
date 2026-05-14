@@ -1,5 +1,5 @@
 # models/project_model.py - Updated for enhanced video management and annotation tracking
-import json
+import hashlib
 import logging
 import os
 import random
@@ -125,6 +125,7 @@ class ProjectModel(QObject):
         """
         try:
             self.logger.info(f"Loading project from: {project_path}")
+            self._is_modified = False
             
             project_dir = Path(project_path)
             config_file = project_dir / "project.json"
@@ -153,6 +154,8 @@ class ProjectModel(QObject):
             self._project_path = str(project_dir)
             self._project_name = self._project_config.get("name", 
                                                           project_dir.name)
+
+            self._migrate_video_annotation_status()
             
             # Update annotation status based on existing annotation files
             self._update_annotation_status()
@@ -178,41 +181,165 @@ class ProjectModel(QObject):
         This ensures backward compatibility with older projects.
         """
         try:
-            # Ensure the video_annotation_status field exists
-            if "video_annotation_status" not in self._project_config:
-                self._project_config["video_annotation_status"] = {}
-                self._is_modified = True
-            
-            # Get all annotation files
+            status_map = self._project_config.setdefault("video_annotation_status", {})
             annotation_files = self._project_config.get("annotations", [])
-            
-            # Map to store base filenames of annotations
-            annotation_basenames = set()
+            videos = self._project_config.get("videos", [])
+
+            matched_videos = set()
+            ambiguous_legacy_ids = set()
+
             for annotation_path in annotation_files:
-                basename = os.path.splitext(os.path.basename(annotation_path))[0]
-                # Remove '_annotations' suffix if present
-                if basename.endswith("_annotations"):
-                    basename = basename[:-12]
-                annotation_basenames.add(basename)
-            
-            # Check each video
-            for video_path in self._project_config.get("videos", []):
-                video_id = self._get_video_id(video_path)
-                
-                # If video doesn't have a status yet or status is "not_annotated"
-                current_status = self._project_config["video_annotation_status"].get(video_id, "not_annotated")
-                if current_status == "not_annotated":
-                    # Check if an annotation file with matching name exists
-                    if video_id in annotation_basenames:
-                        self._project_config["video_annotation_status"][video_id] = "annotated"
+                annotation_base = os.path.splitext(os.path.basename(annotation_path))[0]
+                if annotation_base.endswith("_annotations"):
+                    annotation_base = annotation_base[:-12]
+
+                matches = self._find_video_matches_for_annotation_base_name(annotation_base)
+                if len(matches) == 1:
+                    matched_videos.add(matches[0])
+                elif len(matches) > 1:
+                    ambiguous_legacy_ids.add(annotation_base)
+                    if status_map.get(annotation_base) != "annotated":
+                        status_map[annotation_base] = "annotated"
                         self._is_modified = True
-                        self.logger.info(f"Updated annotation status for video {video_id} to 'annotated'")
-            
+                    self.logger.warning(
+                        "Annotation basename '%s' matches multiple videos; preserving legacy shared status",
+                        annotation_base,
+                    )
+
+            valid_video_ids = {self._get_video_id(video_path) for video_path in videos}
+            stale_ids = [key for key in list(status_map.keys()) if "__" in key and key not in valid_video_ids]
+            for stale_id in stale_ids:
+                del status_map[stale_id]
+                self._is_modified = True
+
+            for video_path in videos:
+                video_id = self._get_video_id(video_path)
+                legacy_id = self._get_legacy_video_id(video_path)
+
+                if video_path in matched_videos:
+                    desired_status = "annotated"
+                elif legacy_id in ambiguous_legacy_ids and video_id not in status_map:
+                    continue
+                else:
+                    desired_status = "not_annotated"
+
+                if status_map.get(video_id) != desired_status:
+                    status_map[video_id] = desired_status
+                    self._is_modified = True
+                    self.logger.info(
+                        "Updated annotation status for video %s to '%s'",
+                        video_id,
+                        desired_status,
+                    )
+
             if self._is_modified:
                 self.logger.info("Updated annotation status based on existing files")
         except Exception as e:
             self.logger.error(f"Error updating annotation status: {str(e)}")
-    
+
+    def _migrate_video_annotation_status(self):
+        """
+        Migrate legacy basename-based status keys to stable per-video IDs when
+        the mapping is unambiguous.
+        """
+        status_map = self._project_config.setdefault("video_annotation_status", {})
+        videos = self._project_config.get("videos", [])
+        legacy_counts = {}
+
+        for video_path in videos:
+            legacy_id = self._get_legacy_video_id(video_path)
+            legacy_counts[legacy_id] = legacy_counts.get(legacy_id, 0) + 1
+
+        duplicate_legacy_ids = {
+            legacy_id for legacy_id, count in legacy_counts.items() if count > 1
+        }
+
+        migrated_status = {}
+        for video_path in videos:
+            video_id = self._get_video_id(video_path)
+            legacy_id = self._get_legacy_video_id(video_path)
+
+            if video_id in status_map:
+                migrated_status[video_id] = status_map[video_id]
+            elif legacy_id in status_map and legacy_id not in duplicate_legacy_ids:
+                migrated_status[video_id] = status_map[legacy_id]
+
+        for key, value in status_map.items():
+            if "__" not in key and key in duplicate_legacy_ids:
+                migrated_status[key] = value
+
+        if migrated_status != status_map:
+            self._project_config["video_annotation_status"] = migrated_status
+            self._is_modified = True
+
+    def _normalize_video_reference(self, video_path):
+        """Normalize a stored or absolute video reference for stable hashing."""
+        video_path = str(video_path)
+        if self._project_path and not os.path.isabs(video_path):
+            video_path = os.path.join(self._project_path, video_path)
+
+        return os.path.normcase(os.path.normpath(os.path.abspath(video_path)))
+
+    def _get_legacy_video_id(self, video_path):
+        """Get the legacy basename-based identifier for a video."""
+        return os.path.splitext(os.path.basename(str(video_path)))[0]
+
+    def _get_video_by_exact_id(self, video_id):
+        """Return the stored video path matching an exact internal ID."""
+        for video_path in self._project_config.get("videos", []):
+            if self._get_video_id(video_path) == video_id:
+                return video_path
+        return None
+
+    def _resolve_video_reference(self, video_reference):
+        """
+        Resolve a stored path, absolute path, or legacy/current video ID to the
+        stored project video reference.
+        """
+        if not self._project_path or video_reference is None:
+            return None
+
+        reference = str(video_reference)
+        videos = self._project_config.get("videos", [])
+
+        if reference in videos:
+            return reference
+
+        normalized_reference = self._normalize_video_reference(reference)
+        for video_path in videos:
+            if self._normalize_video_reference(video_path) == normalized_reference:
+                return video_path
+
+        exact_match = self._get_video_by_exact_id(reference)
+        if exact_match:
+            return exact_match
+
+        legacy_matches = [
+            video_path for video_path in videos
+            if self._get_legacy_video_id(video_path) == reference
+        ]
+        if len(legacy_matches) == 1:
+            return legacy_matches[0]
+        if len(legacy_matches) > 1:
+            self.logger.warning(
+                "Ambiguous legacy video ID '%s' matches multiple project videos",
+                reference,
+            )
+
+        return None
+
+    def _find_video_matches_for_annotation_base_name(self, annotation_base_name):
+        """Find project videos that match an annotation basename."""
+        exact_match = self._get_video_by_exact_id(annotation_base_name)
+        if exact_match:
+            return [exact_match]
+
+        return [
+            video_path
+            for video_path in self._project_config.get("videos", [])
+            if self._get_legacy_video_id(video_path) == annotation_base_name
+        ]
+
     def _get_video_id(self, video_path):
         """
         Get a unique identifier for a video from its path.
@@ -221,9 +348,18 @@ class ProjectModel(QObject):
             video_path (str): Path to the video file
             
         Returns:
-            str: Video identifier (basename without extension)
+            str: Stable video identifier derived from the normalized path
         """
-        return os.path.splitext(os.path.basename(video_path))[0]
+        legacy_id = self._get_legacy_video_id(video_path)
+        normalized_path = self._normalize_video_reference(video_path)
+        digest = hashlib.sha1(normalized_path.encode('utf-8')).hexdigest()[:12]
+        return f"{legacy_id}__{digest}"
+
+    def get_video_id(self, video_path):
+        """Get the internal video ID for a stored path, absolute path, or video ID."""
+        resolved_reference = self._resolve_video_reference(video_path)
+        target = resolved_reference if resolved_reference is not None else video_path
+        return self._get_video_id(target)
     
     def save_project(self):
         """
@@ -352,7 +488,7 @@ class ProjectModel(QObject):
             self._project_config["videos"].append(rel_path)
             
             # Initialize annotation status for this video
-            video_id = self._get_video_id(video_path)
+            video_id = self._get_video_id(rel_path)
             if "video_annotation_status" not in self._project_config:
                 self._project_config["video_annotation_status"] = {}
             self._project_config["video_annotation_status"][video_id] = "not_annotated"
@@ -427,17 +563,23 @@ class ProjectModel(QObject):
                 base_name = os.path.splitext(os.path.basename(annotation_path))[0]
                 if base_name.endswith("_annotations"):
                     base_name = base_name[:-12]
-                
-                # Update annotation status for the corresponding video
-                if "video_annotation_status" not in self._project_config:
-                    self._project_config["video_annotation_status"] = {}
-                
-                # Mark the video as annotated
-                self._project_config["video_annotation_status"][base_name] = "annotated"
-                self._is_modified = True
-                
-                self.logger.debug(f"Updated annotation status for video: {base_name}")
-            
+
+                matching_videos = self._find_video_matches_for_annotation_base_name(base_name)
+                if len(matching_videos) == 1:
+                    self.set_video_annotation_status(matching_videos[0], "annotated")
+                elif len(matching_videos) > 1:
+                    self._project_config.setdefault("video_annotation_status", {})[base_name] = "annotated"
+                    self._is_modified = True
+                    self.logger.warning(
+                        "Annotation '%s' matches multiple videos; preserving shared legacy status",
+                        annotation_path.name,
+                    )
+                else:
+                    self.logger.warning(
+                        "Could not match annotation '%s' to a project video",
+                        annotation_path.name,
+                    )
+             
             self.logger.debug(f"Added annotation to project: {rel_path}")
             return True
             
@@ -601,34 +743,24 @@ class ProjectModel(QObject):
                 self.error_occurred.emit(error_msg)
                 return False
             
-            # If removing a video, update its annotation status
-            if file_type == "videos":
-                video_id = self._get_video_id(file_path)
-                if "video_annotation_status" in self._project_config and video_id in self._project_config["video_annotation_status"]:
-                    del self._project_config["video_annotation_status"][video_id]
-            
-            # If removing an annotation, update the corresponding video's annotation status
-            elif file_type == "annotations":
-                base_name = os.path.splitext(os.path.basename(file_path))[0]
-                if base_name.endswith("_annotations"):
-                    base_name = base_name[:-12]
-                
-                if "video_annotation_status" in self._project_config and base_name in self._project_config["video_annotation_status"]:
-                    self._project_config["video_annotation_status"][base_name] = "not_annotated"
-            
             # Remove file from project
             self._project_config[file_type].remove(file_path)
             self._is_modified = True
             
             # If file is in project directory, delete it
-            if file_path.startswith(file_type):
+            stored_path = Path(file_path)
+            if stored_path.parts and stored_path.parts[0] == file_type:
                 full_path = os.path.join(self._project_path, file_path)
                 try:
                     Path(full_path).unlink()
-                except:
+                except Exception:
                     # Don't fail if file can't be deleted
                     self.logger.warning(f"Failed to delete file: {full_path}")
-            
+
+            if file_type in {"videos", "annotations"}:
+                self._migrate_video_annotation_status()
+                self._update_annotation_status()
+             
             self.logger.debug(f"Removed {file_type} from project: {file_path}")
             return True
             
@@ -771,8 +903,8 @@ class ProjectModel(QObject):
         Returns:
             dict or str: If video_path is specified, returns the status string
                         ("annotated" or "not_annotated").
-                        If video_path is None, returns a dictionary of all video
-                        annotation statuses {video_id: status}.
+                        If video_path is None, returns a dictionary of
+                        {stored_video_path: status}.
         """
         if not self._project_path:
             return {} if video_path is None else "not_annotated"
@@ -784,11 +916,22 @@ class ProjectModel(QObject):
         
         # Return status for all videos
         if video_path is None:
-            return self._project_config["video_annotation_status"].copy()
+            return {
+                stored_video_path: self.get_video_annotation_status(stored_video_path)
+                for stored_video_path in self._project_config.get("videos", [])
+            }
         
         # Return status for specific video
-        video_id = self._get_video_id(video_path)
-        return self._project_config["video_annotation_status"].get(video_id, "not_annotated")
+        resolved_reference = self._resolve_video_reference(video_path)
+        if resolved_reference is None:
+            return "not_annotated"
+
+        video_id = self._get_video_id(resolved_reference)
+        if video_id in self._project_config["video_annotation_status"]:
+            return self._project_config["video_annotation_status"][video_id]
+
+        legacy_id = self._get_legacy_video_id(resolved_reference)
+        return self._project_config["video_annotation_status"].get(legacy_id, "not_annotated")
     
     def set_video_annotation_status(self, video_path, status):
         """
@@ -818,9 +961,23 @@ class ProjectModel(QObject):
         if "video_annotation_status" not in self._project_config:
             self._project_config["video_annotation_status"] = {}
         
+        resolved_reference = self._resolve_video_reference(video_path)
+        if resolved_reference is None:
+            error_msg = f"Video not found in project: {video_path}"
+            self.logger.error(error_msg)
+            self.error_occurred.emit(error_msg)
+            return False
+
         # Set status
-        video_id = self._get_video_id(video_path)
+        video_id = self._get_video_id(resolved_reference)
         self._project_config["video_annotation_status"][video_id] = status
+        legacy_id = self._get_legacy_video_id(resolved_reference)
+        matching_legacy_videos = [
+            candidate for candidate in self._project_config.get("videos", [])
+            if self._get_legacy_video_id(candidate) == legacy_id
+        ]
+        if len(matching_legacy_videos) == 1:
+            self._project_config["video_annotation_status"].pop(legacy_id, None)
         self._is_modified = True
         
         self.logger.debug(f"Set annotation status for video {video_id} to {status}")
@@ -839,10 +996,23 @@ class ProjectModel(QObject):
         if not self._project_path:
             return None
         
-        for video_path in self._project_config.get("videos", []):
-            if self._get_video_id(video_path) == video_id:
-                return video_path
-        
+        exact_match = self._get_video_by_exact_id(video_id)
+        if exact_match:
+            return exact_match
+
+        legacy_matches = [
+            video_path for video_path in self._project_config.get("videos", [])
+            if self._get_legacy_video_id(video_path) == video_id
+        ]
+        if len(legacy_matches) == 1:
+            return legacy_matches[0]
+
+        if len(legacy_matches) > 1:
+            self.logger.warning(
+                "Ambiguous legacy video ID '%s' matches multiple project videos",
+                video_id,
+            )
+
         return None
     
     def select_random_unannotated_video(self):
@@ -860,14 +1030,10 @@ class ProjectModel(QObject):
         if not videos:
             return None
         
-        # Get annotation status
-        status_dict = self.get_video_annotation_status()
-        
         # Filter unannotated videos
         unannotated_videos = []
         for video_path in videos:
-            video_id = self._get_video_id(video_path)
-            if status_dict.get(video_id, "not_annotated") == "not_annotated":
+            if self.get_video_annotation_status(video_path) == "not_annotated":
                 unannotated_videos.append(video_path)
         
         # Select random video from unannotated videos

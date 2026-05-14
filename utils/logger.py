@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 import time
-from pathlib import Path
 from utils.in_memory_log_handler import InMemoryLogHandler
 
 # Global reference to in-memory log handler for access throughout the application

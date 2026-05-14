@@ -1,0 +1,49 @@
+# Python bytecode caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test / coverage caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.benchmarks/
+
+# PyInstaller build artefacts
+build/
+dist/
+*.spec
+
+# Local logs
+logs/
+*.log
+
+# User-managed project content
+projects/
+
+# Runtime-created config (user_action_map is owned by ConfigManager and
+# regenerated per-user; only the shipped defaults should be versioned).
+configs/user_action_map.json
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Local environment overrides
+.env
+
+# Claude Code local session/settings (developer tooling only)
+.claude/

@@ -1,10 +1,6 @@
 # utils/log_manager.py - Updated for in-memory logging
-import os
 import logging
-import time
 import datetime
-import glob
-from pathlib import Path
 from utils.logger import get_in_memory_handler
 
 class LogManager:
@@ -102,3 +98,7 @@ class LogManager:
         # This method exists for backward compatibility
         # In-memory logs don't need cleanup as they're automatically managed
         return (0, 0)
+
+    def cleanup_old_logs(self):
+        """Compatibility wrapper matching the newer controller call site."""
+        return self.clean_up_old_logs()
