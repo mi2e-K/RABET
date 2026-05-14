@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QTimer
 from utils.config_path_manager import ConfigPathManager  # Import the new class
-from defaults import default_action_map
+from utils.defaults import default_action_map
 
 class ActionMapModel(QObject):
     """

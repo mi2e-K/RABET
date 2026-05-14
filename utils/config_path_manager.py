@@ -293,9 +293,9 @@ class ConfigPathManager:
             # Make sure the config directory exists
             config_dir = self.get_config_directory()
             
-            # All defaults flow from ``defaults.py`` so a future tweak only
+            # All defaults flow from ``utils.defaults`` so a future tweak only
             # needs to land in one place.
-            from defaults import (
+            from utils.defaults import (
                 default_action_map,
                 default_latency_metrics,
                 default_total_time_metrics,

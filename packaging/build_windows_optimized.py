@@ -11,6 +11,13 @@ import json
 import importlib.util
 from pathlib import Path
 
+# The build scripts live in ``packaging/`` so the project root must be on
+# ``sys.path`` for ``from version import __version__`` to resolve when
+# this script is invoked from the project root.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from version import __version__ as APP_VERSION
 
 # Core dependencies required by RABET based on dependency analysis

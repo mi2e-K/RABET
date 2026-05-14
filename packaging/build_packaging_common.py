@@ -9,12 +9,20 @@ import tarfile
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 
+# The build scripts live in ``packaging/`` so the project root must be on
+# ``sys.path`` for ``from version import __version__`` (and any other
+# project-root imports) to resolve when this module is loaded.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from version import __version__
 
 APP_NAME = "RABET"
 APP_VERSION = __version__
 APP_DESCRIPTION = "Real-time Animal Behavior Event Tagger"
-ROOT_DIR = Path(__file__).resolve().parent
+# Project root (one level up from this packaging script).
+ROOT_DIR = _PROJECT_ROOT
 
 CORE_DEPENDENCIES = [
     "PySide6",

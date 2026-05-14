@@ -2,11 +2,11 @@
 """Update the RABET version number in version.py.
 
 Usage:
-  python bump_version.py            # Show current version
-  python bump_version.py --patch    # 1.2.0 -> 1.2.1
-  python bump_version.py --minor    # 1.2.0 -> 1.3.0
-  python bump_version.py --major    # 1.2.0 -> 2.0.0
-  python bump_version.py --set 1.2.3
+  python scripts/bump_version.py            # Show current version
+  python scripts/bump_version.py --patch    # 1.2.1 -> 1.2.2
+  python scripts/bump_version.py --minor    # 1.2.1 -> 1.3.0
+  python scripts/bump_version.py --major    # 1.2.1 -> 2.0.0
+  python scripts/bump_version.py --set 1.2.3
 """
 
 import argparse
@@ -14,7 +14,10 @@ import re
 import sys
 from pathlib import Path
 
-VERSION_FILE = Path(__file__).parent / "version.py"
+# ``version.py`` lives at the project root; this script sits in ``scripts/``
+# so we resolve one level up. Using ``parent.parent`` keeps the lookup
+# stable regardless of the user's current working directory.
+VERSION_FILE = Path(__file__).resolve().parent.parent / "version.py"
 
 
 def read_version() -> str:

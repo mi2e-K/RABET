@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from utils.config_path_manager import ConfigPathManager  # Import the new class
-from defaults import default_latency_metrics, default_total_time_metrics
+from utils.defaults import default_latency_metrics, default_total_time_metrics
 
 class AnalysisMetricsConfig:
     """

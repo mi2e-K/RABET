@@ -78,7 +78,7 @@ class AnalysisController(QObject):
         if not behaviors:
             # If no behaviors are loaded yet, fall back to the default
             # action-map's behaviour list (single source of truth).
-            from defaults import DEFAULT_ACTION_MAP
+            from utils.defaults import DEFAULT_ACTION_MAP
             behaviors = list(DEFAULT_ACTION_MAP.values())
         
         # Create and show the dialog

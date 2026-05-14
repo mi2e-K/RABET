@@ -22,7 +22,7 @@ cd /path/to/RABET_1.2.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python build_macos_optimized.py
+python packaging/build_macos_optimized.py
 ```
 
 Outputs:
@@ -34,10 +34,10 @@ Outputs:
 Useful options:
 
 ```bash
-python build_macos_optimized.py --target-arch arm64
-python build_macos_optimized.py --target-arch x86_64
-python build_macos_optimized.py --console --verbose
-python build_macos_optimized.py --spec-only
+python packaging/build_macos_optimized.py --target-arch arm64
+python packaging/build_macos_optimized.py --target-arch x86_64
+python packaging/build_macos_optimized.py --console --verbose
+python packaging/build_macos_optimized.py --spec-only
 ```
 
 Notes:
@@ -59,7 +59,7 @@ cd /path/to/RABET_1.2.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python build_linux_optimized.py
+python packaging/build_linux_optimized.py
 ```
 
 Outputs:
@@ -84,10 +84,10 @@ cd dist/RABET-linux
 Useful options:
 
 ```bash
-python build_linux_optimized.py --console --verbose
-python build_linux_optimized.py --onefile
-python build_linux_optimized.py --upx
-python build_linux_optimized.py --spec-only
+python packaging/build_linux_optimized.py --console --verbose
+python packaging/build_linux_optimized.py --onefile
+python packaging/build_linux_optimized.py --upx
+python packaging/build_linux_optimized.py --spec-only
 ```
 
 Notes:

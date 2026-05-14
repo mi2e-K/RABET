@@ -69,8 +69,11 @@ version = { attr = "version.__version__" }
 
 [tool.setuptools]
 # This project layout is a flat collection of top-level packages (models,
-# views, controllers, utils) rather than a single root package.
-py-modules = ["main", "version", "bump_version"]
+# views, controllers, utils) rather than a single root package. The
+# developer-only ``bump_version`` and packaging build scripts live under
+# ``scripts/`` and ``packaging/`` and are intentionally NOT installable as
+# Python modules.
+py-modules = ["main", "version"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -93,13 +96,11 @@ extend-exclude = [
     "projects",
     "configs",
     "__pycache__",
-    # Build scripts are developer-side tooling and not shipped; they intentionally
-    # use less-strict patterns (e.g. ``os.walk`` with placeholder loop vars).
-    "build_windows_optimized.py",
-    "build_macos_optimized.py",
-    "build_linux_optimized.py",
-    "build_packaging_common.py",
-    "bump_version.py",
+    # Developer-only tooling: build scripts and helpers under ``packaging/``
+    # and ``scripts/`` intentionally use looser patterns (e.g. ``os.walk``
+    # with placeholder loop vars, single-shot CLI parsers).
+    "packaging",
+    "scripts",
 ]
 
 [tool.ruff.lint]

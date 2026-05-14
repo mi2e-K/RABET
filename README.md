@@ -61,11 +61,14 @@ platform notes.
 
 | Platform | Script |
 | --- | --- |
-| Windows | `python build_windows_optimized.py` |
-| macOS | `python build_macos_optimized.py` |
-| Linux | `python build_linux_optimized.py` |
+| Windows | `python packaging/build_windows_optimized.py` |
+| macOS | `python packaging/build_macos_optimized.py` |
+| Linux | `python packaging/build_linux_optimized.py` |
 
 Builds produce a distributable folder (`dist/RABET/` or `dist/RABET.app/`).
+See [`packaging/README.md`](packaging/README.md) for build-script details
+and [`scripts/README.md`](scripts/README.md) for developer utilities such
+as the version bumper.
 
 ---
 

@@ -39,7 +39,7 @@ jobs:
         run: python -m pytest tests/ -v --benchmark-skip
 
       - name: Build Windows package
-        run: python build_windows_optimized.py
+        run: python packaging/build_windows_optimized.py
 
       - name: Archive distribution folder
         shell: pwsh
