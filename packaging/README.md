@@ -38,8 +38,17 @@ artefact size small and avoids plugin-path / redistribution issues.
 ## CI hookup
 
 The GitHub Actions `Release` workflow (`.github/workflows/release.yml`)
-triggers on `v*` tags and runs `python packaging/build_windows_optimized.py`
-on a Windows runner before publishing a GitHub Release with the produced
-zip attached. The legacy `.github/workflows/build-mac.yml` workflow
-contains its own inline PyInstaller invocation and is independent of
-these scripts.
+triggers on `v*` tags or manual `workflow_dispatch` runs. It builds:
+
+- Windows zip on a Windows runner.
+- Unsigned macOS zip archives for Apple Silicon (`arm64`) and Intel
+  (`x86_64`) Macs on GitHub-hosted macOS runners.
+- Linux `tar.gz` on an Ubuntu runner.
+
+The workflow publishes all produced archives to one GitHub Release. The
+macOS archives are intentionally unsigned and not notarized; end users may
+need to use right-click > Open, or allow the app from macOS Privacy &
+Security settings on first launch.
+
+The legacy `.github/workflows/build-mac.yml` workflow is kept as a manual
+fallback only. Normal releases should use `.github/workflows/release.yml`.
