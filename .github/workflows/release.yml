@@ -68,7 +68,7 @@ jobs:
           "BUILD_SCRIPT=$script" | Out-File -Append -FilePath $env:GITHUB_ENV
 
       - name: Build Windows package
-        run: python $env:BUILD_SCRIPT --include-module distutils
+        run: python $env:BUILD_SCRIPT --include-module distutils --include-module wheel --include-module pip --include-module easy_install
 
       - name: Archive distribution folder
         shell: pwsh
