@@ -67,24 +67,61 @@ jobs:
           }
           "BUILD_SCRIPT=$script" | Out-File -Append -FilePath $env:GITHUB_ENV
 
+      - name: Keep Windows runtime DLLs bundled
+        shell: pwsh
+        run: |
+          $content = Get-Content -Raw -Path $env:BUILD_SCRIPT
+          $content = $content -replace "\s*'msvcp140_1',\r?\n", ""
+          $content = $content -replace "\s*'vcruntime140_1',\r?\n", ""
+          Set-Content -Path $env:BUILD_SCRIPT -Value $content -NoNewline
+
       - name: Build Windows package
-        run: python $env:BUILD_SCRIPT --include-module distutils --include-module wheel --include-module pip --include-module easy_install
+        run: >
+          python $env:BUILD_SCRIPT
+          --onefile
+          --include-module distutils
+          --include-module wheel
+          --include-module pip
+          --include-module easy_install
+          --include-module venv
+          --include-module ensurepip
+          --include-module lib2to3
+          --include-module pkg_resources
 
       - name: Archive distribution folder
         shell: pwsh
         run: |
           $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
           $zipName = "RABET-Windows-$version.zip"
+          $assetDir = "release-assets"
+          $stageDir = "release-staging/RABET-Windows-$version"
+          New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+
           if (Test-Path "dist/RABET") {
-            Compress-Archive -Path "dist/RABET/*" -DestinationPath "dist/$zipName" -Force
+            Copy-Item -Path "dist/RABET/*" -Destination $stageDir -Recurse -Force
           } elseif (Test-Path "dist/RABET.exe") {
-            # ``--onefile`` builds: ship just the exe.
-            Compress-Archive -Path "dist/RABET.exe" -DestinationPath "dist/$zipName" -Force
+            $items = @(
+              "dist/RABET.exe",
+              "dist/configs",
+              "dist/resources",
+              "dist/logs",
+              "dist/projects",
+              "dist/README.txt",
+              "dist/Launch RABET.bat"
+            )
+            foreach ($item in $items) {
+              if (Test-Path $item) {
+                Copy-Item -Path $item -Destination $stageDir -Recurse -Force
+              }
+            }
           } else {
             Write-Error "Expected dist/RABET or dist/RABET.exe not found"
             exit 1
           }
-          "ASSET_PATH=dist/$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+          Compress-Archive -Path "$stageDir/*" -DestinationPath "$assetDir/$zipName" -Force
+          "ASSET_PATH=$assetDir/$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
           "ASSET_NAME=$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
 
       - name: Upload Windows artefact
@@ -277,3 +314,4 @@ jobs:
           draft: false
           prerelease: ${{ contains(env.RELEASE_TAG, '-rc') || contains(env.RELEASE_TAG, '-beta') }}
           files: dist/*
+          overwrite_files: true

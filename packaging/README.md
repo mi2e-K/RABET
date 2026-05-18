@@ -46,7 +46,12 @@ triggers on `v*` tags or manual `workflow_dispatch` runs. It builds:
 - Linux `tar.gz` on an Ubuntu runner.
 
 The workflow publishes all produced archives to one GitHub Release. The
-macOS archives are intentionally unsigned and not notarized; end users may
+Windows archive is built in PyInstaller `--onefile` mode and contains
+`RABET.exe` plus the small runtime folders/files copied alongside it.
+Download it from the GitHub Releases page rather than the Actions artifact
+list; Actions artifacts are zip wrappers around the release zip.
+
+The macOS archives are intentionally unsigned and not notarized; end users may
 need to use right-click > Open, or allow the app from macOS Privacy &
 Security settings on first launch.
 
