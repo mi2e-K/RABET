@@ -83,6 +83,7 @@ jobs:
           --include-module wheel
           --include-module pip
           --include-module easy_install
+          --include-module unittest
           --include-module venv
           --include-module ensurepip
           --include-module lib2to3
