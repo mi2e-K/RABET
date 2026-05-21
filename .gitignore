@@ -10,6 +10,7 @@ __pycache__/
 .coverage.*
 htmlcov/
 .benchmarks/
+.ruff_cache/
 
 # PyInstaller build artefacts
 build/
@@ -47,3 +48,14 @@ env/
 
 # Claude Code local session/settings (developer tooling only)
 .claude/
+
+# Test suite is maintained locally only; not shipped with the public repo
+tests/
+
+# Internal developer tooling (env checks, PE inspector, leak checker)
+tools/
+scripts/_phase8_leak_check.py
+
+# Release notes are managed via the GitHub Releases page rather than a
+# checked-in changelog file
+CHANGELOG.md
