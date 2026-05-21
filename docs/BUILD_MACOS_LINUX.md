@@ -1,8 +1,10 @@
 # RABET macOS and Linux Build Notes
 
 These scripts create compact PyInstaller-based desktop application packages.
-VLC is intentionally not bundled, which keeps the RABET package smaller and
-avoids VLC plugin-path and redistribution complexity.
+Starting from RABET 1.3.1 the video backend is PyAV (FFmpeg python
+bindings) instead of python-vlc; PyAV's wheels bundle FFmpeg, so the
+RABET build is fully self-contained and does **not** require any
+system-installed video runtime on the target machine.
 
 ## Common Rule
 
@@ -11,14 +13,15 @@ Build on the target OS.
 - Create the macOS `.app` on macOS.
 - Create the Linux package on Linux.
 - Use a clean virtual environment for each platform.
-- Install VLC separately on every machine that will run RABET.
+- No system VLC/FFmpeg install is required on either build or target
+  machines as of 1.3.1.
 
 ## macOS
 
 Recommended for a borrowed Mac:
 
 ```bash
-cd /path/to/RABET_1.2.0
+cd /path/to/RABET_1.3.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -54,8 +57,11 @@ Recommended on Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip vlc libvlc-bin libxcb-cursor0
-cd /path/to/RABET_1.2.0
+# Note: ``vlc`` / ``libvlc-bin`` are no longer required as of 1.3.1.
+# ``libxcb-cursor0`` is still needed by Qt 6 on headless / minimal
+# Linux installs (Qt's xcb plugin loads it lazily).
+sudo apt install -y python3 python3-venv python3-pip libxcb-cursor0
+cd /path/to/RABET_1.3.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip

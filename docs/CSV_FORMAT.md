@@ -1,14 +1,14 @@
-# RABET CSV File Format Specification
+﻿# RABET CSV File Format Specification
 
 This document describes the layout of the CSV files RABET reads and writes.
 Three distinct files are involved:
 
-1. **Annotation CSV** — one file per video / per recording session, produced
+1. **Annotation CSV** 窶・one file per video / per recording session, produced
    by the annotation view (Export Annotations / Auto-Save) and consumed by
    both the annotation view (Import Annotations) and the analysis view.
-2. **Summary CSV** — one row per animal / file, produced by the analysis
+2. **Summary CSV** 窶・one row per animal / file, produced by the analysis
    view when interval analysis is **disabled**.
-3. **Interval Summary CSV** — one row per (animal, interval) pair, produced
+3. **Interval Summary CSV** 窶・one row per (animal, interval) pair, produced
    when interval analysis is **enabled**.
 
 All files use the UTF-8 encoding, a comma (`,`) field separator and `\n`
@@ -20,7 +20,7 @@ line endings written through Python's standard `csv` module.
 
 | Schema | Introduced in | Distinguishing feature |
 | --- | --- | --- |
-| `v0` | RABET ≤ 1.1.4 | No provenance / schema rows; metadata section contains only `Test Duration (seconds)`. |
+| `v0` | RABET 竕､ 1.1.4 | No provenance / schema rows; metadata section contains only `Test Duration (seconds)`. |
 | `v1` | RABET 1.2.0+ | Adds explicit `RABET Version` and `Format Schema` rows to every export. |
 
 RABET 1.2.0+ writes the **`v1`** schema. It still reads `v0` files for
@@ -82,7 +82,7 @@ and converted to seconds at export time.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `Behavior` | string | Behavior label (also appears in the Event section, but here even with zero occurrences). |
-| `Duration` | float (s) | Sum of `offset − onset` over all instances. |
+| `Duration` | float (s) | Sum of `offset 竏・onset` over all instances. |
 | `Frequency` | int | Number of times this behavior was tagged (counted by onset). |
 
 `RecordingStart` is omitted from this section.
@@ -91,7 +91,7 @@ and converted to seconds at export time.
 
 ```csv
 Metadata
-RABET Version,1.2.1
+RABET Version,1.2.2
 Format Schema,v1
 Test Duration (seconds),60
 
@@ -122,13 +122,13 @@ adjustments are required.
 
 ## 3. Summary CSV (whole-session, `v1`)
 
-Produced when `Enable interval analysis` is **off** in the Analysis view.
+Produced as the whole-session summary. When `Enable interval analysis` is
+on, RABET exports this file alongside the interval summary.
 One header band + one row per loaded animal / file.
 
 ### 3.1 Layout
 
 ```
-RABET <X.Y.Z> summary export (schema v1)
 ,<Duration band: behaviors...>,<spacer>,<Frequency band: behaviors...>,<spacer>,<custom metric names...>
 animal_id,<behavior cols>,<empty>,<behavior cols>,<empty>,<custom metric values>
 ...
@@ -136,8 +136,6 @@ animal_id,<behavior cols>,<empty>,<behavior cols>,<empty>,<custom metric values>
 
 ### 3.2 Notes
 
-- The first physical row is a single-cell provenance line. Use it to
-  identify the producing application without parsing further.
 - The Duration band and Frequency band each list the *same* ordered set
   of behaviors. Empty spacer columns make the table easier to read in
   spreadsheets.
@@ -150,7 +148,7 @@ animal_id,<behavior cols>,<empty>,<behavior cols>,<empty>,<custom metric values>
 
 The `animal_id` is the basename of the source annotation CSV minus a
 trailing `_annotations` suffix, if any. Example:
-`mouse_05_annotations.csv` → `mouse_05`.
+`mouse_05_annotations.csv` 竊・`mouse_05`.
 
 ---
 
@@ -162,21 +160,17 @@ interval size in seconds.
 ### 4.1 Layout
 
 ```
-RABET <X.Y.Z> interval-summary export (schema v1)
 Interval analysis (<N>-second intervals)
-<...,Duration band,<spacer>,Frequency (events overlapping interval),...>
+<...,Duration band,<spacer>,Frequency,...>
 animal_id,Interval,Time (sec),<spacer>,<behaviors duration>,<spacer>,<behaviors freq>,<spacer>,<custom metrics>
 ...rows: one per (animal, interval) pair...
 ```
 
 ### 4.2 Important semantics
 
-- **`Frequency (events overlapping interval)`** — an event that begins in
-  one interval and ends in another is **counted in every interval it
-  touches**. This is the same data shown in the on-screen *Intervals* tab.
-  Use the Summary CSV (Section 3) if you want each event counted exactly
-  once.
-- **`Time (sec)`** — string like `0.0-60.0`, the closed-open interval
+- **Duration** is the number of seconds each behaviour overlaps the interval.
+- **Frequency** is the number of events whose onset falls inside the interval.
+- **`Time (sec)`** 窶・string like `0.0-60.0`, the closed-open interval
   boundary in seconds from the recording start.
 - **Empty intervals** still produce a row (all metric columns zero).
 - Animals are separated by a blank row.
@@ -184,9 +178,8 @@ animal_id,Interval,Time (sec),<spacer>,<behaviors duration>,<spacer>,<behaviors 
 ### 4.3 Example header
 
 ```csv
-RABET 1.2.1 interval-summary export (schema v1)
 Interval analysis (60-second intervals)
-,,,,Duration,,,,,,,,Frequency (events overlapping interval),,,,,,,,
+,,,,Duration,,,,,,,,Frequency,,,,,,,,
 animal_id,Interval,Time (sec),,Attack bites,Sideways threats,...,,Attack bites,Sideways threats,...,,Total Aggression
 ```
 
@@ -227,10 +220,10 @@ Read the first 10 lines and search for `RABET Version,` and
 
 | Producer | Consumer | Status |
 | --- | --- | --- |
-| RABET ≤ 1.1.4 (`v0`) | RABET 1.2.x | ✅ Reads cleanly (logs a debug note about missing schema). |
-| RABET 1.2.x (`v1`) | RABET 1.2.x | ✅ Full round-trip preserved. |
-| RABET 1.2.x (`v1`) | RABET ≤ 1.1.4 | ⚠️ The new `RABET Version` / `Format Schema` rows live in the Metadata section, which older readers safely ignore. **However**, the *Interval Summary CSV* "Frequency" column header changed in 1.2.0 (see Section 4.2); external scripts that match the column literally must be updated. |
-| RABET ≥ 2.0 (hypothetical `v2`) | RABET 1.2.x | ⚠️ Loads with a warning; behavior depends on whether `v2` is a strict extension. Always check the changelog. |
+| RABET 竕､ 1.1.4 (`v0`) | RABET 1.2.x | 笨・Reads cleanly (logs a debug note about missing schema). |
+| RABET 1.2.x (`v1`) | RABET 1.2.x | 笨・Full round-trip preserved. |
+| RABET 1.2.x (`v1`) | RABET 竕､ 1.1.4 | 笞・・Annotation CSV metadata rows live in the Metadata section, which older readers safely ignore. Summary CSVs are table-first in 1.2.2+. |
+| RABET 竕･ 2.0 (hypothetical `v2`) | RABET 1.2.x | 笞・・Loads with a warning; behavior depends on whether `v2` is a strict extension. Always check the changelog. |
 
 ---
 
@@ -238,8 +231,8 @@ Read the first 10 lines and search for `RABET Version,` and
 
 The repository ships small reference fixtures under `tests/fixtures/`:
 
-- `sample_v1_0_annotation.csv` — pre-1.2.0 annotation file.
-- `sample_v1_2_annotation.csv` — 1.2.0+ annotation file.
+- `sample_v1_0_annotation.csv` 窶・pre-1.2.0 annotation file.
+- `sample_v1_2_annotation.csv` 窶・1.2.0+ annotation file.
 
 These files are exercised by `tests/test_csv_compat.py`. Use them as a
 starting point when validating your own parser against RABET output.

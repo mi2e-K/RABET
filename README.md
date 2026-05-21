@@ -1,84 +1,137 @@
-# RABET — Real-time Animal Behavior Event Tagger
+<div align="center">
 
-![Version](https://img.shields.io/badge/version-1.2.1-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-![CI](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml/badge.svg)
+<img src="images/RABET.png" alt="RABET icon" width="180" />
 
-RABET is a desktop application for **behavioural annotation of video
-recordings of animals**. Researchers can play back a video, tag behaviours
-with keyboard shortcuts in real time, visualise events on a timeline, and
-export annotated data for downstream statistical analysis.
+# RABET
 
-The 1.2.0 release accompanies the tool paper submission and bundles several
-correctness and performance improvements over 1.1.x (see
-[CHANGELOG.md](CHANGELOG.md)).
+### Real-time Animal Behavior Event Tagger
+
+[![Version](https://img.shields.io/badge/version-1.3.2-blue)](https://github.com/mi2e-K/RABET/releases)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#installation)
+[![CI](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml/badge.svg)](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.15313025-orange)](https://doi.org/10.5281/zenodo.15313025)
+
+</div>
 
 ---
 
-## Features
+## Overview
 
-- Video playback with frame-by-frame stepping (VLC-backed)
-- Configurable key → behaviour mapping (JSON) with default mouse-aggression
-  schema
-- Real-time keyboard tagging with monotonic time stamping
-- Behaviour timeline with auto-scrolling playhead and colour-coded events
+**RABET** is a desktop application for the behavioural annotation of
+video recordings of animals. Researchers play back a video, tag
+behaviours in real time with keyboard shortcuts, visualise events on an
+interactive timeline, and export annotated data for downstream
+statistical analysis — including built-in inter-rater and intra-rater
+reliability assessment.
+
+RABET ships as a **self-contained binary**. No system-wide video
+runtime (VLC, FFmpeg, codec packs) needs to be installed: the
+application bundles its own frame-accurate decoder, so the executable
+simply works on a clean Windows / macOS / Linux machine.
+
+---
+
+## Key Features
+
+**Video & annotation**
+- Frame-accurate playback with single-frame stepping and instant seek
+- Configurable keyboard → behaviour mapping (JSON-driven; ships with a
+  sensible default schema for rodent aggression studies)
+- Real-time tagging with monotonic time stamping
+- Interactive behaviour timeline with auto-scrolling playhead and
+  colour-coded events
 - Timed recording sessions with pause / resume and rewind handling
-- Multi-file CSV analysis: per-session and per-interval summaries, custom
-  latency and total-time metrics
-- On-screen Summary / Intervals tabs with one-click clipboard export
+
+**Analysis & export**
+- Multi-file CSV analysis: per-session and per-interval summaries
+- Custom latency and total-time metrics (e.g. attack latency, total
+  aggression) defined declaratively in JSON
+- On-screen **Summary** and **Intervals** tabs with one-click clipboard
+  export
 - Raster-plot visualisation across multiple animals
-- Project mode for grouping videos, annotations and analyses
-- Persistent UI settings (window geometry, last view, recording duration,
-  interval analysis options) under the user's app-data directory
+
+**Reliability assessment**
+- **Summary mode**: compare two `summary_table.csv` files via
+  **ICC(2,1)**, Pearson correlation, and mean absolute difference per
+  metric, with scatter plots
+- **Detailed mode**: compare two annotation CSVs via time-window-binned
+  **Cohen's κ**, **Krippendorff's α**, raw percentage agreement, and a
+  pairwise event-raster overlay
+
+**Project management**
+- Group videos, annotations, and analyses under a single project
+- Persistent UI settings (window geometry, last view, recording
+  duration, analysis options) stored in the user app-data directory
+
+**Cross-platform**
+- Self-contained binaries for Windows, macOS (Intel & Apple Silicon),
+  and Linux
 
 ---
 
-## Quick start (development environment)
+## Installation
+
+### Pre-built binaries (recommended)
+
+Download the latest release for your platform from the
+[GitHub Releases page](https://github.com/mi2e-K/RABET/releases) and
+launch the executable. No additional installation step is required.
+
+### From source
 
 ```bash
-# Clone or unpack the repository
-cd RABET_1.2.0
+git clone https://github.com/mi2e-K/RABET.git
+cd RABET
 
-# Recommended: use the pinned conda environment
+# Recommended: pinned conda environment
 conda env create -f environment.yml
 conda activate rabet_build
 
-# Or install with pip (after installing VLC system-wide):
-pip install -e .
+# Alternative: pip
+# pip install -e .
 
-# Launch the application
 python main.py
 ```
 
-VLC must be installed on the host machine for video playback to work. On
-macOS and Linux RABET deliberately does **not** bundle VLC to keep build
-sizes small; see [docs/BUILD_MACOS_LINUX.md](docs/BUILD_MACOS_LINUX.md) for
-platform notes.
+> **Python**: 3.11 or newer is required. The pinned conda environment
+> uses Python 3.12.
 
-### Building standalone packages
+---
 
-| Platform | Script |
+## Building standalone packages
+
+| Platform | Command |
 | --- | --- |
 | Windows | `python packaging/build_windows_optimized.py` |
-| macOS | `python packaging/build_macos_optimized.py` |
-| Linux | `python packaging/build_linux_optimized.py` |
+| macOS   | `python packaging/build_macos_optimized.py` |
+| Linux   | `python packaging/build_linux_optimized.py` |
 
-Builds produce a distributable folder (`dist/RABET/` or `dist/RABET.app/`).
-See [`packaging/README.md`](packaging/README.md) for build-script details
-and [`scripts/README.md`](scripts/README.md) for developer utilities such
-as the version bumper.
+Build outputs land in `dist/RABET/` (one-directory mode) or
+`dist/RABET.exe` / `dist/RABET.app` / `dist/RABET-linux-*.tar.gz`
+(one-file / single-archive mode). See
+[`packaging/README.md`](packaging/README.md) for build-script flags and
+[`docs/BUILD_MACOS_LINUX.md`](docs/BUILD_MACOS_LINUX.md) for
+platform-specific notes.
+
+---
+
+## Screenshots
+
+*Screenshots of the annotation, analysis, and reliability views will be
+added shortly.*
 
 ---
 
 ## CSV format (schema v1)
 
-Annotation exports follow this layout:
+Annotation exports use the layout below; full documentation lives in
+[`docs/CSV_FORMAT.md`](docs/CSV_FORMAT.md).
 
 ```
 Metadata
-RABET Version,1.2.0
+RABET Version,1.3.2
 Format Schema,v1
 Test Duration (seconds),300
 
@@ -91,34 +144,31 @@ Attack bites,2.10,3
 ...
 ```
 
-Onsets / offsets are in seconds (4-decimal precision). The Frequency column
-in the **whole-session** summary counts onsets; in the **interval** summary
-it is labelled `Frequency (events overlapping interval)` to make clear that
-events spanning multiple intervals are counted in each interval they touch.
-
-RABET writes a `RABET Version` row and `Format Schema` row on every export so
-downstream tools can detect the producing application. Older CSVs without
-these rows are still readable.
-
-The full file-format specification (Annotation CSV, Summary CSV, Interval
-Summary CSV, schema versioning, compatibility matrix and example parsers)
-lives in [docs/CSV_FORMAT.md](docs/CSV_FORMAT.md).
+Onsets and offsets are in seconds with 4-decimal precision. In
+interval summaries, `Duration` is the number of seconds overlapping
+each interval, and `Frequency` counts events whose onset falls inside
+that interval. Annotation CSVs include `RABET Version` and
+`Format Schema` rows so downstream tools can detect the producing
+application; summary CSVs are kept table-first for easy import into
+spreadsheet and statistics software.
 
 ---
 
 ## Citation
 
 If RABET is useful in your research, please cite it. Machine-readable
-metadata lives in [CITATION.cff](CITATION.cff); a human-readable form is:
+metadata lives in [`CITATION.cff`](CITATION.cff); a human-readable form
+is:
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.2.1) [Computer software]. https://github.com/mi2e-K/RABET
-> doi:10.5281/zenodo.15313025
+> (Version 1.3.2) [Computer software].
+> https://github.com/mi2e-K/RABET
+> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
 The DOI above is the **concept DOI** that always resolves to the latest
-RABET release on Zenodo, so the citation stays valid as new versions are
-published. Each individual release additionally receives its own
-version-specific DOI (v1.0.0: `10.5281/zenodo.15313026`).
+RABET release on Zenodo, so the citation stays valid as new versions
+are published. Each individual release additionally receives its own
+version-specific DOI.
 
 A tool paper describing RABET is in preparation. Once published, please
 cite the paper in addition to (or instead of) the Zenodo deposit.
@@ -127,30 +177,24 @@ cite the paper in addition to (or instead of) the Zenodo deposit.
 
 ## License
 
-Released under the MIT License — see [LICENSE](LICENSE) for the full text.
+Released under the **MIT License** — see [LICENSE](LICENSE) for the
+full text.
 
 ---
 
 ## Contributing
 
-- Bug reports and feature requests: please open an issue with reproducible
-  steps and the application version (see Help → About).
-- Pull requests: include a short description, a reference to the related
-  issue, and the relevant changes. Aim to keep PRs scoped and accompanied
-  by tests when adding new behaviour.
+Bug reports, feature requests, and pull requests are welcome.
 
-A minimal test suite lives under `tests/`. Run it with:
-
-```bash
-python -m pytest tests/ -v
-```
-
-Smoke tests cover module imports, version handling, and core annotation /
-analysis round-trips. Broader unit coverage is planned for v1.3.
+- **Issues**: please include reproducible steps and the application
+  version (Help → About).
+- **Pull requests**: keep them scoped, include a short description, and
+  reference the related issue when applicable.
 
 ---
 
 ## Acknowledgements
 
-RABET depends on PySide6, python-vlc, numpy, pandas, matplotlib and
-PyInstaller, among others. We are grateful to those projects' maintainers.
+RABET is built on PySide6, PyAV (FFmpeg python bindings), numpy,
+pandas, matplotlib, pingouin, krippendorff, filetype, and PyInstaller.
+We are grateful to the maintainers and contributors of these projects.
