@@ -123,7 +123,7 @@ python main.py
 ## Documentation
 
 - **[User Guide (English)](docs/USER_GUIDE.md)** — step-by-step walkthrough of every feature
-- **[ユーザーガイド (日本語)](docs/USER_GUIDE.ja.md)** — 日本語版ユーザーガイド
+- **[User Guide (Japanese)](docs/USER_GUIDE.ja.md)** — Japanese version user guide
 - [CSV format specification](docs/CSV_FORMAT.md)
 - [Reliability assessment reference](docs/reliability/README.md)
 - [Build instructions for macOS / Linux](docs/BUILD_MACOS_LINUX.md)
@@ -156,7 +156,7 @@ added shortly.*
 
 ---
 
-## CSV format (schema v1)
+## CSV format
 
 Annotation exports use the layout below; full documentation lives in
 [`docs/CSV_FORMAT.md`](docs/CSV_FORMAT.md).
@@ -164,7 +164,6 @@ Annotation exports use the layout below; full documentation lives in
 ```
 Metadata
 RABET Version,1.3.2
-Format Schema,v1
 Test Duration (seconds),300
 
 Event,Onset,Offset
@@ -179,10 +178,10 @@ Attack bites,2.10,3
 Onsets and offsets are in seconds with 4-decimal precision. In
 interval summaries, `Duration` is the number of seconds overlapping
 each interval, and `Frequency` counts events whose onset falls inside
-that interval. Annotation CSVs include `RABET Version` and
-`Format Schema` rows so downstream tools can detect the producing
-application; summary CSVs are kept table-first for easy import into
-spreadsheet and statistics software.
+that interval. Annotation CSVs include a `RABET Version` row so
+downstream tools can detect the producing application; summary CSVs
+are kept table-first for easy import into spreadsheet and statistics
+software.
 
 ---
 
