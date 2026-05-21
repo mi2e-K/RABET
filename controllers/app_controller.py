@@ -16,6 +16,7 @@ from views.main_window import MainWindow
 from views.project_view import ProjectView
 from views.log_viewer_dialog import LogViewerDialog
 from views.visualization_view import VisualizationView  # Add visualization view import
+from views.reliability_view import ReliabilityView  # 1.3.2: Reliability tab
 
 from controllers.video_controller import VideoController
 from controllers.annotation_controller import AnnotationController
@@ -23,6 +24,7 @@ from controllers.action_map_controller import ActionMapController
 from controllers.analysis_controller import AnalysisController
 from controllers.project_controller import ProjectController
 from controllers.visualization_controller import VisualizationController  # Add visualization controller import
+from controllers.reliability_controller import ReliabilityController  # 1.3.2
 
 from utils.file_manager import FileManager
 from utils.log_manager import LogManager
@@ -83,10 +85,14 @@ class AppController(QObject):
         
         # Initialize visualization view
         self.visualization_view = VisualizationView()
-        
+
+        # 1.3.2: Reliability view
+        self.reliability_view = ReliabilityView()
+
         # Add views to main window
         self.main_window.add_view("Project", self.project_view)
         self.main_window.add_view("Visualization", self.visualization_view)  # Add visualization view
+        self.main_window.add_view("Reliability", self.reliability_view)  # 1.3.2
         
         # Initialize controllers
         self.video_controller = VideoController(self.video_model, self.main_window.video_player_view)
@@ -110,10 +116,19 @@ class AppController(QObject):
         # Initialize visualization controller
         # CRITICAL FIX: Completely decouple visualization from analysis model
         self.visualization_controller = VisualizationController(self.visualization_view)
+
+        # 1.3.2: Reliability controller. The second positional argument is
+        # a QObject parent (this AppController), which Qt uses for normal
+        # parent-child lifetime tracking - not a strong app-wide reference
+        # cycle, so memory management is delegated to Qt as usual.
+        self.reliability_controller = ReliabilityController(self.reliability_view, self)
         
         # Keep the main window on the visualization screen when files are
         # dropped there, but let the visualization controller own the load.
         self.visualization_view.files_dropped.connect(self.handle_visualization_files_dropped)
+        self.main_window.analysis_view.visualize_files_requested.connect(
+            self.handle_analysis_visualize_requested
+        )
         
         # Provide the annotation controller reference to the main window
         self.main_window.annotation_controller = self.annotation_controller
@@ -142,7 +157,11 @@ class AppController(QObject):
         # Controllers that need to record "recently opened" files (Recent
         # Files menu) also receive a reference to ConfigManager.
         self.video_controller.config_manager = self.config_manager
+        self.video_controller.project_model = self.project_model
         self.annotation_controller.config_manager = self.config_manager
+        # 1.3.2: Reliability tab remembers its picker directories across
+        # sessions via ConfigManager.
+        self.reliability_controller.set_config_manager(self.config_manager)
 
         # Expose the video controller on main_window so menu actions
         # (e.g. Open Recent Video) can drive video loads without going
@@ -172,6 +191,17 @@ class AppController(QObject):
         self.logger.info(f"App controller handling {len(file_paths)} files dropped on visualization view")
         
         # Ensure we stay in visualization view
+        self.main_window.switch_to_view("Visualization")
+
+    @Slot()
+    def handle_analysis_visualize_requested(self):
+        """Load the files currently in Analysis into Visualization."""
+        file_paths = self.analysis_model.get_file_paths()
+        if not file_paths:
+            self.main_window.show_info("No annotation files are loaded in Analysis.")
+            return
+
+        self.visualization_controller.load_files(file_paths)
         self.main_window.switch_to_view("Visualization")
     
     def set_application_icon(self):

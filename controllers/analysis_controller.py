@@ -510,21 +510,32 @@ class AnalysisController(QObject):
             export_path = candidate_path
             break
 
+        exported_paths = []
+        if interval_enabled:
+            export_success = self._export_interval_and_standard_tables(export_path)
+            if export_success:
+                exported_paths = export_success
+        else:
+            export_success = self.export_summary_to_file(export_path)
+            if export_success:
+                exported_paths = [export_path]
+
         # Export the summary table
-        if self.export_summary_to_file(export_path):
+        if export_success:
             # Update status message to reflect whether interval analysis was used
             if interval_enabled:
                 self._view.set_status_message(
-                    f"Summary table with {interval_seconds}-second intervals exported to: {export_path}"
+                    f"Interval summary and whole-session summary exported to: {os.path.dirname(export_path)}"
                 )
             else:
                 self._view.set_status_message(f"Summary table exported to: {export_path}")
             
             # Show notification
+            exported_text = "\n".join(exported_paths)
             AutoCloseMessageBox.information(
                 self._view,
                 "Export Complete",
-                f"Analysis results exported to:\n{export_path}",
+                f"Analysis results exported to:\n{exported_text}",
                 timeout=2000
             )
         else:
@@ -573,13 +584,14 @@ class AnalysisController(QObject):
                     export_path = os.path.join(export_dir, export_filename)
             else:
                 # Fallback: Use current directory with default name
+                export_dir = os.getcwd()
                 interval_enabled, interval_seconds = self._model.get_interval_settings()
                 if interval_enabled:
                     export_filename = f"interval_{interval_seconds}s_summary.csv"
                 else:
                     export_filename = "summary_table.csv"
                     
-                export_path = os.path.join(os.getcwd(), export_filename)
+                export_path = os.path.join(export_dir, export_filename)
                 
                 # Check if file already exists and add timestamp if needed
                 if os.path.exists(export_path):
@@ -589,14 +601,26 @@ class AnalysisController(QObject):
                         export_filename = f"interval_{interval_seconds}s_summary_{timestamp}.csv"
                     else:
                         export_filename = f"summary_table_{timestamp}.csv"
-                    export_path = os.path.join(os.getcwd(), export_filename)
+                    export_path = os.path.join(export_dir, export_filename)
                 
             # Export using the model
-            if self._model.export_summary_csv(export_path):
+            if interval_enabled:
+                exported_paths = self._export_interval_and_standard_tables(export_path)
+                export_ok = bool(exported_paths)
+            else:
+                export_ok = self._model.export_summary_csv(export_path)
+                exported_paths = [export_path] if export_ok else []
+
+            if export_ok:
                 # Status message depends on interval settings
                 if interval_enabled:
-                    self.logger.info(f"Automatically exported interval results ({interval_seconds}-second intervals) to {export_path}")
-                    self._view.set_status_message(f"Results with {interval_seconds}-second intervals exported to {export_path}")
+                    self.logger.info(
+                        "Automatically exported interval and standard results to %s",
+                        exported_paths,
+                    )
+                    self._view.set_status_message(
+                        f"Interval and whole-session results exported to {export_dir}"
+                    )
                 else:
                     self.logger.info(f"Automatically exported results to {export_path}")
                     self._view.set_status_message(f"Results exported to {export_path}")
@@ -604,7 +628,11 @@ class AnalysisController(QObject):
                 # Show notification
                 auto_close_msg = f"Analysis results automatically exported to:\n{export_path}"
                 if interval_enabled:
-                    auto_close_msg = f"Analysis results with {interval_seconds}-second intervals automatically exported to:\n{export_path}"
+                    auto_close_msg = (
+                        "Analysis results with "
+                        f"{interval_seconds}-second intervals automatically exported to:\n"
+                        + "\n".join(exported_paths)
+                    )
                     
                 AutoCloseMessageBox.information(
                     self._view,
@@ -621,6 +649,33 @@ class AnalysisController(QObject):
                 "Export Error",
                 f"Failed to automatically export results: {str(e)}"
             )
+
+    def _unique_export_path(self, directory, filename):
+        """Return a non-conflicting path in ``directory`` for ``filename``."""
+        path = os.path.join(directory, filename)
+        if not os.path.exists(path):
+            return path
+
+        stem, ext = os.path.splitext(filename)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        return os.path.join(directory, f"{stem}_{timestamp}{ext}")
+
+    def _export_interval_and_standard_tables(self, interval_export_path):
+        """
+        Export the interval summary and the whole-session summary together.
+
+        Returns:
+            list[str] or False: Exported paths on success, False otherwise.
+        """
+        export_dir = os.path.dirname(interval_export_path) or os.getcwd()
+        standard_path = self._unique_export_path(export_dir, "summary_table.csv")
+
+        if not self._model.export_summary_csv(interval_export_path):
+            return False
+        if not self._model.export_standard_summary_csv(standard_path):
+            return False
+
+        return [interval_export_path, standard_path]
     
     def export_summary_to_file(self, export_path):
         """

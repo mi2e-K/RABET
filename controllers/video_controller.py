@@ -5,6 +5,7 @@ from PySide6.QtCore import QObject, Slot, QTimer
 from PySide6.QtWidgets import QFileDialog, QProgressDialog, QApplication, QMessageBox
 
 from utils.threaded_loader import ThreadedVideoLoader
+from utils.video_detection import is_video_file, video_file_dialog_filter
 
 class VideoController(QObject):
     """
@@ -22,6 +23,7 @@ class VideoController(QObject):
         # Optional ConfigManager reference used for recent-files tracking.
         # AppController calls ``set_config_manager`` once construction is done.
         self.config_manager = None
+        self.project_model = None
 
         # Create threaded loader
         self._loader = ThreadedVideoLoader(self._video_model)
@@ -48,21 +50,14 @@ class VideoController(QObject):
         self._step_complete_timer = QTimer(self)
         self._step_complete_timer.setSingleShot(True)
         self._step_complete_timer.timeout.connect(self._finalize_step_operation)
-        
+
         # Frame rate info for better stepping
         self._frame_duration_ms = 40  # Default value, will be updated when video is loaded
-        
-        # Set up a timer to set window handle with a slight delay
-        # This helps ensure the widget is fully initialized
-        self._init_timer = QTimer(self)
-        self._init_timer.setSingleShot(True)
-        self._init_timer.timeout.connect(self._delayed_set_window_handle)
-        self._init_timer.start(100)  # 100ms delay
 
-        # VLC initialization stabilization timer
-        self._vlc_stabilize_timer = QTimer(self)
-        self._vlc_stabilize_timer.setSingleShot(True)
-        self._vlc_stabilize_timer.timeout.connect(self._on_vlc_stabilized)
+        # NB: the legacy ``_init_timer`` and ``_vlc_stabilize_timer`` were
+        # removed in 1.3.1. Under PyAV there's no native window handle to
+        # plug into and no "wait for VLC to be ready" phase; the view
+        # paints the frame directly when VideoModel emits ``frame_ready``.
     
     def _connect_loader_signals(self):
         """Connect signals from the video loader."""
@@ -133,21 +128,23 @@ class VideoController(QObject):
             # Record the freshly loaded file in the Recent Files menu.
             self._record_recent_video()
 
-            # Do not hide the loading overlay yet - wait for VLC to stabilize
-            # Instead, update the message to indicate we're finalizing
-            self._view.show_loading_overlay(True)
-            self._view.loading_overlay.set_message("Initializing video player...")
-
-            # Set the video window handle with a delay
-            # This sequence is critical for proper VLC initialization
-            QTimer.singleShot(300, self._set_window_handle)
-            
-            # Start the VLC stabilization timer - this gives VLC time to fully initialize
-            # This is critical to prevent UI freezes
-            self._vlc_stabilize_timer.start(1500)  # 1.5 second delay to ensure VLC is ready
-            
             # Update UI with video info
             self._update_video_info()
+
+            # Hide the loading overlay immediately. Under VLC we had to
+            # stall here for ~1.5s waiting for libvlc to stabilise its
+            # native render surface; under PyAV the first frame has
+            # already been decoded synchronously in ``load_video`` and
+            # painted by the view, so the user is staring at the right
+            # picture by this point.
+            self._view.show_loading_overlay(False)
+            self._video_initializing = False
+
+            # Reset focus to main window so keyboard shortcuts work
+            # immediately. (Previously this fired from _on_vlc_stabilized.)
+            main_window = self._view.window()
+            if main_window is not None and hasattr(main_window, "resetFocus"):
+                QTimer.singleShot(50, main_window.resetFocus)
         else:
             # If loading failed, hide the overlay
             self._view.show_loading_overlay(False)
@@ -166,42 +163,10 @@ class VideoController(QObject):
         except Exception as exc:
             self.logger.warning(f"Failed to record recent video: {exc}")
 
-    def _on_vlc_stabilized(self):
-        """
-        Called when VLC is considered stabilized after initialization.
-        This prevents premature interaction with the video.
-        """
-        self.logger.debug("VLC stabilization period complete")
-        
-        # Hide the loading overlay now that VLC is stable
-        self._view.show_loading_overlay(False)
-        
-        # Clear the initialization flag
-        self._video_initializing = False
-        
-        # Make a final refresh of the window to ensure proper display
-        if self._video_model.is_playing():
-            # If video is already playing, briefly pause and resume to ensure frame display
-            was_playing = True
-            self._video_model.pause()
-        else:
-            was_playing = False
-            
-        # Force a frame refresh
-        self._video_model.refresh_frame()
-        
-        # Resume playback if it was playing. The QTimer.singleShot call
-        # already yields back to the Qt event loop, so a manual
-        # ``processEvents`` here was unnecessary.
-        if was_playing:
-            QTimer.singleShot(200, self._video_model.play)
-        
-        # Reset focus to main window after loading completes
-        # This ensures keyboard shortcuts work immediately after video loads
-        main_window = self._view.window()
-        if main_window:
-            QTimer.singleShot(300, main_window.resetFocus)
-    
+    # NOTE: ``_on_vlc_stabilized`` was removed in 1.3.1. The PyAV backend
+    # has no async stabilisation phase — the first frame is already
+    # painted by the time ``_on_loading_finished`` runs.
+
     def _on_loading_error(self, error_message):
         """
         Handle video loading error.
@@ -249,65 +214,13 @@ class VideoController(QObject):
         # Update frame rate info
         self._frame_duration_ms = int(1000 / max(1, fps)) if fps > 0 else 40
     
-    def _delayed_set_window_handle(self):
-        """Set window handle after a short delay."""
-        if self._video_model._media is None and not self._video_initializing:
-            self.logger.debug("Skipping initial window handle setup until a video is loaded")
-            return
-        self.logger.debug("Setting window handle after initialization delay")
-        self._set_window_handle()
-    
-    def _set_window_handle(self):
-        """Set the window handle for VLC to embed video."""
-        if self._video_model.media_player is None:
-            self.logger.error("Cannot set window handle: media player not initialized")
-            return False
-            
-        video_widget = self._view.get_video_frame()
-        
-        if video_widget is None:
-            self.logger.error("Cannot set window handle: video frame widget not available")
-            return False
-        
-        try:
-            if hasattr(self._view, 'ensure_native_video_surface'):
-                self._view.ensure_native_video_surface()
+    # NOTE: the VLC window-handle plumbing (``_delayed_set_window_handle``,
+    # ``_set_window_handle``, ``_prepare_embedded_video_surface``) was
+    # removed in 1.3.1. Rendering happens through ``VideoModel.frame_ready
+    # -> VideoPlayerView.display_frame`` (wired up in
+    # ``_connect_model_signals`` below) so no platform-specific surface
+    # handle ever needs to leave the GUI layer.
 
-            # Make sure widget is visible and ready
-            if not video_widget.isVisible():
-                self.logger.warning("Video widget is not visible yet")
-                # Try again later
-                QTimer.singleShot(500, self._set_window_handle)
-                return False
-            
-            if not video_widget.winId():
-                self.logger.warning("Video widget does not have a window ID yet")
-                # Try again later
-                QTimer.singleShot(500, self._set_window_handle)
-                return False
-            
-            # Get the window handle
-            win_id = int(video_widget.winId())
-            
-            # Use it in the model
-            success = self._video_model.set_window_handle(win_id)
-            
-            if success:
-                self.logger.info(f"Successfully set window handle: {win_id}")
-            else:
-                self.logger.error("Failed to set window handle in model")
-            
-            return success
-        except Exception as e:
-            self.logger.error(f"Error setting window handle: {str(e)}", exc_info=True)
-            return False
-
-    def _prepare_embedded_video_surface(self):
-        """Ensure VLC has a valid embedded target before the first playback frame."""
-        if hasattr(self._view, 'ensure_native_video_surface'):
-            self._view.ensure_native_video_surface()
-        return self._set_window_handle()
-    
     def _connect_model_signals(self):
         """Connect signals from the model."""
         self._video_model.playback_state_changed.connect(self._view.set_playing_state)
@@ -315,6 +228,10 @@ class VideoController(QObject):
         self._video_model.duration_changed.connect(self._view.set_duration)
         # Get frame rate when video is loaded
         self._video_model.video_loaded.connect(self._update_frame_rate)
+        # NEW (1.3.1): decoded frames flow through this signal/slot pair.
+        # The view paints the QImage into ``video_display_label`` — that
+        # is the entirety of the render path.
+        self._video_model.frame_ready.connect(self._view.display_frame)
     
     def _update_frame_rate(self, video_path):
         """Update frame rate info when a video is loaded."""
@@ -332,16 +249,16 @@ class VideoController(QObject):
         """Finalize a step operation after everything is complete."""
         if not self._stepping_in_progress:
             return
-            
+
         # Update position to ensure UI is in sync
         position = self._video_model.get_position()
         self._view.set_position(position)
-        
+
         self.logger.debug(f"Step operation finalized at position {position}ms")
-        
+
         # Reset stepping flag
         self._stepping_in_progress = False
-        
+
         # Notify annotation controller about final position
         main_window = self._view.window()
         if main_window and hasattr(main_window, 'annotation_controller'):
@@ -358,8 +275,11 @@ class VideoController(QObject):
         self._view.step_forward_clicked.connect(self.handle_step_forward)
         self._view.step_backward_clicked.connect(self.handle_step_backward)
         self._view.rate_changed.connect(self._video_model.set_playback_rate)
-        self._view.volume_changed.connect(self._video_model.set_volume)
-        
+        # NOTE (1.3.1): the legacy ``volume_changed`` connect was removed
+        # together with the VLC backend. Audio is not played at all under
+        # the PyAV backend, so there's no model-side volume API to wire
+        # up. The view's volume slider is already hidden in setup_ui.
+
         # Connect drag and drop signal
         if hasattr(self._view, 'video_dropped'):
             self._view.video_dropped.connect(self.load_video)
@@ -402,139 +322,58 @@ class VideoController(QObject):
     
     def handle_step_forward(self, time_ms=100):
         """
-        Handle step forward request with improved frame handling.
-        
+        Handle step forward request — now a thin wrapper over the model.
+
+        Under VLC this method had to align ``time_ms`` to frame boundaries,
+        issue a precision seek, schedule a play/pause pulse to wake VLC's
+        vout buffer, and manage retry timers. PyAV's ``step_forward`` is
+        frame-accurate on first call, so we just forward the request and
+        let the model emit ``frame_ready`` directly.
+
         Args:
-            time_ms (int): Time to step forward in milliseconds
-        
+            time_ms: target step size in ms. Values <= 50 are treated as
+                "one frame" by the model.
+
         Returns:
-            bool: True if successful, False otherwise
+            True on success.
         """
-        # Guard against overlapping operations
         if self._video_model is None or self._stepping_in_progress:
             return False
-            
-        # Set stepping flag
         self._stepping_in_progress = True
-        
         try:
-            # Get current position
-            before_pos = self._video_model.get_position()
-            
-            # Make sure video is paused for frame stepping
-            was_playing = self._video_model.is_playing()
-            if was_playing:
-                self._video_model.pause()
-            
-            # If this is a frame-by-frame step (small time value), use exact frame duration
-            if time_ms <= 50:  # Assume this is a frame-by-frame step
-                # Use the actual frame duration from the video if available
-                if hasattr(self._video_model, '_frame_duration_ms') and self._video_model._frame_duration_ms > 0:
-                    frame_duration = self._video_model._frame_duration_ms
-                else:
-                    frame_duration = 33  # Default ~30fps
-                
-                self.logger.debug(f"Frame-by-frame step forward using {frame_duration}ms")
-                
-                # Calculate target position precisely - ensure we step exactly one frame
-                target_pos = before_pos + frame_duration
-                
-                # Perform the step with extra force refresh
-                self._video_model.seek_with_retry(target_pos)
-                
-                # Force a frame refresh with a small delay to ensure VLC completes the seek
-                QTimer.singleShot(50, self._force_refresh_frame)
-            else:
-                # Regular step with user-specified time
-                # Ensure step size is reasonable (use a minimum of one frame duration)
-                min_step = max(10, self._frame_duration_ms)
-                time_ms = max(min_step, min(time_ms, 5000))
-                
-                # Calculate target position precisely (align to frame boundaries if possible)
-                frames_to_move = max(1, round(time_ms / max(1, self._frame_duration_ms)))
-                frame_aligned_step = frames_to_move * self._frame_duration_ms
-                
-                # Calculate a more precise target position
-                target_pos = min(before_pos + frame_aligned_step, self._video_model.get_duration())
-                
-                self.logger.debug(f"Stepping forward from {before_pos}ms to {target_pos}ms "
-                                f"({frames_to_move} frames, {frame_aligned_step}ms)")
-                
-                # Store position explicitly
-                self._video_model._last_seek_position = target_pos
-                
-                # Use precision seeking
-                self._video_model.seek_with_retry(target_pos)
-            
-            # Schedule finalization with a delay to ensure seek completes
-            self._step_complete_timer.start(100)
-            
-            # Resume playback if it was playing before (with delay to ensure seek completes)
-            if was_playing:
-                QTimer.singleShot(250, self._video_model.play)
-                
+            self._video_model.step_forward(time_ms)
             return True
-        except Exception as e:
-            self.logger.error(f"Error in handle_step_forward: {str(e)}")
+        except Exception as exc:
+            self.logger.error(f"handle_step_forward failed: {exc}", exc_info=True)
             self._stepping_in_progress = False
             return False
-    
-    def _force_refresh_frame(self):
-        """Force a VLC frame refresh to fix display issues."""
-        try:
-            # The most reliable way to refresh is to use next_frame
-            self._video_model.refresh_frame()
-            
-            # Log success
-            self.logger.debug("Forced frame refresh")
-        except Exception as e:
-            self.logger.error(f"Error during forced frame refresh: {str(e)}")
         finally:
-            # Ensure we release the operation lock
-            # Set flag to false directly since this is a simple operation
-            self._stepping_in_progress = False
-    
+            # Finalise after a short delay so the view's position slider /
+            # annotation_controller.handle_seek call still get a chance to
+            # reflect the new ms. 50 ms is enough — the actual decode
+            # already finished synchronously inside step_forward.
+            self._step_complete_timer.start(50)
+
     def handle_step_backward(self, time_ms=100):
         """
-        Handle step backward request.
+        Handle step backward request — thin wrapper over the model.
 
-        Args:
-            time_ms (int): Time to step backward in milliseconds
+        PyAV has no native "step back" instruction; the model emulates it
+        by ``seek(current_ms - step_ms)`` which is frame-accurate, so the
+        legacy VLC-era retry/pulse plumbing is gone.
         """
-        if self._stepping_in_progress or self._video_initializing:
-            self.logger.debug("Step backward request ignored - operation in progress")
-            return
-
+        if self._video_model is None or self._stepping_in_progress:
+            return False
         self._stepping_in_progress = True
-
         try:
-            before_pos = self._video_model.get_position()
-
-            # Make sure video is paused for frame stepping
-            was_playing = self._video_model.is_playing()
-            if was_playing:
-                self._video_model.pause()
-
-            target_pos = max(0, before_pos - time_ms)
-            self.logger.debug(
-                f"Stepping backward from {before_pos}ms to {target_pos}ms "
-                f"({time_ms}ms)"
-            )
-
-            # Use precision seeking so the resulting frame matches the target.
-            self._video_model.seek_with_retry(target_pos)
-
-            # Larger backward steps need a slightly longer delay before
-            # finalising so the VLC seek can settle.
-            finalize_delay = 150 if time_ms > 200 else 100
-            self._step_complete_timer.start(finalize_delay)
-
-            # Resume playback if it was playing before
-            if was_playing:
-                QTimer.singleShot(200, self._video_model.play)
-        except Exception as e:
-            self.logger.error(f"Error in handle_step_backward: {str(e)}")
+            self._video_model.step_backward(time_ms)
+            return True
+        except Exception as exc:
+            self.logger.error(f"handle_step_backward failed: {exc}", exc_info=True)
             self._stepping_in_progress = False
+            return False
+        finally:
+            self._step_complete_timer.start(50)
     
     @Slot()
     def open_video_dialog(self):
@@ -549,13 +388,95 @@ class VideoController(QObject):
             return
             
         file_path, _ = QFileDialog.getOpenFileName(
-            self._view, "Open Video", "", "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv)"
+            self._view, "Open Video", "", video_file_dialog_filter()
         )
-        
+
         if file_path:
+            # When the user selects via "All Files", reject anything that
+            # neither has a known extension, magic-number signature, nor
+            # opens as a video container.
+            if not is_video_file(file_path):
+                QMessageBox.warning(
+                    self._view,
+                    "Unsupported file",
+                    f"The selected file does not appear to be a video that "
+                    f"RABET can decode:\n\n{file_path}",
+                )
+                return
             self.load_video(file_path)
     
-    def load_video(self, file_path):
+    def _clear_annotation_project_context_for_regular_load(self):
+        """Regular video loads must not reuse a stale Project-mode export path."""
+        main_window = self._view.window()
+        annotation_controller = getattr(main_window, "annotation_controller", None)
+        if annotation_controller and hasattr(annotation_controller, "clear_project_context"):
+            annotation_controller.clear_project_context()
+
+    def _warn_on_project_same_name_conflict(self, file_path):
+        """Block external loads that look like a different copy of a project video."""
+        if self.project_model is None or not self.project_model.is_project_open():
+            return False
+
+        conflict = self.project_model.find_same_name_video_conflict(file_path)
+        if not conflict:
+            return False
+
+        stored_video, expected_path = conflict
+        QMessageBox.warning(
+            self._view,
+            "Project Video Name Conflict",
+            "A video with the same filename is already managed by the open project, "
+            "but the selected file is in a different location.\n\n"
+            f"Selected file:\n{file_path}\n\n"
+            f"Project video:\n{expected_path}\n\n"
+            "To avoid loading the wrong annotations, open the video from the Project "
+            "tab or add this file to the project with a unique filename.",
+        )
+        self.logger.warning(
+            "Blocked external video load with same project filename: selected=%s project_ref=%s expected=%s",
+            file_path,
+            stored_video,
+            expected_path,
+        )
+        return True
+
+    def close_video(self):
+        """Close the currently loaded video and reset the playback surface state."""
+        try:
+            self._video_initializing = False
+            if self._progress_dialog:
+                self._progress_dialog.close()
+                self._progress_dialog = None
+
+            # New VideoModel teardown:  ``close()`` releases the PyAV
+            # container (frees the FFmpeg codec context, ~50MB on H264
+            # 1080p) and resets the internal position/duration counters.
+            # We follow up with explicit signal emissions so the view's
+            # slider and label go back to 0 even though the new model
+            # also emits ``duration_changed(0)`` from ``_close_container``.
+            self._video_model.stop()
+            self._video_model.close()
+            self._video_model._video_path = None
+            self._video_model._duration = 0
+            self._video_model._last_seek_position = 0
+            self._video_model.duration_changed.emit(0)
+            self._video_model.position_changed.emit(0)
+
+            self._view.show_loading_overlay(False)
+            self._view.set_position(0)
+            self._view.set_duration(0)
+
+            main_window = self._view.window()
+            if main_window and hasattr(main_window, "set_video_info"):
+                main_window.set_video_info("")
+
+            self.logger.info("Closed current video")
+            return True
+        except Exception as exc:
+            self.logger.error(f"Failed to close video: {exc}", exc_info=True)
+            return False
+
+    def load_video(self, file_path, preserve_project_context=False):
         """
         Load a video file using the threaded loader.
         
@@ -574,6 +495,11 @@ class VideoController(QObject):
         if not os.path.exists(file_path):
             self.logger.error(f"Video file not found: {file_path}")
             return False
+
+        if not preserve_project_context:
+            if self._warn_on_project_same_name_conflict(file_path):
+                return False
+            self._clear_annotation_project_context_for_regular_load()
         
         # Check if loading is already in progress
         if self._loader.is_loading():
@@ -584,12 +510,11 @@ class VideoController(QObject):
         self._view.show_loading_overlay(True)
         self._view.set_loading_progress(0)
 
-        # Critical: the model briefly calls play() during load initialization.
-        # If VLC has no window handle yet, it falls back to a separate popup window.
-        if not self._prepare_embedded_video_surface():
-            self.logger.error("Failed to prepare embedded video surface before loading")
-            self._view.show_loading_overlay(False)
-            return False
-        
+        # 1.3.1 note: under VLC we had to pre-bind a window handle here
+        # because libvlc would otherwise spawn a separate popup during the
+        # brief play() it performs internally during load. PyAV doesn't
+        # touch native windows at all (we paint frames via QLabel), so
+        # the surface-prep step is gone.
+
         # Start loading in background thread
         return self._loader.load_video(file_path)

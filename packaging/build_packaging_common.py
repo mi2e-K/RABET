@@ -26,7 +26,10 @@ ROOT_DIR = _PROJECT_ROOT
 
 CORE_DEPENDENCIES = [
     "PySide6",
-    "python-vlc",
+    # 1.3.1: python-vlc replaced by PyAV (FFmpeg python bindings). PyAV's
+    # wheels ship a bundled FFmpeg build, so no system video runtime is
+    # required at install or run time on Win/macOS/Linux.
+    "av",
     "shiboken6",
 ]
 
@@ -42,17 +45,48 @@ BUILD_DEPENDENCIES = [
 ]
 
 PACKAGE_IMPORT_NAMES = {
-    "python-vlc": "vlc",
+    "av": "av",
     "Pillow": "PIL",
     "PyInstaller": "PyInstaller",
 }
 
 HIDDEN_DEPENDENCIES = [
-    "vlc",
+    # PyAV exposes a top-level ``av`` plus several submodules that
+    # PyInstaller's static analyser often misses (they're imported
+    # dynamically when the user opens a video).
+    "av",
+    "av.video",
+    "av.audio",
+    "av.container",
+    "av.codec",
+    "av.error",
     "matplotlib.backends.backend_qtagg",
     "matplotlib.backends.backend_qt5agg",
     "PIL",
     "PIL.Image",
+    # 1.3.2: pingouin powers the in-app Reliability tab. It pulls in
+    # scipy/statsmodels which were previously in the excludes list -
+    # the excludes have been updated below to let them through.
+    "pingouin",
+    "scipy",
+    "scipy.stats",
+    "scipy.special",
+    "statsmodels",
+    "statsmodels.api",
+    # Krippendorff's alpha is provided by the standalone krippendorff
+    # package; pingouin 0.5.x no longer exposes it.
+    "krippendorff",
+    # 1.3.2: filetype is used by utils.video_detection for magic-number
+    # sniffing of dropped video files whose extension is unusual.
+    "filetype",
+    # 1.3.2: pingouin's top-level ``__init__.py`` does
+    # ``from .plotting import *`` (which loads seaborn) and several
+    # helpers rely on pandas_flavor's @register_* decorators. Both are
+    # listed here so PyInstaller pulls them into the bundle - excluding
+    # them caused ``import pingouin`` to raise ImportError, which the
+    # Reliability tab silently swallowed.
+    "seaborn",
+    "pandas_flavor",
 ]
 
 COMMON_EXCLUDED_MODULES = [
@@ -61,10 +95,17 @@ COMMON_EXCLUDED_MODULES = [
     "tkinter",
     "wx",
     "gtk",
-    "scipy",
+    # NOTE (1.3.2): scipy / statsmodels / sklearn were previously listed
+    # here to keep the bundle small, but pingouin (used by the Reliability
+    # tab) depends on scipy and statsmodels. They are now intentionally
+    # NOT excluded so that the bundled pingouin can import them. sklearn
+    # remains excluded because pingouin only uses it in functions we do
+    # not call from the Reliability tab.
     "sklearn",
-    "seaborn",
-    "statsmodels",
+    # seaborn cannot be excluded: pingouin's __init__ pulls in
+    # pingouin.plotting which imports seaborn at module load time.
+    # If seaborn is excluded, the whole pingouin namespace fails to
+    # import and the Reliability tab quietly falls back to None.
     "tensorflow",
     "torch",
     "keras",
@@ -108,7 +149,10 @@ COMMON_EXCLUDED_MODULES = [
     "imageio",
     "docutils",
     "babel",
-    "distutils",
+    # NOTE: ``distutils`` cannot be excluded because PyInstaller 6.x's
+    # pre-safe-import hook ``hook-distutils.py`` aliases setuptools'
+    # vendored copy to ``distutils`` and chokes if the name is already
+    # marked as excluded.
     "lib2to3",
     "ensurepip",
     "venv",
@@ -118,6 +162,69 @@ COMMON_EXCLUDED_MODULES = [
     "testing",
     "pip",
     "wheel",
+    # ---------------------------------------------------------------- #
+    # 1.3.2: scipy sub-modules that pingouin's ICC path does NOT touch.
+    # Excluding the rest shaves ~40 MB off the PyInstaller bundle.
+    #
+    # IMPORTANT: pingouin actually loads scipy.cluster, scipy.constants,
+    # scipy.fft, scipy.integrate, scipy.interpolate, scipy.ndimage,
+    # scipy.sparse.linalg and scipy.spatial through its
+    # ``import pingouin`` chain (verified with
+    # ``tools/probe_pingouin_imports.py``), so these are NOT in the
+    # exclude list any more. Excluding them caused
+    # ``import pingouin`` to raise inside the bundled exe and the
+    # Reliability tab silently fell back to None for every metric.
+    # ---------------------------------------------------------------- #
+    "scipy.signal",
+    "scipy.fftpack",
+    "scipy.misc",
+    "scipy.odr",
+    "scipy.io",
+    "scipy.datasets",
+    "statsmodels.tsa",
+    "statsmodels.graphics",
+    "statsmodels.formula",
+    "statsmodels.imputation",
+    "statsmodels.duration",
+    "statsmodels.discrete",
+    "statsmodels.emplike",
+    "statsmodels.gam",
+    "statsmodels.multivariate",
+    "statsmodels.nonparametric",
+    "statsmodels.sandbox",
+    "statsmodels.miscmodels",
+    "statsmodels.othermod",
+    "statsmodels.genmod",
+    "statsmodels.distributions",
+    "statsmodels.examples",
+    "statsmodels.datasets",
+    "statsmodels.stats.contingency_tables",
+    "statsmodels.stats.libqsturng",
+    # NOTE: pingouin.plotting and pingouin.datasets cannot be excluded
+    # even though we never call into them at runtime, because
+    # ``pingouin/__init__.py`` does ``from .plotting import *`` and
+    # ``from .datasets import *`` unconditionally. Excluding them
+    # raises ``ImportError`` on ``import pingouin``, which silently
+    # kills every ICC computation in the Reliability tab.
+    # ---------------------------------------------------------------- #
+    # 1.3.2: pandas drags in pyarrow / lxml / tables / cryptography on
+    # the conda anaconda channel, but RABET only uses pandas' core CSV
+    # I/O and DataFrame operations. Strip the optional storage / parser
+    # backends, ~25 MB saved.
+    # ---------------------------------------------------------------- #
+    "pyarrow",
+    "tables",
+    "lxml",
+    "cryptography",
+    "distributed",
+    "zstandard",
+    "xlrd",
+    "openpyxl",
+    "xlsxwriter",
+    # numpy's f2py / array_api / distutils helpers are build-time only.
+    "numpy.f2py",
+    "numpy.distutils",
+    "numpy.array_api",
 ]
 
 PYSIDE_EXCLUDED_MODULES = [
@@ -191,6 +298,18 @@ COMMON_BINARY_EXCLUDE_PATTERNS = [
     "Qt6TextToSpeech",
     "Qt6Web",
     "qmltooling",
+    # ---------------------------------------------------------------- #
+    # 1.3.2: Intel MKL is dragged in by the conda anaconda numpy build
+    # and explodes the bundle by ~500 MB. ICC / kappa / alpha do not
+    # require MKL - numpy / scipy fall back to their own portable BLAS.
+    # Strip every mkl_*.dll. The patterns below match the actual file
+    # names PyInstaller emits.
+    # ---------------------------------------------------------------- #
+    "mkl_",
+    "libmkl_",
+    # NumPy ships its own copies of these in pip wheels; the conda
+    # build links against the MKL ones above, which we just dropped.
+    "libiomp5md",
 ]
 
 
@@ -336,54 +455,26 @@ def prepare_build_dirs(skip_clean=False):
 
 
 def write_vlc_runtime_hook(path, platform_key):
-    """Write a small runtime hook that helps python-vlc find external VLC."""
-    if platform_key == "macos":
-        hook = r'''
-import os
-from pathlib import Path
+    """Deprecated since 1.3.1.
 
-candidate_apps = [
-    Path("/Applications/VLC.app"),
-    Path.home() / "Applications" / "VLC.app",
-]
+    The legacy hook helped python-vlc find an externally installed VLC
+    by setting ``VLC_PLUGIN_PATH`` / ``DYLD_LIBRARY_PATH`` at startup.
+    The PyAV backend doesn't need anything similar: PyAV's wheel embeds
+    its own FFmpeg shared libraries inside ``site-packages/av/`` and
+    PyInstaller picks them up automatically via ``--collect-all=av``
+    (or the equivalent ``--add-binary`` flags in each platform script).
 
-for app_path in candidate_apps:
-    macos_dir = app_path / "Contents" / "MacOS"
-    plugin_dir = macos_dir / "plugins"
-    lib_dir = macos_dir / "lib"
-    if macos_dir.exists():
-        if plugin_dir.exists():
-            os.environ.setdefault("VLC_PLUGIN_PATH", str(plugin_dir))
-        path_parts = [str(macos_dir)]
-        if lib_dir.exists():
-            path_parts.append(str(lib_dir))
-            os.environ["DYLD_LIBRARY_PATH"] = (
-                str(lib_dir) + os.pathsep + os.environ.get("DYLD_LIBRARY_PATH", "")
-            )
-        os.environ["PATH"] = os.pathsep.join(path_parts + [os.environ.get("PATH", "")])
-        break
-'''
-    elif platform_key == "linux":
-        hook = r'''
-import os
-from pathlib import Path
-
-candidate_plugin_dirs = [
-    Path("/usr/lib/x86_64-linux-gnu/vlc/plugins"),
-    Path("/usr/lib/aarch64-linux-gnu/vlc/plugins"),
-    Path("/usr/lib64/vlc/plugins"),
-    Path("/usr/lib/vlc/plugins"),
-]
-
-for plugin_dir in candidate_plugin_dirs:
-    if plugin_dir.exists():
-        os.environ.setdefault("VLC_PLUGIN_PATH", str(plugin_dir))
-        break
-'''
-    else:
-        raise ValueError(f"Unsupported platform key: {platform_key}")
-
-    path.write_text(hook.lstrip(), encoding="utf-8")
+    This function is kept as a stub so callers added before the
+    migration don't break — it simply removes any previously generated
+    hook file and returns the path.
+    """
+    _ = platform_key  # unused on purpose
+    path = Path(path)
+    if path.exists():
+        try:
+            path.unlink()
+        except OSError:
+            pass
     return path
 
 
@@ -423,11 +514,13 @@ def write_readme(target_dir, platform_label):
 Version: {APP_VERSION}
 Platform build: {platform_label}
 
-VLC is required separately. Install VLC on the target machine before running RABET.
-RABET stores user configuration and generated files in the platform-standard user
-application data directory.
+This package is self-contained. As of {APP_NAME} 1.3.1 the video pipeline is
+powered by PyAV (FFmpeg python bindings) instead of python-vlc; the FFmpeg
+shared libraries are bundled inside the application, so no system-wide
+VLC / FFmpeg install is required.
 
-This package was built without bundling VLC to keep the file size small.
+{APP_NAME} stores user configuration and generated files in the
+platform-standard user application data directory.
 """,
         encoding="utf-8",
     )

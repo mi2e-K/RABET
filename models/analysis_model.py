@@ -827,10 +827,10 @@ class AnalysisModel(QObject):
                     overlap_end = np.minimum(offsets, end_time)
                     overlap_duration = np.maximum(0.0, overlap_end - overlap_start)
                     interval_metrics[f"{behavior}_duration"] = float(overlap_duration.sum())
-                    # An event counts toward an interval whenever it has
-                    # any positive overlap with that interval, matching the
-                    # pre-existing semantics (see B9 / Frequency column).
-                    interval_metrics[f"{behavior}_count"] = int((overlap_duration > 0).sum())
+                    # Duration is based on overlap with the interval, while
+                    # Frequency is based on event onsets inside the interval.
+                    onset_in_interval = (onsets >= start_time) & (onsets < end_time)
+                    interval_metrics[f"{behavior}_count"] = int(onset_in_interval.sum())
                 else:
                     interval_metrics[f"{behavior}_duration"] = 0.0
                     interval_metrics[f"{behavior}_count"] = 0
@@ -1251,6 +1251,10 @@ class AnalysisModel(QObject):
             self.logger.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
             return False
+
+    def export_standard_summary_csv(self, file_path):
+        """Export the whole-session summary table regardless of interval settings."""
+        return self._export_standard_summary(file_path)
     
     def _export_standard_summary(self, file_path):
         """
@@ -1270,7 +1274,7 @@ class AnalysisModel(QObject):
                 # Provenance: emit a single header row with the producing
                 # RABET version and schema identifier. Downstream tools can
                 # detect/parse this to handle future format revisions.
-                writer.writerow([f"RABET {RABET_VERSION} summary export (schema {SUMMARY_CSV_SCHEMA})"])
+                # writer.writerow([f"RABET {RABET_VERSION} summary export (schema {SUMMARY_CSV_SCHEMA})"])
 
                 # Get all behaviors for the header (both default and custom)
                 behaviors_list = self._behaviors
@@ -1391,7 +1395,7 @@ class AnalysisModel(QObject):
                 writer = csv.writer(f)
 
                 # Provenance row: producing app version and schema identifier.
-                writer.writerow([f"RABET {RABET_VERSION} interval-summary export (schema {SUMMARY_CSV_SCHEMA})"])
+                # writer.writerow([f"RABET {RABET_VERSION} interval-summary export (schema {SUMMARY_CSV_SCHEMA})"])
 
                 # Get all behaviors for the header (both default and custom)
                 behaviors_list = self._behaviors
@@ -1401,15 +1405,13 @@ class AnalysisModel(QObject):
                 # FIX: Remove the unnecessary blank line on the second row
                 
                 # Write structured headers with Duration/Frequency sections.
-                # Note: in interval analysis, an event that spans multiple
-                # intervals is counted once per overlapping interval (i.e.
-                # this Frequency column reports the number of events
-                # overlapping each interval, not the number of onsets).
+                # Duration is overlap seconds per interval; Frequency is the
+                # count of events whose onset falls inside that interval.
                 header_row1 = ['', '', '', '']  # animal_id, Interval, Time (min), blank column
                 header_row1.extend(['Duration'] + [''] * (len(behaviors_list) - 1))  # Duration section
                 header_row1.append('')  # Blank column between sections
                 header_row1.extend(
-                    ['Frequency (events overlapping interval)']
+                    ['Frequency']
                     + [''] * (len(behaviors_list) - 1)
                 )  # Frequency section
                 # FIX: Add blank column before additional metrics

@@ -6,8 +6,12 @@ import sys
 import os
 import argparse
 import logging
-from PySide6.QtWidgets import QApplication, QStyleFactory
-from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import (
+    QApplication, QStyleFactory, QSplashScreen, QProgressBar, QLabel,
+    QVBoxLayout, QWidget,
+)
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 
 from controllers.app_controller import AppController
 from utils.logger import setup_logger
@@ -71,6 +75,84 @@ def setup_application_icon(app):
     except Exception as e:
         logger.error(f"Error setting application icon: {str(e)}")
         return False
+
+class RabetSplash(QSplashScreen):
+    """Custom splash window with a title, status text and a determinate
+    progress bar. Stays on top of every other RABET widget while the
+    main window is being constructed."""
+
+    def __init__(self, icon_path: str | None = None) -> None:
+        # Build a clean 480x240 background pixmap. We paint a dark
+        # rounded rectangle with the RABET version on it so the splash
+        # looks intentional rather than relying on an external image.
+        from version import __version__ as app_version
+        pixmap = QPixmap(QSize(480, 240))
+        pixmap.fill(QColor("#1f1f1f"))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Border
+        painter.setPen(QColor("#3a3a3a"))
+        painter.drawRoundedRect(0, 0, 479, 239, 8, 8)
+        # Title
+        painter.setPen(QColor("#f5f5f5"))
+        title_font = QFont()
+        title_font.setPointSize(20)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.drawText(
+            pixmap.rect().adjusted(0, 40, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "RABET",
+        )
+        # Subtitle
+        painter.setPen(QColor("#bdbdbd"))
+        sub_font = QFont()
+        sub_font.setPointSize(10)
+        painter.setFont(sub_font)
+        painter.drawText(
+            pixmap.rect().adjusted(0, 80, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "Real-time Animal Behavior Event Tagger",
+        )
+        # Version
+        painter.setPen(QColor("#9e9e9e"))
+        ver_font = QFont()
+        ver_font.setPointSize(9)
+        painter.setFont(ver_font)
+        painter.drawText(
+            pixmap.rect().adjusted(0, 110, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            f"v{app_version}",
+        )
+        painter.end()
+
+        super().__init__(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+        if icon_path:
+            self.setWindowIcon(QIcon(icon_path))
+
+        # A child progress bar painted over the bottom of the splash.
+        self._progress = QProgressBar(self)
+        self._progress.setGeometry(40, 180, 400, 18)
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._progress.setTextVisible(False)
+        self._progress.setStyleSheet(
+            "QProgressBar { background-color: #2a2a2a;"
+            " border: 1px solid #3a3a3a; border-radius: 4px; }"
+            " QProgressBar::chunk { background-color: #4caf50;"
+            " border-radius: 3px; }"
+        )
+
+    def set_progress(self, value: int, message: str = "") -> None:
+        self._progress.setValue(max(0, min(100, int(value))))
+        if message:
+            self.showMessage(
+                message,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+                QColor("#e0e0e0"),
+            )
+        QApplication.processEvents()
+
 
 def adjust_window_to_screen(window):
     """
@@ -174,15 +256,23 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName("RABET")
         app.setApplicationDisplayName("Real-time Animal Behavior Event Tagger")
-        
+
         # Set application icon (crucial for taskbar and window icon)
         setup_application_icon(app)
-        
+
+        # Show the splash screen as early as possible so the user sees
+        # something the moment the process starts. The progress is
+        # updated at each major construction phase below.
+        splash = RabetSplash()
+        splash.show()
+        splash.set_progress(5, "Loading theme...")
+
         # Apply dark theme
         logger.info("Available styles: " + str(QStyleFactory.keys()))
         theme_manager = ThemeManager()
         theme_manager.apply_dark_theme(app)
-        
+        splash.set_progress(25, "Initialising controllers...")
+
         # Initialize main controller
         # Pass development mode flag if the app_controller accepts it
         try:
@@ -190,9 +280,11 @@ def main():
         except TypeError:
             # Fall back to standard initialization if the controller doesn't accept the parameter
             controller = AppController()
-        
+        splash.set_progress(80, "Preparing main window...")
+
         # Show main window
         controller.show_main_window()
+        splash.set_progress(100, "Ready.")
         
         # After window is shown, set its icon explicitly
         if hasattr(controller, 'main_window'):
@@ -208,7 +300,10 @@ def main():
         
         # Ensure the main window has focus
         controller.main_window.setFocus()
-        
+
+        # Hide splash now that the main window is up.
+        splash.finish(controller.main_window)
+
         # Start application event loop
         sys.exit(app.exec())
     except Exception as e:

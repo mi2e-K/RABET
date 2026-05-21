@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QCursor, QDragEnterEvent, QDropEvent
 
+from utils.video_detection import is_video_file, video_file_dialog_filter
+
 class ProjectView(QWidget):
     """
     View for managing research projects containing related videos,
@@ -366,9 +368,14 @@ class ProjectView(QWidget):
     def on_add_video_clicked(self):
         """Handle add video button clicked."""
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add Videos", "", "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv)"
+            self, "Add Videos", "", video_file_dialog_filter()
         )
-        
+
+        # Filter out any files that look like videos by name but are not
+        # decodable, and any picked via "All Files" that are not videos.
+        if file_paths:
+            file_paths = [p for p in file_paths if is_video_file(p)]
+
         if file_paths:
             # Ask if files should be copied to project
             dialog = CopyFilesDialog(self, "videos")
@@ -735,15 +742,16 @@ class ProjectView(QWidget):
         """
         # Accept drag only if it contains file URLs and a project is open
         if event.mimeData().hasUrls() and self.description_text.isEnabled():
-            # Check if the files are video files
+            # Cascade through extension / magic-number / PyAV trial-open for
+            # each dropped file. Only accept the drop if every dragged item
+            # can be treated as a video.
             all_video_files = True
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
-                ext = os.path.splitext(file_path)[1].lower()
-                if ext not in ['.mp4', '.avi', '.mkv', '.mov', '.wmv']:
+                if not is_video_file(file_path):
                     all_video_files = False
                     break
-            
+
             if all_video_files:
                 # Set the drop action to copy
                 event.setDropAction(Qt.DropAction.CopyAction)

@@ -45,6 +45,8 @@ class AnnotationController(QObject):
         
         # Last loaded video path
         self._current_video_path = None
+        self._annotations_dirty = False
+        self._suppress_annotation_dirty = False
         
         # Key press tracking with high-precision system time
         self._key_press_times = {}  # Key -> (timestamp, system_time)
@@ -95,6 +97,11 @@ class AnnotationController(QObject):
         self._annotation_model.annotation_removed.connect(self.on_annotation_removed)
         self._annotation_model.annotations_cleared.connect(self.on_annotations_cleared)
         self._annotation_model.active_events_changed.connect(self.on_active_events_changed)
+
+        if hasattr(self._timeline_view, 'event_delete_requested'):
+            self._timeline_view.event_delete_requested.connect(
+                self.delete_timeline_annotation
+            )
         
         # Connect recording control view signals
         recording_control_view = self._main_window.recording_control_view
@@ -112,6 +119,92 @@ class AnnotationController(QObject):
         except Exception as exc:
             self.logger.warning(f"Failed to record recent annotation: {exc}")
 
+    def _mark_annotations_dirty(self):
+        """Remember that in-memory annotations have unsaved edits."""
+        if not self._suppress_annotation_dirty:
+            self._annotations_dirty = True
+
+    def _mark_annotations_saved(self):
+        """Remember that in-memory annotations match a saved/imported file."""
+        self._annotations_dirty = False
+
+    def _has_unsaved_annotations(self):
+        """Return whether there are in-memory events that still need saving."""
+        return self._annotations_dirty and bool(self._annotation_model.get_all_events())
+
+    def _clear_annotations_without_dirtying(self):
+        """Clear events as part of a video switch/import workflow."""
+        self._suppress_annotation_dirty = True
+        try:
+            self._annotation_model.clear_events()
+        finally:
+            self._suppress_annotation_dirty = False
+        self._mark_annotations_saved()
+
+    def _replace_annotations_from_file(self, file_path):
+        """Load annotations from a saved CSV and leave the dirty flag clean."""
+        self._suppress_annotation_dirty = True
+        try:
+            success = self._annotation_model.import_from_csv(file_path)
+        finally:
+            self._suppress_annotation_dirty = False
+
+        if success:
+            self._mark_annotations_saved()
+            self._record_recent_annotation(file_path)
+            self._timeline_view.set_events(
+                self._annotation_model.get_all_events_with_active()
+            )
+        return success
+
+    def import_annotations_from_file(self, file_path):
+        """Import a saved annotation CSV without marking it as unsaved."""
+        return self._replace_annotations_from_file(file_path)
+
+    def _confirm_or_clear_existing_annotations_for_new_video(self, project_mode=False):
+        """
+        Clear annotations from the previous video.
+
+        A confirmation dialog is only needed when the in-memory annotations
+        contain edits that have not been written to a CSV yet.
+        """
+        if not self._annotation_model.get_all_events():
+            return True
+
+        if not self._has_unsaved_annotations():
+            self.logger.debug("Clearing saved annotations while switching videos")
+            self._clear_annotations_without_dirtying()
+            return True
+
+        if project_mode:
+            message = (
+                "Unsaved annotations from another video are still in memory. "
+                "Discard them to continue with this project video?\n\n"
+                "Choose No to keep them so you can export them first."
+            )
+        else:
+            message = (
+                "Unsaved annotations from the previous video are still in memory. "
+                "Discard them to start fresh for the new video?\n\n"
+                "Choose No to keep them so you can export them first."
+            )
+
+        discard = QMessageBox.question(
+            self._main_window,
+            "Discard Unsaved Annotations?",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if discard == QMessageBox.StandardButton.Yes:
+            self.logger.info("User confirmed clearing unsaved annotations")
+            self._clear_annotations_without_dirtying()
+            self._main_window.set_status_message("Annotations cleared for new video")
+            return True
+
+        self.logger.info("User kept unsaved annotations")
+        return False
+
     # Project mode methods
     def set_project_mode(self, enabled):
         """
@@ -122,6 +215,14 @@ class AnnotationController(QObject):
         """
         self._project_mode = enabled
         self.logger.info(f"Project mode {'enabled' if enabled else 'disabled'}")
+
+    def clear_project_context(self):
+        """Clear project-specific annotation routing for regular video loads."""
+        self._project_mode = False
+        self._project_model = None
+        self._current_video_id = None
+        self._auto_export_path = None
+        self.logger.info("Project annotation context cleared")
     
     def set_project_model(self, project_model):
         """
@@ -436,8 +537,6 @@ class AnnotationController(QObject):
         self._last_position = 0
         self.logger.debug(f"Video loaded: {video_path}")
 
-        has_existing_events = bool(self._annotation_model.get_all_events())
-
         # In project mode, try to load existing annotations
         if self._project_mode and self._auto_export_path and os.path.exists(self._auto_export_path):
             # Ask if user wants to load existing annotations
@@ -450,72 +549,161 @@ class AnnotationController(QObject):
 
             if result == QMessageBox.StandardButton.Yes:
                 # Clear in-memory annotations first, then import saved ones
-                self._annotation_model.clear_events()
-                self._annotation_model.import_from_csv(self._auto_export_path)
-                self.logger.info(f"Loaded existing annotations from {self._auto_export_path}")
-
-                # Update timeline
-                self._timeline_view.set_events(self._annotation_model.get_all_events())
-            elif has_existing_events:
-                # User declined to load saved annotations. Confirm before
-                # discarding any in-memory annotations from a previous session.
-                discard = QMessageBox.question(
-                    self._main_window,
-                    "Discard Existing Annotations?",
-                    "Discard the annotations currently in memory? They are not "
-                    "associated with this video.\n\nChoose No to keep them as-is.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if discard == QMessageBox.StandardButton.Yes:
-                    self.logger.info("User confirmed clearing existing annotations (project mode)")
-                    self._annotation_model.clear_events()
-                    self._main_window.set_status_message("Annotations cleared for new video")
-                else:
-                    self.logger.info("User kept existing annotations (project mode)")
+                if self._replace_annotations_from_file(self._auto_export_path):
+                    self.logger.info(f"Loaded existing annotations from {self._auto_export_path}")
+            else:
+                self._confirm_or_clear_existing_annotations_for_new_video(project_mode=True)
         else:
-            # Non-project mode: ask before discarding any pre-existing annotations.
-            if has_existing_events:
-                discard = QMessageBox.question(
-                    self._main_window,
-                    "Discard Existing Annotations?",
-                    "Annotations from the previous video are still loaded. "
-                    "Discard them to start fresh for the new video?\n\n"
-                    "Choose No to keep them (e.g. if you want to export them first).",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if discard == QMessageBox.StandardButton.Yes:
-                    self.logger.info("User confirmed clearing existing annotations")
-                    self._annotation_model.clear_events()
-                    self._main_window.set_status_message("Annotations cleared for new video")
-                else:
-                    self.logger.info("User kept existing annotations")
+            self._confirm_or_clear_existing_annotations_for_new_video(
+                project_mode=self._project_mode
+            )
         
         # Update frame duration based on the loaded video
         if hasattr(self._video_model, '_frame_duration_ms'):
             self._frame_duration_ms = self._video_model._frame_duration_ms
             self.logger.debug(f"Updated frame duration to {self._frame_duration_ms}ms based on loaded video")
     
+    def _is_frame_by_frame_mode(self):
+        """
+        Return True when the video player view's frame-by-frame toggle is on.
+
+        Guarded with hasattr/AttributeError so unit tests that stub out the
+        main window with a minimal mock don't blow up here.
+        """
+        try:
+            vpv = self._main_window.video_player_view
+        except AttributeError:
+            return False
+        if not hasattr(vpv, "is_frame_by_frame_mode"):
+            return False
+        try:
+            return bool(vpv.is_frame_by_frame_mode())
+        except Exception:  # pragma: no cover - defensive
+            return False
+
+    def _handle_fbf_key_press(self, key):
+        """
+        Frame-by-frame annotation: same key toggles start (1st press) and
+        end (2nd press) of an event.
+
+        Unlike the real-time path, this does NOT require video playback —
+        the user is expected to have paused the video and stepped to the
+        exact frame they want to tag. The first press starts an event at
+        the current frame; the second press of the same key ends it at the
+        new current frame, enforcing a minimum 1-frame duration so two
+        presses on the same frame still produce a non-zero event.
+
+        Uses the existing start_event / end_event APIs so timeline
+        rendering, project status updates, undo, and CSV export all keep
+        working unchanged.
+        """
+        position = self._video_model.get_position()
+        active = self._annotation_model.get_active_events()
+
+        if key in active:
+            # Second press -> end the event at the current frame.
+            press_event = active[key]
+            min_offset = press_event.onset + self._frame_duration_ms
+            end_position = max(position, min_offset)
+
+            if self._annotation_model.end_event(key, end_position):
+                self.logger.info(
+                    f"FBF: ended '{press_event.behavior}' (key={key}) at "
+                    f"{end_position}ms (onset was {press_event.onset}ms)"
+                )
+                # Drop any stale press-time tracking; FBF doesn't use it
+                # but the real-time path might have left an entry behind
+                # if the user toggled FBF mid-session.
+                self._key_press_times.pop(key, None)
+
+                self._timeline_view.set_events(
+                    self._annotation_model.get_all_events_with_active()
+                )
+                self._main_window.set_status_message(
+                    f"Frame-by-frame: end marked for "
+                    f"'{press_event.behavior}' "
+                    f"({(end_position - press_event.onset) / 1000:.2f}s)"
+                )
+
+                # Mark video annotated in project mode (mirrors the
+                # real-time release path so the project view's coloured
+                # status indicator stays accurate).
+                if (self._project_mode and self._project_model
+                        and self._current_video_id):
+                    self._project_model.set_video_annotation_status(
+                        self._current_video_id, "annotated"
+                    )
+            return
+
+        # First press -> start a new event at the current frame.
+        if self._annotation_model.start_event(key, position):
+            behavior = self._annotation_model._action_map_model.get_behavior(key)
+            self.logger.info(
+                f"FBF: started '{behavior}' (key={key}) at {position}ms — "
+                f"press '{key}' again at the end frame to finish"
+            )
+            self._timeline_view.set_events(
+                self._annotation_model.get_all_events_with_active()
+            )
+            if behavior:
+                self._main_window.set_status_message(
+                    f"Frame-by-frame: start marked for '{behavior}' — "
+                    f"press '{key}' again at the end frame"
+                )
+
     @Slot(str)
     def on_key_pressed(self, key):
         """
         Handle key press event.
-        
+
+        Two annotation flows are supported:
+
+        1. **Real-time mode** (frame-by-frame toggle OFF): the original
+           RABET flow. Video must be playing AND the recording must not
+           be paused; key down starts an event and key up ends it.
+
+        2. **Frame-by-frame mode** (frame-by-frame toggle ON): the user is
+           expected to have paused the video and to be stepping frames
+           one-by-one. Pausing the video auto-pauses the recording timer
+           via _on_playback_state_changed, so we must NOT gate on
+           ``_is_recording_paused`` in this mode — otherwise no FBF key
+           press would ever land. The 1st press of a key starts an event
+           at the current frame and the 2nd press of the *same* key ends
+           it. Key release is a no-op (handled in on_key_released).
+
+        Both modes still require a recording session to be open
+        (``_is_recording == True``).
+
         Args:
             key (str): Key character
         """
-        # Only process if video is loaded and playing, and recording is active and not paused
-        if not self._video_model.is_playing() or not self._is_recording or self._is_recording_paused:
+        # Gate 1 (both modes): a recording session must be open at all.
+        # If the user hasn't pressed "Start Recording" yet, key presses
+        # mean nothing.
+        if not self._is_recording:
             return
-        
+
+        # Gate 2 (FBF mode only): tolerate paused playback / paused
+        # recording, because that's the *normal* state during FBF work.
+        # Route directly to the toggle-style handler and return.
+        if self._is_frame_by_frame_mode():
+            self._handle_fbf_key_press(key)
+            return
+
+        # Gate 3 (real-time mode only): require both an active (non-paused)
+        # recording AND a playing video. This preserves the original
+        # RABET behaviour where annotations are captured live as the
+        # video plays.
+        if self._is_recording_paused or not self._video_model.is_playing():
+            return
+
         # Get current video position and monotonic system time
         position = self._video_model.get_position()
         system_time = time.monotonic()
 
         # Store both position and system time
         self._key_press_times[key] = (position, system_time)
-        
+
         # Start event in annotation model
         if self._annotation_model.start_event(key, position):
             self.logger.debug(f"Started event for key {key} at {position}ms (system time: {system_time:.6f})")
@@ -534,9 +722,20 @@ class AnnotationController(QObject):
         could fire with an offset captured *after* an auto-pause, producing
         misleading duration values.
 
+        In **frame-by-frame mode** this becomes a no-op: both start and end
+        are triggered by key PRESS events instead (1st press = start, 2nd
+        press = end). Acting on release would close events the user only
+        meant to start.
+
         Args:
             key (str): Key character
         """
+        # FBF mode: release is a no-op. Do this before any other gating so
+        # the user's release never accidentally finalises a press that was
+        # supposed to be the "start" half of a two-press FBF event.
+        if self._is_frame_by_frame_mode():
+            return
+
         # Drop releases entirely when nothing was tracked - keeps idle key
         # events (Tab, modifier keys, etc.) from generating warnings.
         if key not in self._key_press_times:
@@ -594,6 +793,7 @@ class AnnotationController(QObject):
         """
         # Update timeline with all events including active ones
         self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
+        self._mark_annotations_dirty()
         
         # Update status message
         behavior = event.behavior
@@ -622,6 +822,7 @@ class AnnotationController(QObject):
         """
         # Update timeline with all events including active ones
         self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
+        self._mark_annotations_dirty()
         
         # Update status message
         behavior = event.behavior
@@ -638,6 +839,7 @@ class AnnotationController(QObject):
         """
         # Update timeline with all events including active ones
         self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
+        self._mark_annotations_dirty()
         
         # Update status message
         self._main_window.set_status_message(f"Removed annotation at index {index}")
@@ -660,6 +862,7 @@ class AnnotationController(QObject):
         """Handle cleared annotations."""
         # Update timeline to remove all events
         self._timeline_view.set_events([])
+        self._mark_annotations_dirty()
         
         # Update status message
         self._main_window.set_status_message("All annotations cleared")
@@ -748,6 +951,7 @@ class AnnotationController(QObject):
             self._main_window.set_status_message("Recording stopped manually")
             self._main_window.recording_control_view.set_idle_state()
             self.logger.info("Recording stopped manually")
+            self._pause_video_after_recording()
             
             # Automatically export annotations
             if not self._skip_auto_export:
@@ -919,6 +1123,7 @@ class AnnotationController(QObject):
         self._main_window.set_status_message("Recording completed")
         self._main_window.recording_control_view.set_complete_state()
         self.logger.info("Recording completed automatically")
+        self._pause_video_after_recording()
         
         # Automatically save annotations
         if not self._skip_auto_export:
@@ -926,6 +1131,30 @@ class AnnotationController(QObject):
             
         # Reset the skip flag
         self._skip_auto_export = False
+        self._return_to_project_mode_after_recording()
+
+    def _pause_video_after_recording(self):
+        """Pause playback once a recording session has ended."""
+        try:
+            if self._video_model.is_playing():
+                self._video_model.pause()
+                self.logger.info("Paused video after recording ended")
+        except Exception as exc:
+            self.logger.warning(f"Failed to pause video after recording: {exc}")
+
+    def _return_to_project_mode_after_recording(self):
+        """Return to Project view after finishing a project-mode annotation."""
+        if not (self._project_mode and self._project_model):
+            return
+        if not getattr(self._project_model, "is_project_open", lambda: False)():
+            return
+
+        try:
+            if hasattr(self._main_window, 'switch_to_project_mode'):
+                QTimer.singleShot(0, self._main_window.switch_to_project_mode)
+                self.logger.info("Scheduled return to project mode after recording")
+        except Exception as exc:
+            self.logger.warning(f"Failed to return to project mode: {exc}")
     
     def _auto_save_annotations(self):
         """
@@ -974,6 +1203,7 @@ class AnnotationController(QObject):
             
             # Export annotations
             if self._annotation_model.export_to_csv(export_path, include_header=True):
+                self._mark_annotations_saved()
                 self._record_recent_annotation(export_path)
                 self._main_window.set_status_message(f"Annotations auto-saved to {os.path.basename(export_path)}")
                 self.logger.info(f"Annotations automatically saved to {export_path}")
@@ -1017,6 +1247,7 @@ class AnnotationController(QObject):
             
             # Export annotations
             if self._annotation_model.export_to_csv(self._auto_export_path, include_header=True):
+                self._mark_annotations_saved()
                 self._record_recent_annotation(self._auto_export_path)
                 self._main_window.set_status_message(f"Annotations exported to {self._auto_export_path}")
                 self.logger.info(f"Annotations automatically exported to {self._auto_export_path}")
@@ -1113,6 +1344,7 @@ class AnnotationController(QObject):
         if file_path:
             # Export annotations
             if self._annotation_model.export_to_csv(file_path):
+                self._mark_annotations_saved()
                 self._record_recent_annotation(file_path)
                 self._main_window.set_status_message(f"Annotations exported to {file_path}")
                 
@@ -1192,6 +1424,7 @@ class AnnotationController(QObject):
         if file_path:
             # Import annotations
             if self._annotation_model.import_from_csv(file_path):
+                self._mark_annotations_saved()
                 self._record_recent_annotation(file_path)
                 self._main_window.set_status_message(f"Annotations imported from {file_path}")
                 
@@ -1264,6 +1497,29 @@ class AnnotationController(QObject):
             )
         else:
             self.logger.warning(f"Failed to undo annotation at index {target_index}")
+
+    @Slot(int)
+    def delete_timeline_annotation(self, index):
+        """Delete the annotation selected on the timeline."""
+        events = self._annotation_model.get_all_events()
+        if not (0 <= index < len(events)):
+            return
+
+        event = events[index]
+        if event.behavior == "RecordingStart":
+            self._main_window.set_status_message("Recording start marker cannot be deleted.")
+            return
+
+        if self._annotation_model.remove_event(index):
+            if hasattr(self._timeline_view, 'clear_selection'):
+                self._timeline_view.clear_selection()
+            self.logger.info(
+                f"Deleted timeline annotation #{index}: {event.behavior} "
+                f"({event.onset}-{event.offset}ms)"
+            )
+            self._main_window.set_status_message(f"Deleted: {event.behavior}")
+        else:
+            self.logger.warning(f"Failed to delete timeline annotation at index {index}")
 
     @Slot()
     def clear_annotations(self):

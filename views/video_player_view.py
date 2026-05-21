@@ -6,9 +6,10 @@ from PySide6.QtWidgets import (
     QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QDateTime
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QImage, QPixmap
 
 from utils.loading_overlay import LoadingOverlay
+from utils.video_detection import is_video_file
 
 class VideoPlayerView(QWidget):
     """
@@ -87,7 +88,6 @@ class VideoPlayerView(QWidget):
 
         # Frame-by-frame mode state
         self._frame_by_frame_mode = False
-        self._native_video_surface_ready = False
     
     def setup_ui(self):
         """Set up user interface."""
@@ -97,49 +97,85 @@ class VideoPlayerView(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(1)
 
-        # Video display area - MODIFIED FOR BETTER EMBEDDING
+        # Video display area.
+        #
+        # 1.3.1 migration note: under the old VLC backend, ``video_frame``
+        # was the native surface that libVLC drew into via set_hwnd /
+        # set_xwindow / set_nsobject. With the new PyAV backend we render
+        # frames ourselves into a QImage and push them to a QLabel, so
+        # the QFrame is reduced to a cosmetic container (border + black
+        # background from theme_manager's ``QFrame#video_frame`` rule).
+        # The actual frame display happens in ``self.video_display_label``
+        # which the controller wires up to ``VideoModel.frame_ready``.
         self.video_frame = QFrame()
         self.video_frame.setFrameShape(QFrame.Shape.Panel)
         self.video_frame.setFrameShadow(QFrame.Shadow.Sunken)
         self.video_frame.setObjectName("video_frame")
         self.video_frame.setMinimumHeight(200)
-        
-        # CRITICAL FIX: Set fixed size policy to prevent collapse
+
+        # Keep the explicit expanding policy: nothing in the new render
+        # path resizes this for us, so without it the frame collapses
+        # when the surrounding splitter shrinks.
         self.video_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.placeholder_background = QWidget(self.video_frame)
         self.placeholder_background.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.placeholder_background.setObjectName("videoPlaceholderBackground")
         self._apply_placeholder_background_style()
-        
+
+        # NEW: dedicated QLabel that holds the decoded frame as a QPixmap.
+        # It sits inside the QFrame's vertical layout and gets a freshly
+        # scaled pixmap from ``display_frame`` every time the model emits
+        # ``frame_ready``. Aspect ratio is preserved manually because we
+        # do the scaling ourselves (setScaledContents would stretch).
+        self.video_display_label = QLabel()
+        self.video_display_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_display_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.video_display_label.setStyleSheet(
+            "background-color: #000000;"
+        )
+        self.video_display_label.setMinimumSize(1, 1)
+        self.video_display_label.setScaledContents(False)
+
         # Add drop indicator label
         self.drop_label = QLabel("Drop Video File Here")
         self.drop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.drop_label.setStyleSheet("""
-            color: white; 
-            font-size: 24px; 
+            color: white;
+            font-size: 24px;
             font-weight: bold;
             background-color: rgba(0, 0, 0, 0.5);
             padding: 10px;
             border-radius: 5px;
         """)
-        
-        # Add the drop label to the video frame.
+
+        # Layout: stack the display label, drop hint, and placeholder
+        # background inside the QFrame. The display label lives in the
+        # main layout so it stretches with the frame; the drop hint
+        # overlays via stacking order (raise_).
         self.video_layout = QVBoxLayout(self.video_frame)
         self.video_layout.setContentsMargins(0, 0, 0, 0)
         self.video_layout.setSpacing(0)
-        self.video_layout.addStretch(1)
-        self.video_layout.addWidget(self.drop_label, 0, Qt.AlignmentFlag.AlignCenter)
-        self.video_layout.addStretch(1)
+        self.video_layout.addWidget(self.video_display_label)
         self.placeholder_background.lower()
+
+        # Drop label as a free-floating child so it can sit centered over
+        # the display label regardless of the pixmap inside.
+        self.drop_label.setParent(self.video_frame)
         self.drop_label.raise_()
-        
+
+        # Cache of the most recently decoded QImage, so resizeEvent can
+        # re-scale it without forcing the model to re-decode.
+        self._last_qimage: QImage | None = None
+
         # Let Qt repaint the empty placeholder surface when no video is loaded.
         self.video_frame.setAttribute(Qt.WA_OpaquePaintEvent)
-        
+
         # Ensure it's visible
         self.video_frame.setVisible(True)
-        
+
         self.layout.addWidget(self.video_frame)
         
         # Create a container for controls to ensure they don't collapse
@@ -248,18 +284,12 @@ class VideoPlayerView(QWidget):
         self.rate_reset_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.controls_layout.addWidget(self.rate_reset_button)
         
-        # Volume control (hidden as requested)
-        self.volume_label = QLabel("Volume:")
-        self.volume_label.setVisible(False)
-        self.controls_layout.addWidget(self.volume_label)
-        
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setMinimum(0)
-        self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(100)
-        self.volume_slider.setFixedWidth(100)
-        self.volume_slider.setVisible(False)
-        self.controls_layout.addWidget(self.volume_slider)
+        # Volume control: fully removed in 1.3.1 along with the VLC
+        # backend. Audio is not played at all under the PyAV backend, so
+        # the slider/label and their ``volume_changed`` signal have no
+        # consumer. The ``volume_changed`` Signal declaration above is
+        # kept harmless for binary compatibility with any external code
+        # that still listens to it, but nothing in the app emits it.
         
         # Add controls to container
         self.controls_container_layout.addLayout(self.controls_layout)
@@ -286,15 +316,10 @@ class VideoPlayerView(QWidget):
         for widget in widgets:
             self.controls_layout.addWidget(widget)
 
-    def ensure_native_video_surface(self):
-        """Create the native child window only when VLC actually needs it."""
-        if self._native_video_surface_ready:
-            return
-
-        self.video_frame.setAttribute(Qt.WA_NativeWindow)
-        self.video_frame.setAttribute(Qt.WA_DontCreateNativeAncestors)
-        self.video_frame.winId()
-        self._native_video_surface_ready = True
+    # NOTE (1.3.1): ``ensure_native_video_surface`` was removed along with
+    # the VLC backend. There is no longer a native child window to
+    # promote — the decoded frame is painted by ``video_display_label``,
+    # which is just a regular non-native QLabel.
 
     def _apply_placeholder_background_style(self, drag_active=False):
         """Style the idle placeholder surface independently of the VLC frame."""
@@ -308,8 +333,20 @@ class VideoPlayerView(QWidget):
             )
 
     def _sync_video_placeholder_geometry(self):
-        """Keep the idle placeholder surface aligned to the full video frame."""
+        """Keep the idle placeholder surface aligned to the full video frame
+        and center the drop hint label inside it."""
         self.placeholder_background.setGeometry(self.video_frame.rect())
+
+        # Center the free-floating drop label within the video frame. Without
+        # this the label stays at the default (0, 0) position and looks
+        # left-aligned even though its internal text alignment is centered.
+        self.drop_label.adjustSize()
+        frame_rect = self.video_frame.rect()
+        label_size = self.drop_label.size()
+        x = max(0, (frame_rect.width() - label_size.width()) // 2)
+        y = max(0, (frame_rect.height() - label_size.height()) // 2)
+        self.drop_label.move(x, y)
+
         self.drop_label.raise_()
 
     def _update_empty_state_visibility(self):
@@ -354,8 +391,11 @@ class VideoPlayerView(QWidget):
         self.position_slider.sliderReleased.connect(self.on_position_released)
         
         self.rate_slider.valueChanged.connect(self.on_rate_slider_changed)
-        self.volume_slider.valueChanged.connect(self.volume_changed)
-        
+        # NOTE (1.3.1): the ``volume_slider`` widget has been removed
+        # along with audio playback (see setup_ui). The ``volume_changed``
+        # Signal declaration is kept so external connect()s don't blow up
+        # but nothing emits it anymore.
+
         # Connect frame-by-frame checkbox
         self.frame_by_frame_checkbox.stateChanged.connect(self.on_frame_by_frame_changed)
         # Note: Reset button signal is connected in setup_ui
@@ -454,12 +494,11 @@ class VideoPlayerView(QWidget):
             # Check first URL only
             url = event.mimeData().urls()[0]
             file_path = url.toLocalFile()
-            
-            # List of supported video extensions
-            video_extensions = ['.mp4', '.avi', '.mpg', '.mpeg', '.m4v','.mkv', '.mov', '.wmv']
-            
-            # Accept the drag if the file has a video extension
-            if any(file_path.lower().endswith(ext) for ext in video_extensions):
+
+            # Accept via extension whitelist -> magic-number sniff -> PyAV
+            # trial-open. This lets RABET also accept files whose extension
+            # is unusual but whose bytes are a standard container.
+            if is_video_file(file_path):
                 self.logger.debug(f"Accepting drag enter for video: {file_path}")
                 event.acceptProposedAction()
                 
@@ -544,10 +583,14 @@ class VideoPlayerView(QWidget):
     
     def get_video_frame(self):
         """
-        Get the video frame widget for embedding video.
-        
-        Returns:
-            QFrame: Video frame widget
+        Return the video frame container.
+
+        Historically this was the QFrame whose native window handle was
+        passed to libVLC via ``set_hwnd``/``set_xwindow``/``set_nsobject``.
+        Under the PyAV backend nothing external needs the surface — the
+        view paints frames itself into ``video_display_label`` — but the
+        method is kept so any leftover caller (e.g. tests or a stale
+        worktree) still works.
         """
         return self.video_frame
     
@@ -633,27 +676,40 @@ class VideoPlayerView(QWidget):
         # Skip if controls are disabled
         if self._controls_disabled:
             return
-            
+
         # Guard against rapid clicking
         if self._step_in_progress:
             self.logger.debug("Step backward ignored - previous step still in progress")
             return
-            
+
         self._step_in_progress = True
-        
-        # Visual feedback - highlight the button 
+
+        # Visual feedback - highlight the button
         self.step_backward_button.setStyleSheet("background-color: #3498db; color: white;")
         self._backward_button_timer.start(300)  # Reset after 300ms
-        
-        # Get exact step size from spinner
-        step_size = self.step_size_spin.value()
-        
-        # Log with exact step size
-        self.logger.debug(f"Step backward button clicked with exact step size: {step_size}ms")
-        
-        # Emit signal with the exact step size
-        self.step_backward_clicked.emit(step_size)
-        
+
+        # Mirror on_step_forward's FBF handling so the UI's "<" button
+        # behaves symmetrically with ">" — i.e. one click = one frame
+        # while frame-by-frame mode is on, regardless of the spinbox value.
+        # This is what makes FBF annotation usable: the user is supposed
+        # to be able to nudge by exactly one frame in either direction.
+        if self._frame_by_frame_mode:
+            frame_duration = 33  # ~30fps fallback
+            if hasattr(self, '_frame_duration_ms') and self._frame_duration_ms > 0:
+                frame_duration = self._frame_duration_ms
+
+            self.logger.debug(
+                f"Step backward in frame-by-frame mode (using {frame_duration}ms)"
+            )
+            self.step_backward_clicked.emit(frame_duration)
+        else:
+            # Get exact step size from spinner
+            step_size = self.step_size_spin.value()
+            self.logger.debug(
+                f"Step backward button clicked with exact step size: {step_size}ms"
+            )
+            self.step_backward_clicked.emit(step_size)
+
         # Start cooldown timer to prevent rapid clicking issues
         self._step_timer.start(self._step_cooldown_ms)
     
@@ -789,24 +845,72 @@ class VideoPlayerView(QWidget):
         self.rate_changed.emit(1.0)
         
         self.logger.debug("Playback rate reset to 1.00x")
-    
+
+    # ------------------------------------------------------------------ #
+    # PyAV frame display (1.3.1)
+    # ------------------------------------------------------------------ #
+
+    @Slot(QImage)
+    def display_frame(self, qimg: QImage) -> None:
+        """Receive a decoded frame from the model and show it.
+
+        Connected to ``VideoModel.frame_ready`` by ``VideoController``.
+        Caches the QImage so resize / re-show can re-scale without a
+        round-trip back to the decoder.
+        """
+        if qimg is None or qimg.isNull():
+            return
+        self._last_qimage = qimg
+        # Once we have a real frame the "Drop Video File Here" hint must
+        # disappear, otherwise it sits on top of the video. We hide it
+        # here (rather than in load_video) because the model is the one
+        # that confirms a frame actually decoded.
+        if self.drop_label.isVisible():
+            self.drop_label.hide()
+        if self.placeholder_background.isVisible():
+            self.placeholder_background.hide()
+        self._render_frame()
+
+    def _render_frame(self) -> None:
+        """Re-scale the cached frame to the current label size and paint."""
+        if self._last_qimage is None or self._last_qimage.isNull():
+            return
+        target_size = self.video_display_label.size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return
+        # SmoothTransformation gives much nicer downscaling for 1080p
+        # videos shown in smaller panes; on modern CPUs it's still a
+        # 2-4 ms operation per frame so the playback timer can keep up.
+        scaled = self._last_qimage.scaled(
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.video_display_label.setPixmap(QPixmap.fromImage(scaled))
+
     def resizeEvent(self, event):
         """Handle resize events to ensure overlay is properly sized."""
         super().resizeEvent(event)
-        
+
         # CRITICAL FIX: Ensure minimum size is maintained
         if self.height() < 300:
             self.setMinimumHeight(300)
-        
+
         # Update loading overlay if visible
         if hasattr(self, '_loading_overlay') and self._loading_overlay.isVisible():
             self._loading_overlay.resize(self.size())
 
         self._sync_video_placeholder_geometry()
-            
+
+        # Re-paint the cached frame at the new size so the image scales
+        # to fit the resized label. Without this the pixmap stays at its
+        # old dimensions and either leaves blank bars or gets clipped.
+        if getattr(self, "_last_qimage", None) is not None:
+            self._render_frame()
+
         # Force layout update
         self.layout.activate()
-        
+
         # Log resize event for debugging
         self.logger.debug(f"VideoPlayerView resized to: {self.size()}")
     

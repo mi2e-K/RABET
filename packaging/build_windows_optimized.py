@@ -23,7 +23,11 @@ from version import __version__ as APP_VERSION
 # Core dependencies required by RABET based on dependency analysis
 CORE_DEPENDENCIES = [
     "PySide6",         # Qt GUI framework
-    "python-vlc",      # Video playback
+    # 1.3.1: python-vlc replaced by PyAV (FFmpeg python bindings).
+    # PyAV ships pre-built wheels that bundle FFmpeg, so the resulting
+    # PyInstaller bundle no longer needs a system-installed VLC runtime
+    # on the target Windows machine.
+    "av",
     "shiboken6"        # Required by PySide6
 ]
 
@@ -41,7 +45,7 @@ OPTIONAL_DEPENDENCIES = [
 ]
 
 PACKAGE_IMPORT_NAMES = {
-    "python-vlc": "vlc",
+    "av": "av",
     "Pillow": "PIL",
     "opencv-python": "cv2",
     "PyInstaller": "PyInstaller",
@@ -59,90 +63,73 @@ HIDDEN_DEPENDENCIES = [
     "packaging"           # Required for version handling
 ]
 
-# Modules to exclude from the build
-DEFAULT_EXCLUDED_MODULES = [
-    # GUI frameworks that might conflict with PySide6
-    "PyQt5", "PyQt6", "wx", "tkinter", "gtk", 
-    
-    # Data science and machine learning libraries
-    "scipy", "sklearn", "seaborn", "statsmodels",
-    "tensorflow", "torch", "keras", "theano", "xgboost", "lightgbm",
-    
-    # Web frameworks and libraries
-    "django", "flask", "fastapi", "tornado", "aiohttp", "requests", "urllib3",
-    "httplib2", "boto3", "botocore", "aws", "azure", "google",
-    
-    # Development and testing tools
-    "pytest", "unittest", "nose", "sphinx", "jinja2", "IPython", "jupyter",
-    "notebook", "ipykernel", "black", "flake8", "mypy", "pylint",
-    
-    # Database libraries
-    "sqlite3", "psycopg2", "mysql", "pymongo", "sqlalchemy", "alembic",
-    
-    # Image processing libraries
-    "imageio", 
-    
-    # Other large libraries
-    "h5py", "sympy", "dask", "numba", "distributed", "bokeh", "panel",
-    
-    # Documentation and parsing
-    "doc", "pydoc_data", "docutils", "alabaster", "babel",
-    
-    # Unused standard library modules
-    "distutils", "lib2to3", "ensurepip", "venv", "turtledemo", "tkinter",
-    
-    # Python internals rarely needed at runtime
-    "test", "tests", "testing", "pip", "wheel", "easy_install"
-]
+# Modules to exclude from the build. We import the cross-platform list
+# from ``build_packaging_common`` so Windows / macOS / Linux builders
+# share a single source of truth. Anything Windows-specific is appended
+# below.
+from build_packaging_common import (
+    COMMON_BINARY_EXCLUDE_PATTERNS,
+    COMMON_EXCLUDED_MODULES,
+    PYSIDE_EXCLUDED_MODULES,
+)
 
-# Binaries commonly not needed that add significant size
-DEFAULT_EXCLUDED_BINARIES = [
-    # OpenGL and EGL
-    'libEGL.dll',
-    'opengl32sw.dll',
-    
-    # Unused Qt modules
-    'Qt6DBus',
-    'Qt6Designer',
-    'Qt6DesignerComponents',
-    'Qt6Charts',
-    'Qt6OpenGL',
-    'Qt6Pdf',
-    'Qt6Qml',
-    'Qt6Quick',
-    'Qt6QuickControls2',
-    'Qt6QuickTemplates2',
-    'Qt6WebEngineCore',
-    'qt6qml',
-    'qt6quick',
-    'qmltooling',
-    
-    # Common unnecessary DLLs that add size
-    'D3Dcompiler',
-    'd3dcsx',
-    
-    # Keep VC runtime DLLs bundled by default; clean Windows machines may need them.
-    # These might be removable on controlled lab machines, but should not be
-    # excluded from general distribution builds.
-    # 'msvcp140_1',
-    # 'vcruntime140_1',
-    # 'api-ms-win-',
-    # 'ucrtbase.dll',
-    # 'vcruntime140.dll',
-    
-    # Unused optional encryption 
-    'libcrypto-',
-    'libssl-',
-    
-    # Qt plugins that might not be needed
-    'sqldrivers',
-    'platformthemes',
-    'webview',
-    'multimedia',
-    'playlistformats',
-    'decorations',
-    'printsupport',
-]
+DEFAULT_EXCLUDED_MODULES = list(dict.fromkeys(
+    COMMON_EXCLUDED_MODULES
+    + PYSIDE_EXCLUDED_MODULES
+    + [
+        # Windows-specific extras (none currently — kept as a hook for
+        # future per-platform pruning).
+    ]
+))
+
+# Binaries commonly not needed that add significant size. The cross-
+# platform list (COMMON_BINARY_EXCLUDE_PATTERNS) covers Qt6 sub-modules
+# and the Intel MKL DLL family. Windows-specific extras are appended
+# below.
+DEFAULT_EXCLUDED_BINARIES = list(dict.fromkeys(
+    COMMON_BINARY_EXCLUDE_PATTERNS
+    + [
+        # OpenGL and EGL
+        'libEGL.dll',
+        'opengl32sw.dll',
+
+        # Unused Qt modules (kept here for the spec-file substring match;
+        # mac/linux builders use the cross-platform patterns above).
+        'Qt6DBus',
+        'Qt6Designer',
+        'Qt6DesignerComponents',
+        'Qt6WebEngineCore',
+        'qt6qml',
+        'qt6quick',
+
+        # Common unnecessary DLLs that add size
+        'D3Dcompiler',
+        'd3dcsx',
+
+        # Keep VC runtime DLLs bundled by default; clean Windows
+        # machines may need them. These might be removable on controlled
+        # lab machines, but should not be excluded from general
+        # distribution builds.
+        # 'msvcp140_1',
+        # 'vcruntime140_1',
+        # 'api-ms-win-',
+        # 'ucrtbase.dll',
+        # 'vcruntime140.dll',
+
+        # Unused optional encryption
+        'libcrypto-',
+        'libssl-',
+
+        # Qt plugins that might not be needed
+        'sqldrivers',
+        'platformthemes',
+        'webview',
+        'multimedia',
+        'playlistformats',
+        'decorations',
+        'printsupport',
+    ]
+))
 
 def ensure_required_directories():
     """
@@ -279,26 +266,12 @@ def ensure_package(package_name, install_spec=None):
 
     install_package(package_name, install_spec=install_spec)
 
-def find_vlc_installation():
-    """Find a local VLC installation directory for operator feedback."""
-    candidate_dirs = []
-
-    for env_var in ("VLC_PLUGIN_PATH", "VLC_HOME"):
-        value = os.environ.get(env_var)
-        if value:
-            path = Path(value)
-            candidate_dirs.append(path.parent if path.name.lower() == "plugins" else path)
-
-    for env_var in ("ProgramFiles", "ProgramFiles(x86)"):
-        value = os.environ.get(env_var)
-        if value:
-            candidate_dirs.append(Path(value) / "VideoLAN" / "VLC")
-
-    for candidate in candidate_dirs:
-        if (candidate / "libvlc.dll").exists():
-            return candidate
-
-    return None
+# NOTE (1.3.1): ``find_vlc_installation`` was removed when the video
+# backend switched from python-vlc to PyAV. PyAV's wheel embeds
+# FFmpeg directly, so the build no longer needs to locate a system
+# VLC. The function is intentionally absent (rather than left as a
+# stub) so any stale caller surfaces immediately as an
+# ``AttributeError`` during a build.
 
 def install_dependencies():
     """
@@ -367,12 +340,9 @@ def main():
     elif not install_dependencies():
         print("Warning: Failed to install some dependencies. Build may fail.")
 
-    vlc_dir = find_vlc_installation()
-    if vlc_dir:
-        print(f"Detected VLC runtime at: {vlc_dir}")
-    else:
-        print("Warning: VLC runtime was not detected. The built application will require VLC to be installed on the target machine.")
-    
+    # 1.3.1: PyAV bundles FFmpeg inside its wheel, so the previous
+    # ``find_vlc_installation`` runtime check is gone.
+
     # Check for UPX if enabled
     upx_dir = None
     if args.upx:
@@ -475,17 +445,20 @@ def main():
         for module in sorted(modules_to_exclude):
             print(f"  - {module}")
     
-    # Create hidden imports string
-    # Add all our needed hidden dependencies
+    # Create hidden imports string. The base list is intentionally
+    # narrow (top-level entry points that PyInstaller's static analyser
+    # may miss). Everything else flows in from build_packaging_common's
+    # HIDDEN_DEPENDENCIES so the macOS / Linux / Windows builders cannot
+    # drift apart silently.
+    from build_packaging_common import HIDDEN_DEPENDENCIES as _COMMON_HIDDEN
+
     hidden_imports_list = [
-        'vlc',           # Video playback
         'setuptools',    # Provides pkg_resources functionality
         'pkg_resources', # Will be found via setuptools
-        'matplotlib.backends.backend_qtagg',   # Preferred Matplotlib Qt backend
-        'matplotlib.backends.backend_qt5agg',  # Fallback for older Matplotlib versions
-        'PIL',           # Python Imaging Library required by matplotlib
-        'PIL.Image',     # Specific PIL module often needed
     ]
+    for dep in _COMMON_HIDDEN:
+        if dep not in hidden_imports_list:
+            hidden_imports_list.append(dep)
     
     # Add setuptools submodules that might be needed
     hidden_imports_list.extend([
@@ -524,9 +497,15 @@ excluded_binaries = {repr(DEFAULT_EXCLUDED_BINARIES)}
 # Include required data files
 datas = []
 
-# Add resources directory if it exists
+# Add Windows-specific resource files only. ``resources/`` also contains
+# RABET.icns (macOS app bundle icon, ~1.7 MB) which is dead weight in a
+# Windows distribution, so we list the files we actually want by name
+# instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    datas.append(('{resource_dir}', 'resources'))
+    for _resource_name in ('RABET.ico',):
+        _resource_path = os.path.join('{resource_dir}', _resource_name)
+        if os.path.exists(_resource_path):
+            datas.append((_resource_path, 'resources'))
 
 # Add configs directory
 if os.path.exists('configs'):
@@ -562,14 +541,68 @@ else:
 # Gather necessary binary hooks
 binaries = []
 
-# Ensure we have the VLC plugin
-if os.environ.get('PYTHONHOME'):
-    vlc_plugin_path = os.path.join(os.environ.get('PYTHONHOME'), 'Lib', 'site-packages', 'vlc.py')
-    if os.path.exists(vlc_plugin_path):
-        binaries.append((vlc_plugin_path, '.'))
+# 1.3.1: collect PyAV's bundled FFmpeg DLLs. The wheel installs them
+# inside ``site-packages/av/`` so PyInstaller's static analyser does
+# not pick them up automatically — we walk the directory and pull in
+# every ``.dll`` so frame decoding works inside the bundle.
+try:
+    import av as _av_for_binaries  # noqa: F401
+    av_pkg_dir = os.path.dirname(_av_for_binaries.__file__)
+    for entry in os.listdir(av_pkg_dir):
+        if entry.lower().endswith(('.dll', '.pyd')):
+            binaries.append((os.path.join(av_pkg_dir, entry), 'av'))
+except Exception as exc:
+    print(f'Warning: could not enumerate av/* binaries: {{exc}}')
+
+# 1.3.2 fix: PyInstaller 6.x dropped ``_ctypes`` runtime dependencies on
+# some conda Python builds. ``_ctypes.pyd`` is bundled, but the libffi
+# DLL it loads at startup lives in ``<env>/Library/bin`` and is missed
+# by the static analyser, which makes the bundled exe crash with
+# ``DLL load failed while importing _ctypes`` before reaching main().
+# Walk the conda Library/bin directory once and pull in the runtime
+# DLLs that ship with the env. We only collect a small allow-list to
+# avoid grabbing the entire conda Library tree.
+try:
+    import sys as _sys_for_libdlls
+    _conda_bin = os.path.join(os.path.dirname(_sys_for_libdlls.executable), 'Library', 'bin')
+    # PE-import-table analysis shows ``_ctypes.pyd`` from this conda
+    # build asks for the BARE name ``ffi.dll`` - not ``ffi-7.dll`` or
+    # ``ffi-8.dll``. So the prefix match has to include the un-suffixed
+    # filename as well. We accept anything that starts with ``ffi`` or
+    # ``libffi`` and ends with ``.dll`` - this catches ffi.dll,
+    # ffi-7.dll, ffi-8.dll, libffi-7.dll, etc.
+    _conda_runtime_prefixes = ('ffi', 'libffi')
+    if os.path.isdir(_conda_bin):
+        for entry in os.listdir(_conda_bin):
+            entry_lower = entry.lower()
+            if not entry_lower.endswith('.dll'):
+                continue
+            if entry_lower.startswith(_conda_runtime_prefixes):
+                binaries.append((os.path.join(_conda_bin, entry), '.'))
+except Exception as exc:
+    print(f'Warning: could not enumerate conda runtime DLLs: {{exc}}')
 
 # Explicitly include these modules to ensure they're available
 hiddenimports = {repr(hidden_imports_list)}
+
+# 1.3.2: krippendorff and filetype are imported lazily inside RABET
+# helpers (models/reliability_model.py and utils/video_detection.py).
+# PyInstaller's static analyser misses them via the import graph, and
+# even the hiddenimports list above does not force their source files
+# into the bundle on this build. Use collect_submodules / collect_data
+# to pull every submodule and data file explicitly so the runtime
+# import succeeds.
+# NOTE (1.3.2): scipy 1.16+ ships a Cython-built private module
+# ``scipy._cyutility`` that PyInstaller's stock scipy hook misses, which
+# breaks ``import pingouin`` (pingouin imports scipy on init). The
+# safest fix is to force-collect every scipy submodule. Adds ~30 MB to
+# the bundle but guarantees the extension modules are present.
+for _lazy_pkg in ('krippendorff', 'filetype', 'pingouin', 'scipy'):
+    try:
+        hiddenimports += collect_submodules(_lazy_pkg)
+        datas += collect_data_files(_lazy_pkg)
+    except Exception as _exc:
+        print(f'Warning: could not collect {{_lazy_pkg}}: {{_exc}}')
 
 a = Analysis(
     ['main.py'],
@@ -632,9 +665,15 @@ excluded_binaries = {repr(DEFAULT_EXCLUDED_BINARIES)}
 # Include required data files
 datas = []
 
-# Add resources directory if it exists
+# Add Windows-specific resource files only. ``resources/`` also contains
+# RABET.icns (macOS app bundle icon, ~1.7 MB) which is dead weight in a
+# Windows distribution, so we list the files we actually want by name
+# instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    datas.append(('{resource_dir}', 'resources'))
+    for _resource_name in ('RABET.ico',):
+        _resource_path = os.path.join('{resource_dir}', _resource_name)
+        if os.path.exists(_resource_path):
+            datas.append((_resource_path, 'resources'))
 
 # Add configs directory
 if os.path.exists('configs'):
@@ -670,14 +709,68 @@ else:
 # Gather necessary binary hooks
 binaries = []
 
-# Ensure we have the VLC plugin
-if os.environ.get('PYTHONHOME'):
-    vlc_plugin_path = os.path.join(os.environ.get('PYTHONHOME'), 'Lib', 'site-packages', 'vlc.py')
-    if os.path.exists(vlc_plugin_path):
-        binaries.append((vlc_plugin_path, '.'))
+# 1.3.1: collect PyAV's bundled FFmpeg DLLs. The wheel installs them
+# inside ``site-packages/av/`` so PyInstaller's static analyser does
+# not pick them up automatically — we walk the directory and pull in
+# every ``.dll`` so frame decoding works inside the bundle.
+try:
+    import av as _av_for_binaries  # noqa: F401
+    av_pkg_dir = os.path.dirname(_av_for_binaries.__file__)
+    for entry in os.listdir(av_pkg_dir):
+        if entry.lower().endswith(('.dll', '.pyd')):
+            binaries.append((os.path.join(av_pkg_dir, entry), 'av'))
+except Exception as exc:
+    print(f'Warning: could not enumerate av/* binaries: {{exc}}')
+
+# 1.3.2 fix: PyInstaller 6.x dropped ``_ctypes`` runtime dependencies on
+# some conda Python builds. ``_ctypes.pyd`` is bundled, but the libffi
+# DLL it loads at startup lives in ``<env>/Library/bin`` and is missed
+# by the static analyser, which makes the bundled exe crash with
+# ``DLL load failed while importing _ctypes`` before reaching main().
+# Walk the conda Library/bin directory once and pull in the runtime
+# DLLs that ship with the env. We only collect a small allow-list to
+# avoid grabbing the entire conda Library tree.
+try:
+    import sys as _sys_for_libdlls
+    _conda_bin = os.path.join(os.path.dirname(_sys_for_libdlls.executable), 'Library', 'bin')
+    # PE-import-table analysis shows ``_ctypes.pyd`` from this conda
+    # build asks for the BARE name ``ffi.dll`` - not ``ffi-7.dll`` or
+    # ``ffi-8.dll``. So the prefix match has to include the un-suffixed
+    # filename as well. We accept anything that starts with ``ffi`` or
+    # ``libffi`` and ends with ``.dll`` - this catches ffi.dll,
+    # ffi-7.dll, ffi-8.dll, libffi-7.dll, etc.
+    _conda_runtime_prefixes = ('ffi', 'libffi')
+    if os.path.isdir(_conda_bin):
+        for entry in os.listdir(_conda_bin):
+            entry_lower = entry.lower()
+            if not entry_lower.endswith('.dll'):
+                continue
+            if entry_lower.startswith(_conda_runtime_prefixes):
+                binaries.append((os.path.join(_conda_bin, entry), '.'))
+except Exception as exc:
+    print(f'Warning: could not enumerate conda runtime DLLs: {{exc}}')
 
 # Explicitly include these modules to ensure they're available
 hiddenimports = {repr(hidden_imports_list)}
+
+# 1.3.2: krippendorff and filetype are imported lazily inside RABET
+# helpers (models/reliability_model.py and utils/video_detection.py).
+# PyInstaller's static analyser misses them via the import graph, and
+# even the hiddenimports list above does not force their source files
+# into the bundle on this build. Use collect_submodules / collect_data
+# to pull every submodule and data file explicitly so the runtime
+# import succeeds.
+# NOTE (1.3.2): scipy 1.16+ ships a Cython-built private module
+# ``scipy._cyutility`` that PyInstaller's stock scipy hook misses, which
+# breaks ``import pingouin`` (pingouin imports scipy on init). The
+# safest fix is to force-collect every scipy submodule. Adds ~30 MB to
+# the bundle but guarantees the extension modules are present.
+for _lazy_pkg in ('krippendorff', 'filetype', 'pingouin', 'scipy'):
+    try:
+        hiddenimports += collect_submodules(_lazy_pkg)
+        datas += collect_data_files(_lazy_pkg)
+    except Exception as _exc:
+        print(f'Warning: could not collect {{_lazy_pkg}}: {{_exc}}')
 
 a = Analysis(
     ['main.py'],
@@ -780,8 +873,9 @@ coll = COLLECT(
         
         # In onefile mode, we need to ensure runtime directories still exist
         os.makedirs(os.path.join("dist", "configs"), exist_ok=True)
-        os.makedirs(os.path.join("dist", "projects"), exist_ok=True)
-        os.makedirs(os.path.join("dist", "logs"), exist_ok=True)
+        # NOTE (1.3.2): ``logs/`` and ``projects/`` are created lazily by
+        # the running app the first time they are needed. We no longer
+        # ship empty placeholder directories in the distribution.
         
         # Copy only specific files from resources directory, not everything
         dist_resources_dir = os.path.join("dist", "resources")
@@ -792,8 +886,9 @@ coll = COLLECT(
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)
-                # Skip any JSON files or directories
-                if file_name.endswith('.json') or os.path.isdir(file_path):
+                # Skip directories, JSON files, and the macOS-only .icns icon
+                # (it is ~1.7 MB and serves no purpose in a Windows bundle).
+                if file_name.endswith(('.json', '.icns')) or os.path.isdir(file_path):
                     continue
                 # Copy other files (icons, images, etc.)
                 print(f"Copying resource file: {file_name}")
@@ -884,8 +979,9 @@ Do not delete these folders while using the application.
         # Create necessary directories
         print("Creating application directories...")
         os.makedirs(os.path.join("dist", "RABET", "configs"), exist_ok=True)
-        os.makedirs(os.path.join("dist", "RABET", "projects"), exist_ok=True)
-        os.makedirs(os.path.join("dist", "RABET", "logs"), exist_ok=True)
+        # NOTE (1.3.2): ``logs/`` and ``projects/`` are created lazily by
+        # the running app the first time they are needed. We no longer
+        # ship empty placeholder directories in the distribution.
         
         # Copy only specific files from resources directory, not everything
         dist_resources_dir = os.path.join("dist", "RABET", "resources")
@@ -896,8 +992,9 @@ Do not delete these folders while using the application.
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)
-                # Skip any JSON files or directories
-                if file_name.endswith('.json') or os.path.isdir(file_path):
+                # Skip directories, JSON files, and the macOS-only .icns icon
+                # (it is ~1.7 MB and serves no purpose in a Windows bundle).
+                if file_name.endswith(('.json', '.icns')) or os.path.isdir(file_path):
                     continue
                 # Copy other files (icons, images, etc.)
                 print(f"Copying resource file: {file_name}")

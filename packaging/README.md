@@ -27,13 +27,15 @@ python packaging/build_linux_optimized.py
 
 ## Per-platform notes
 
-For step-by-step macOS and Linux instructions (virtualenv setup, VLC
-prerequisites, signing tips), see
+For step-by-step macOS and Linux instructions (virtualenv setup,
+signing tips, …), see
 [`../docs/BUILD_MACOS_LINUX.md`](../docs/BUILD_MACOS_LINUX.md).
 
-VLC is intentionally **not** bundled with the produced packages. End
-users must install VLC separately on the target machine; this keeps the
-artefact size small and avoids plugin-path / redistribution issues.
+As of RABET 1.3.1 the video pipeline runs on PyAV (FFmpeg python
+bindings) instead of python-vlc. PyAV's wheels ship a bundled FFmpeg
+build, so the PyInstaller artefact is fully self-contained: end users
+do **not** need to install VLC, FFmpeg or any other video runtime on
+the target machine.
 
 ## CI hookup
 

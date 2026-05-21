@@ -66,6 +66,11 @@ class ConfigManager:
             "last_video_directory": "",
             "last_annotation_directory": "",
             "last_config_directory": "",
+            # 1.3.2: Reliability tab remembers the last folder used for each
+            # of its two input pairs separately, since summary CSVs and
+            # annotation CSVs usually live in different subdirectories.
+            "last_reliability_summary_directory": "",
+            "last_reliability_annotation_directory": "",
         },
         "recent_files": {
             "videos": [],

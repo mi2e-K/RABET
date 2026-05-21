@@ -15,10 +15,12 @@ class TimelineView(QWidget):
     Signals:
         zoom_changed: Emitted when zoom level changes
         event_selected: Emitted when an event is selected (index)
+        event_delete_requested: Emitted when the selected event should be deleted
     """
     
     zoom_changed = Signal(int)
     event_selected = Signal(int)
+    event_delete_requested = Signal(int)
     
     def __init__(self):
         super().__init__()
@@ -573,6 +575,17 @@ class TimelineView(QWidget):
             self.timeline_canvas.update()
             self.event_selected.emit(index)
 
+    def clear_selection(self):
+        """Clear the currently selected timeline event."""
+        if self._selected_event != -1:
+            self._selected_event = -1
+            self.timeline_canvas.update()
+
+    def request_delete_selected_event(self):
+        """Request deletion of the currently selected timeline event."""
+        if 0 <= self._selected_event < len(self._events):
+            self.event_delete_requested.emit(self._selected_event)
+
     def on_timeline_visibility_changed(self, state):
         """
         Handle timeline visibility checkbox state change.
@@ -663,20 +676,108 @@ class TimelineView(QWidget):
 
 class TimelineCanvas(QWidget):
     """Canvas for drawing timeline events."""
-    
+
+    # Overlap-rendering constants.
+    #
+    # Events that overlap in time are slightly shifted downward so the user
+    # can tell them apart visually. We deliberately keep the shift tiny
+    # because:
+    #   1. The canvas height is fixed (timeline_view._timeline_canvas_height
+    #      ~ 50px) and must NOT grow.
+    #   2. The user is fine with some overlap remaining; the offset is just
+    #      a hint, not a separator.
+    #
+    # Up to (_MAX_LEVEL + 1) = 3 events at the same moment get distinct
+    # y positions (levels 0, 1, 2). A 4th simultaneous event is clamped to
+    # level 2 and renders on top of whatever is already there — per the
+    # user's spec that 4+ concurrent behaviours are rare enough to ignore.
+    _LEVEL_OFFSET = 5   # pixels of downward shift per overlap level
+    _MAX_LEVEL = 2      # 0, 1, 2  ->  3 distinct stacked positions
+
     def __init__(self, parent):
         super().__init__(parent)
         self.timeline_view = parent
         self.setMinimumHeight(self.timeline_view._timeline_canvas_height)
-        
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
         # Single track height in pixels for all events
         self._track_height = 18  # Slightly increased from 16 pixels
-        
+
         # Performance mode flag
         self._performance_mode = False
-        
+
+        # Map of event index -> overlap level (0..MAX_LEVEL).
+        # Recomputed in paintEvent so it stays in sync with the current
+        # event list / playback position; mousePressEvent reads from this
+        # cache (paint always happens before user input in practice).
+        self._event_levels = {}
+
         # Update size based on initial settings
         self.update_size()
+
+    def _compute_event_levels(self):
+        """
+        Greedy left-to-right assignment of overlap levels.
+
+        Walks events in onset order and, for each one, picks the lowest
+        level whose previously-assigned event has already finished.
+        If all (_MAX_LEVEL + 1) levels are still busy, the new event is
+        clamped to ``_MAX_LEVEL`` (it will overlap whatever sits there).
+
+        RecordingStart events are skipped — they render as a vertical line
+        rather than a track block, so they have no level.
+
+        Ongoing events (offset is None) are treated as ending at the
+        current playback position; otherwise levels would flicker as the
+        playhead advances.
+
+        Returns:
+            dict[int, int]: event-list index -> level (0..MAX_LEVEL)
+        """
+        levels = {}
+        events = self.timeline_view._events
+        if not events:
+            return levels
+
+        cur_pos = self.timeline_view._current_position
+
+        # Collect (index, onset, effective_offset) skipping RecordingStart.
+        items = []
+        for i, ev in enumerate(events):
+            if ev.behavior == "RecordingStart":
+                continue
+            eff_off = ev.offset if ev.offset is not None else cur_pos
+            items.append((i, ev.onset, eff_off))
+
+        # Walk left-to-right so the greedy choice stays consistent across
+        # paint frames (otherwise the assignment could shuffle whenever the
+        # underlying event list re-sorts).
+        items.sort(key=lambda t: t[1])
+
+        # busy[level] = ms until which the slot is occupied (None = free).
+        busy = [None] * (self._MAX_LEVEL + 1)
+
+        for idx, onset, eff_off in items:
+            chosen = None
+            for lvl in range(self._MAX_LEVEL + 1):
+                if busy[lvl] is None or busy[lvl] <= onset:
+                    chosen = lvl
+                    break
+
+            if chosen is None:
+                # No free slot — 4th+ simultaneous event. Clamp to the
+                # bottom level and extend its 'busy until' marker so we
+                # don't accidentally hand the slot back to a later event
+                # that starts before either of the overlapping events
+                # actually finishes.
+                chosen = self._MAX_LEVEL
+                busy[chosen] = max(busy[chosen] or 0, eff_off)
+            else:
+                busy[chosen] = eff_off
+
+            levels[idx] = chosen
+
+        return levels
     
     def update_size(self):
         """Update canvas size based on duration and zoom level."""
@@ -699,24 +800,28 @@ class TimelineCanvas(QWidget):
     def paintEvent(self, event):
         """
         Paint the timeline canvas.
-        
+
         Args:
             event: Paint event
         """
         painter = QPainter(self)
-        
+
         # Enable antialiasing
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
+
+        # Refresh overlap-level cache before drawing. mousePressEvent reads
+        # the same cache so click hit-testing matches what the user sees.
+        self._event_levels = self._compute_event_levels()
+
         # Draw background
         painter.fillRect(self.rect(), QColor(240, 240, 240))
-        
+
         # Draw time markers
         self._draw_time_markers(painter)
-        
+
         # Draw events
         self._draw_events(painter)
-        
+
         # Draw current position
         self._draw_position_marker(painter)
     
@@ -766,27 +871,40 @@ class TimelineCanvas(QWidget):
     def _draw_events(self, painter):
         """
         Draw behavior events on the timeline.
-        
+
         Args:
             painter (QPainter): Painter object
         """
         if not self.timeline_view._events:
             return
-        
-        # Use a single track for all events, centered in the canvas
-        y_position = self._track_y_position()
-        
+
+        # Base y position for level-0 events. Higher overlap levels get
+        # shifted downward by _LEVEL_OFFSET each (see _compute_event_levels).
+        y_base = self._track_y_position()
+
         # Create a font for the "REC start" label
         rec_font = QFont()
         rec_font.setPointSize(7)
         rec_font.setBold(True)
         font_metrics = QFontMetrics(rec_font)
-        
-        # Draw all events on a single line with transparent colors. Enumerate
-        # so we can compare ``i`` against the selected index in O(1) instead
-        # of calling ``list.index`` on every iteration (which was O(N^2)).
+
+        # Draw events in onset order so later-onset events paint on top of
+        # earlier ones (per user spec: "the event that occurred later should
+        # sit on top"). RecordingStart events fall in line by their onset
+        # too — they render as a vertical line so vertical stacking doesn't
+        # matter for them.
+        #
+        # We keep the original list index ``i`` for two reasons:
+        #   - O(1) selection check (``i == selected_index``)
+        #   - O(1) overlap-level lookup in ``self._event_levels``
         selected_index = self.timeline_view._selected_event
-        for i, event in enumerate(self.timeline_view._events):
+        all_events = self.timeline_view._events
+        draw_order = sorted(
+            range(len(all_events)),
+            key=lambda idx: all_events[idx].onset,
+        )
+        for i in draw_order:
+            event = all_events[i]
             # Calculate coordinates
             x1 = int(event.onset / 1000 * self.timeline_view._zoom_level)
 
@@ -797,43 +915,49 @@ class TimelineCanvas(QWidget):
                 rec_pen.setWidth(2)  # Thicker line
                 rec_pen.setStyle(Qt.PenStyle.DashLine)
                 painter.setPen(rec_pen)
-                
+
                 # Draw vertical line at the start position
                 painter.drawLine(x1, 0, x1, self.height())
-                
+
                 # Set up text for "REC" on one line and "start" on another
                 painter.setFont(rec_font)
                 painter.setPen(QPen(Qt.black))  # Black text
-                
+
                 # Calculate text position (to the left of the line)
                 text_x = max(5, x1 - font_metrics.horizontalAdvance("REC") - 5)
-                text_y1 = y_position  # Position for "REC"
+                text_y1 = y_base  # Position for "REC"
                 text_y2 = text_y1 + font_metrics.height()  # Position for "start"
-                
+
                 # Draw the text
                 painter.drawText(text_x, text_y1, "REC")
                 painter.drawText(text_x, text_y2, "start")
-                
+
                 # Skip the rest of the loop for RecordingStart events
                 continue
-            
+
             # Use event duration or extend to current position if ongoing
             if event.offset is not None:
                 x2 = int(event.offset / 1000 * self.timeline_view._zoom_level)
             else:
                 x2 = int(self.timeline_view._current_position / 1000 * self.timeline_view._zoom_level)
-            
+
             width = max(2, x2 - x1)  # Ensure minimum width
 
             # O(1) selection check using enumerate index instead of list.index
             is_selected = (i == selected_index)
-            
+
             # Get transparent color for behavior
             color = self.timeline_view.get_color(event.behavior)
-            
+
+            # Apply per-event vertical offset based on overlap level.
+            # Events with no entry (shouldn't happen for non-RecordingStart
+            # events, but guard anyway) render at level 0.
+            level = self._event_levels.get(i, 0)
+            y_position = y_base + level * self._LEVEL_OFFSET
+
             # Draw event block
             rect = QRect(x1, y_position, width, self._track_height)
-            
+
             # Set brush and pen
             if is_selected:
                 # For selected events, use a solid border
@@ -843,21 +967,21 @@ class TimelineCanvas(QWidget):
             else:
                 # For non-selected events, use a lighter border
                 painter.setPen(QPen(color.darker()))
-            
+
             # Use transparent color for fill
             painter.setBrush(QBrush(color))
             painter.drawRoundedRect(rect, 3, 3)
-            
+
             # Draw the key instead of the behavior initial if there's enough space
             if width > 10:
                 # Use the key associated with the event
                 key_text = event.key
-                
+
                 # Make sure we have a valid key
                 if key_text:
                     # Determine text color based on background brightness
                     text_color = self._get_text_color_for_background(color)
-                    
+
                     painter.setPen(QPen(text_color))
                     font = QFont()
                     font.setPointSize(7)
@@ -909,38 +1033,81 @@ class TimelineCanvas(QWidget):
     def mousePressEvent(self, event):
         """
         Handle mouse press events.
-        
+
         Args:
             event: Mouse event
         """
-        # Check if clicked on an event
-        y_position = self._track_y_position()
-        
-        for i, event_obj in enumerate(self.timeline_view._events):
+        # Base y position; overlap-level shift is added per event below so
+        # the hit-test matches what the user actually sees on screen.
+        y_base = self._track_y_position()
+        selected = False
+        click_x = event.position().x()
+        click_y = event.position().y()
+
+        # Iterate top-most first so clicks land on the event the user
+        # actually sees on top. "Top" is decided by two keys:
+        #   1. Higher overlap level (drawn lower on the y axis but with
+        #      later paint order in _draw_events when stacking via levels).
+        #   2. Within the same level, later onset wins — matches the new
+        #      paint order in _draw_events (onset ascending), so the
+        #      most-recent event sits on top of an older one occupying the
+        #      same slot (e.g. when the 4th simultaneous event clamps to
+        #      _MAX_LEVEL and overlaps another event there).
+        ordered = sorted(
+            enumerate(self.timeline_view._events),
+            key=lambda pair: (
+                -self._event_levels.get(pair[0], 0),
+                -pair[1].onset,
+            ),
+        )
+
+        for i, event_obj in ordered:
             # For RecordingStart events, check for click near the vertical line
             if event_obj.behavior == "RecordingStart":
                 x = int(event_obj.onset / 1000 * self.timeline_view._zoom_level)
                 # Create a narrow click area around the line
-                if abs(event.position().x() - x) <= 5:  # 5 pixels tolerance
+                if abs(click_x - x) <= 5:  # 5 pixels tolerance
                     self.timeline_view.select_event(i)
+                    selected = True
                     break
                 continue
-                
+
             # For regular events
             x1 = int(event_obj.onset / 1000 * self.timeline_view._zoom_level)
-            
+
             if event_obj.offset is not None:
                 x2 = int(event_obj.offset / 1000 * self.timeline_view._zoom_level)
             else:
                 x2 = int(self.timeline_view._current_position / 1000 * self.timeline_view._zoom_level)
-            
+
             width = max(2, x2 - x1)
-            
+
+            # Apply the same level-based y shift used in _draw_events so the
+            # click area matches what the user actually clicked on.
+            level = self._event_levels.get(i, 0)
+            y_position = y_base + level * self._LEVEL_OFFSET
+
             # Check if click is within event rectangle
-            if (x1 <= event.position().x() <= x1 + width and 
-                y_position <= event.position().y() <= y_position + self._track_height):
+            if (x1 <= click_x <= x1 + width and
+                y_position <= click_y <= y_position + self._track_height):
                 self.timeline_view.select_event(i)
+                selected = True
                 break
+
+        if selected:
+            self.setFocus(Qt.FocusReason.MouseFocusReason)
+        else:
+            self.timeline_view.clear_selection()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        """Handle keyboard shortcuts while the timeline canvas has focus."""
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.timeline_view.request_delete_selected_event()
+            event.accept()
+            return
+
+        super().keyPressEvent(event)
 
     def set_performance_mode(self, enabled):
         """

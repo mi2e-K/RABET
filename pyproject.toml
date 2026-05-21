@@ -33,11 +33,26 @@ dynamic = ["version"]
 dependencies = [
     "PySide6>=6.8",
     "shiboken6>=6.8",
-    "python-vlc>=3.0",
+    # PyAV (FFmpeg bindings) replaces python-vlc in 1.3.1. Wheels ship a
+    # bundled FFmpeg build for win/mac/linux, so no system VLC/FFmpeg
+    # install is required at runtime.
+    "av>=14.0",
     "numpy>=1.26",
     "pandas>=2.0",
     "matplotlib>=3.8",
     "Pillow>=10.0",
+    # 1.3.2: pingouin powers the in-app Reliability tab's ICC(2,1)
+    # calculation. The 0.5 line is pinned because >=0.6 removed several
+    # APIs RABET relies on; pingouin pulls in scipy and statsmodels as
+    # transitive deps.
+    "pingouin>=0.5.5,<0.6",
+    # Krippendorff's alpha is no longer in pingouin, so we use a small
+    # dedicated library. Cohen's kappa is computed in pure Python in
+    # models/reliability_model.py to avoid scikit-learn.
+    "krippendorff>=0.6",
+    # 1.3.2: filetype enables magic-number-based video detection so that
+    # recordings with non-standard extensions can still be loaded.
+    "filetype>=1.2",
 ]
 
 [project.optional-dependencies]

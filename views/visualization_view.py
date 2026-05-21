@@ -14,25 +14,204 @@ except (ImportError, ValueError):
 from matplotlib.figure import Figure
 import matplotlib.colors as mcolors
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QComboBox, QScrollArea, QPushButton, QFileDialog, 
-    QGridLayout, QGroupBox, QCheckBox, QColorDialog, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QComboBox, QScrollArea, QPushButton, QFileDialog,
+    QGridLayout, QGroupBox, QCheckBox, QColorDialog,
     QListWidget, QListWidgetItem, QMessageBox, QSplitter,
-    QSizePolicy, QSpinBox
+    QSizePolicy, QSpinBox, QStyledItemDelegate, QStyle,
+    QStyleOptionViewItem
 )
-from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer, QPoint, QRect, QEvent
+from PySide6.QtGui import QColor, QBrush, QPainter, QPen
+
+# Custom item delegate for behavior/file list rows.
+#
+# Why it exists: QListWidgetItem.setBackground() colours the row with the
+# behaviour's colour, but Qt's Fusion style then auto-adjusts the checkmark
+# colour to keep contrast with that background. The result is a visibly
+# inconsistent checkmark tint per behaviour, which the user perceives as the
+# checkmark "colour drifting" between rows. This delegate takes over the
+# painting completely so the checkmark stays a fixed colour everywhere while
+# the row text still picks black/white based on the row's own brightness
+# (matching the logic already used in TimelineCanvas._get_text_color_for_background).
+class BehaviorItemDelegate(QStyledItemDelegate):
+    """
+    Fully-custom paint path for the visualization-view list rows.
+
+    Responsibilities:
+        - Fill row background with the item's own background brush.
+        - Draw a fixed-colour check indicator (dark box + white check) so
+          Fusion's automatic contrast adjustment never gets to recolour the
+          checkmark per row.
+        - Render the row text in black or white depending on the row's
+          background brightness so light behaviour colours stay readable.
+        - Translate clicks inside the indicator rect into check-state toggles
+          (since we drew the indicator at our own coordinates, the default
+          editorEvent hit-test based on SE_ItemViewItemCheckIndicator may be
+          slightly off).
+    """
+
+    # Fixed colours and geometry for the indicator. Defined as class
+    # attributes so they're trivially overridable / inspectable from tests.
+    _INDICATOR_BG = QColor("#252525")
+    _INDICATOR_BORDER = QColor("#777777")
+    _CHECKMARK_COLOR = QColor(255, 255, 255)
+    _INDICATOR_SIZE = 14
+    _INDICATOR_MARGIN = 4       # gap from row's left edge to indicator
+    _TEXT_GAP = 6               # gap from indicator's right edge to text
+    _TEXT_BRIGHTNESS_CUTOFF = 170  # >cutoff -> black text; <=cutoff -> white
+
+    def _indicator_rect(self, option):
+        """Compute the indicator rect inside ``option.rect``."""
+        size = self._INDICATOR_SIZE
+        top = option.rect.top() + (option.rect.height() - size) // 2
+        left = option.rect.left() + self._INDICATOR_MARGIN
+        return QRect(left, top, size, size)
+
+    def _text_color_for_background(self, bg_color):
+        """Mirror TimelineCanvas's perceived-brightness rule (R*.299+G*.587+B*.114)."""
+        brightness = (
+            bg_color.red() * 0.299
+            + bg_color.green() * 0.587
+            + bg_color.blue() * 0.114
+        )
+        if brightness > self._TEXT_BRIGHTNESS_CUTOFF:
+            return QColor(0, 0, 0)
+        return QColor(255, 255, 255)
+
+    def paint(self, painter, option, index):
+        # Copy option so initStyleOption's mutations don't leak to callers.
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # 1. Background: prefer the item's own brush (the behaviour colour);
+        # fall back to palette.base() for rows that weren't given one (e.g.
+        # the file list).
+        bg_brush = opt.backgroundBrush
+        if bg_brush.style() == Qt.BrushStyle.NoBrush:
+            bg_brush = QBrush(opt.palette.base())
+        painter.fillRect(opt.rect, bg_brush)
+        bg_color = bg_brush.color()
+
+        # 2. Selection / hover overlays. Kept semi-transparent so the
+        # behaviour colour underneath remains identifiable.
+        if opt.state & QStyle.StateFlag.State_Selected:
+            highlight = QColor(opt.palette.highlight().color())
+            highlight.setAlpha(90)
+            painter.fillRect(opt.rect, highlight)
+        elif opt.state & QStyle.StateFlag.State_MouseOver:
+            hover = QColor(255, 255, 255, 25)
+            painter.fillRect(opt.rect, hover)
+
+        # 3. Indicator box (only if the item is user-checkable). Always
+        # drawn with a fixed dark fill + border so Fusion can't mutate it.
+        ind = self._indicator_rect(opt)
+        is_checkable = bool(index.flags() & Qt.ItemFlag.ItemIsUserCheckable)
+        if is_checkable:
+            painter.fillRect(ind, self._INDICATOR_BG)
+            painter.setPen(QPen(self._INDICATOR_BORDER, 1))
+            painter.drawRect(ind)
+
+            # 4. Checkmark: drawn as a 3-point polyline so the glyph is
+            # font-independent and uniform across all rows.
+            check_state = index.data(Qt.ItemDataRole.CheckStateRole)
+            # CheckStateRole comes back as int (Qt's underlying enum value);
+            # compare against the enum's .value to stay robust to either form.
+            if check_state == Qt.CheckState.Checked.value or check_state == Qt.CheckState.Checked:
+                pen = QPen(self._CHECKMARK_COLOR, 2)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.drawPolyline([
+                    QPoint(ind.x() + 3,  ind.y() + 8),
+                    QPoint(ind.x() + 6,  ind.y() + 11),
+                    QPoint(ind.x() + 11, ind.y() + 4),
+                ])
+
+        # 5. Text: chooses black/white by row brightness so light behaviour
+        # colours (light yellow, light pink, etc.) stay legible.
+        text = opt.text or str(index.data() or "")
+        if text:
+            painter.setPen(QPen(self._text_color_for_background(bg_color)))
+            if opt.font:
+                painter.setFont(opt.font)
+
+            text_left = (
+                (ind.right() + self._TEXT_GAP) if is_checkable
+                else (opt.rect.left() + self._INDICATOR_MARGIN)
+            )
+            text_rect = QRect(
+                text_left,
+                opt.rect.top(),
+                opt.rect.right() - text_left - self._INDICATOR_MARGIN,
+                opt.rect.height(),
+            )
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                text,
+            )
+
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        """
+        Toggle the check state when the click lands inside our indicator rect.
+
+        We override the default implementation because it hit-tests against
+        SE_ItemViewItemCheckIndicator (the *style's* idea of where the
+        checkbox lives), which doesn't necessarily match the rect we drew.
+        For clicks outside the indicator, fall back to the default handler
+        so double-click-to-recolour and selection still work.
+        """
+        if not (index.flags() & Qt.ItemFlag.ItemIsUserCheckable):
+            return super().editorEvent(event, model, option, index)
+
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            click_point = event.position().toPoint()
+            if self._indicator_rect(option).contains(click_point):
+                current = index.data(Qt.ItemDataRole.CheckStateRole)
+                # Normalise int -> enum so the comparison below is stable.
+                if isinstance(current, int):
+                    try:
+                        current = Qt.CheckState(current)
+                    except ValueError:
+                        current = Qt.CheckState.Unchecked
+                new_state = (
+                    Qt.CheckState.Unchecked
+                    if current == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                return model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
+
+        return super().editorEvent(event, model, option, index)
+
 
 # Custom reorderable list widget
 class ReorderableListWidget(QListWidget):
     """List widget that supports drag and drop reordering."""
-    
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        # Apply the custom delegate so checkmark colour stays uniform across
+        # rows regardless of the row's background colour.
+        delegate = BehaviorItemDelegate(self)
+        self.setItemDelegate(delegate)
+        # One-shot INFO log so we can confirm from the log that the delegate
+        # was actually attached at construction time. Without this, a
+        # silently-missed setItemDelegate (e.g. because an older copy of the
+        # file was running) would look identical to a working install.
+        logging.getLogger(__name__).info(
+            "ReorderableListWidget: attached BehaviorItemDelegate=%s",
+            type(delegate).__name__,
+        )
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -61,6 +240,8 @@ class MatplotlibCanvas(FigureCanvas):
 
 class RasterPlotWidget(QWidget):
     """Widget for displaying raster plots of behavioral events."""
+
+    files_selected = Signal(list)
     
     # Default custom color mapping for common behaviors
     DEFAULT_COLOR_MAP = {
@@ -83,7 +264,7 @@ class RasterPlotWidget(QWidget):
         self._data = {}  # Dictionary to store annotation data
         self._behavior_colors = {}  # Dictionary to store behavior colors
         self._behavior_visibility = {}  # Dictionary to store behavior visibility
-        self._file_visibility = {}  # Dictionary to store file visibility (for overlay mode)
+        self._file_visibility = {}  # Dictionary to store file visibility
         self._default_colormap = 'Set1'  # Default colormap
         self._custom_color_map = self.DEFAULT_COLOR_MAP.copy()  # Initialize with default mapping
         
@@ -96,6 +277,9 @@ class RasterPlotWidget(QWidget):
         self._x_range_max = 300      # X-axis maximum in seconds (default 5 minutes)
         self._bar_height = 15        # Height of raster plot bars (line width)
         self._display_mode = "Separate Behaviors"  # Display mode setting
+        self._show_vertical_grid = True
+        self._show_horizontal_grid = True
+        self._grid_color = "#B0B0B0"
         
         # Track custom ordering
         self._custom_behavior_order = []
@@ -229,6 +413,12 @@ class RasterPlotWidget(QWidget):
         button_layout.setContentsMargins(0, 2, 0, 2)
         button_layout.setSpacing(5)
         
+        # Load button
+        self.load_button = QPushButton("Load CSV")
+        self.load_button.clicked.connect(self.load_files_from_dialog)
+        self.load_button.setMaximumWidth(120)
+        self.load_button.setMaximumHeight(30)
+
         # Refresh button
         self.refresh_button = QPushButton("Refresh Plot")
         self.refresh_button.clicked.connect(self.update_plot)
@@ -247,6 +437,7 @@ class RasterPlotWidget(QWidget):
         self.clear_button.setMaximumWidth(100)
         self.clear_button.setMaximumHeight(30)
         
+        button_layout.addWidget(self.load_button)
         button_layout.addWidget(self.refresh_button)
         button_layout.addWidget(self.save_button)
         button_layout.addSpacing(15)
@@ -293,7 +484,7 @@ class RasterPlotWidget(QWidget):
         
         self.left_layout.addWidget(self.behavior_group, 1)
         
-        # File selection list (only visible in overlay mode)
+        # File selection list (shown when multiple individuals/files are loaded)
         self.file_group = QGroupBox("Files / Individuals (drag to reorder)")
         self.file_layout = QVBoxLayout(self.file_group)
         self.file_layout.setContentsMargins(5, 10, 5, 5)
@@ -364,6 +555,21 @@ class RasterPlotWidget(QWidget):
         self.auto_size_checkbox = QCheckBox("Auto-fit")
         self.auto_size_checkbox.setChecked(True)
         self.auto_size_checkbox.stateChanged.connect(self.on_auto_size_changed)
+
+        # Grid controls
+        self.vertical_grid_checkbox = QCheckBox("V Grid")
+        self.vertical_grid_checkbox.setChecked(self._show_vertical_grid)
+        self.vertical_grid_checkbox.stateChanged.connect(self.on_vertical_grid_changed)
+
+        self.horizontal_grid_checkbox = QCheckBox("H Grid")
+        self.horizontal_grid_checkbox.setChecked(self._show_horizontal_grid)
+        self.horizontal_grid_checkbox.stateChanged.connect(self.on_horizontal_grid_changed)
+
+        self.grid_color_button = QPushButton("Grid Color")
+        self.grid_color_button.clicked.connect(self.on_grid_color_clicked)
+        self.grid_color_button.setMaximumWidth(90)
+        self.grid_color_button.setMaximumHeight(25)
+        self._update_grid_color_button()
         
         # Individual frames checkbox (only for overlay mode)
         self.individual_frames_checkbox = QCheckBox("Individual frames")
@@ -396,6 +602,10 @@ class RasterPlotWidget(QWidget):
         self.plot_controls_layout.addWidget(self.height_spinbox)
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.auto_size_checkbox)
+        self.plot_controls_layout.addSpacing(15)
+        self.plot_controls_layout.addWidget(self.vertical_grid_checkbox)
+        self.plot_controls_layout.addWidget(self.horizontal_grid_checkbox)
+        self.plot_controls_layout.addWidget(self.grid_color_button)
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.individual_frames_checkbox)
         self.plot_controls_layout.addSpacing(8)
@@ -433,6 +643,142 @@ class RasterPlotWidget(QWidget):
                 if file_name:
                     self.logger.info(f"Found RecordingStart at {recording_start}s in {file_name}")
         return recording_start
+
+    def _ordered_file_paths(self):
+        """Return loaded file paths in the user-defined order."""
+        file_paths = list(self._data.keys())
+
+        if self._custom_file_order:
+            existing_files = set(file_paths)
+            ordered_files = [f for f in self._custom_file_order if f in existing_files]
+            new_files = [f for f in file_paths if f not in ordered_files]
+            return ordered_files + new_files
+
+        return file_paths
+
+    def _visible_file_paths(self):
+        """Return ordered file paths whose file checkbox is enabled."""
+        return [
+            file_path
+            for file_path in self._ordered_file_paths()
+            if self._file_visibility.get(file_path, True)
+        ]
+
+    def _should_show_file_group(self):
+        """Return whether the file/individual list should be visible."""
+        return bool(self._data) and (
+            self._display_mode == "Overlay Behaviors" or len(self._data) > 1
+        )
+
+    def _refresh_file_group_visibility(self):
+        """Show the file list when individual identity matters."""
+        show_file_group = self._should_show_file_group()
+        self.file_group.setVisible(show_file_group)
+        if show_file_group:
+            self.update_file_list()
+
+    def _display_time_limit(self):
+        """Return the exact user-requested x-axis upper limit."""
+        return float(self._x_range_max)
+
+    def _display_ticks(self, display_max_time):
+        """Return x-axis ticks clipped to the displayed range."""
+        interval = max(1, int(self._tick_interval))
+        ticks = np.arange(0, display_max_time + 1e-9, interval, dtype=float)
+        if ticks.size == 0:
+            ticks = np.array([0.0])
+        if not np.isclose(ticks[-1], display_max_time):
+            ticks = np.append(ticks, display_max_time)
+        return ticks
+
+    def _format_time_tick_labels(self, ticks):
+        """Format x-axis tick labels for the selected time unit."""
+        if self._time_unit == "Minutes":
+            return [f"{tick / 60:g}" for tick in ticks]
+        return [f"{tick:g}" for tick in ticks]
+
+    def _normalise_plot_export_path(self, file_path, selected_filter):
+        """Return a path and Matplotlib format for a plot export."""
+        extension_to_format = {
+            ".svg": "svg",
+            ".png": "png",
+            ".pdf": "pdf",
+        }
+        selected_filter_to_extension = {
+            "SVG Files (*.svg)": ".svg",
+            "PNG Files (*.png)": ".png",
+            "PDF Files (*.pdf)": ".pdf",
+        }
+
+        _root, extension = os.path.splitext(file_path)
+        extension = extension.lower()
+        if extension in extension_to_format:
+            return file_path, extension_to_format[extension]
+
+        selected_extension = selected_filter_to_extension.get(selected_filter, ".svg")
+        return f"{file_path}{selected_extension}", extension_to_format[selected_extension]
+
+    def _initial_file_visibility(self, data_dict, previous_file_visibility):
+        """Default multi-file loads to the first file only."""
+        ordered_paths = list(data_dict.keys())
+        if len(ordered_paths) <= 1:
+            return {path: True for path in ordered_paths}
+
+        visibility = {}
+        preserved_any = False
+        for index, file_path in enumerate(ordered_paths):
+            if file_path in previous_file_visibility:
+                visibility[file_path] = previous_file_visibility[file_path]
+                preserved_any = True
+            else:
+                visibility[file_path] = index == 0 and not preserved_any
+
+        if not preserved_any:
+            visibility = {path: (index == 0) for index, path in enumerate(ordered_paths)}
+        elif not any(visibility.values()):
+            visibility[ordered_paths[0]] = True
+
+        return visibility
+
+    def _contrasting_text_color(self, color_rgb):
+        """Return black or white text for a colored list item background."""
+        red, green, blue = [channel / 255 for channel in color_rgb]
+        luminance = (
+            0.2126 * red ** 2.2
+            + 0.7152 * green ** 2.2
+            + 0.0722 * blue ** 2.2
+        )
+        return (0, 0, 0) if luminance > 0.35 else (255, 255, 255)
+
+    def _set_item_color(self, item, color_rgb):
+        """Apply a background color and readable foreground to a list item."""
+        text_rgb = self._contrasting_text_color(color_rgb)
+        item.setBackground(QBrush(QColor(*color_rgb)))
+        item.setForeground(QBrush(QColor(*text_rgb)))
+
+    def _apply_grid(self, ax):
+        """Apply grid settings to a Matplotlib axes."""
+        ax.grid(False, axis='both')
+        ax.set_axisbelow(True)
+        if self._show_vertical_grid:
+            ax.grid(
+                True, axis='x', linestyle='--', color=self._grid_color,
+                alpha=0.55, linewidth=1.6, zorder=0
+            )
+        if self._show_horizontal_grid:
+            ax.grid(
+                True, axis='y', linestyle='--', color=self._grid_color,
+                alpha=0.45, linewidth=1.1, zorder=0
+            )
+
+    def _update_grid_color_button(self):
+        """Style the grid color button with the current color."""
+        color = QColor(self._grid_color)
+        text_rgb = self._contrasting_text_color((color.red(), color.green(), color.blue()))
+        self.grid_color_button.setStyleSheet(
+            f"background-color: {self._grid_color}; "
+            f"color: rgb({text_rgb[0]}, {text_rgb[1]}, {text_rgb[2]});"
+        )
     
     def _update_canvas_display(self):
         """Ensure canvas is properly displayed after updates."""
@@ -458,7 +804,6 @@ class RasterPlotWidget(QWidget):
         
         # Show/hide UI elements based on mode
         is_overlay = (mode == "Overlay Behaviors")
-        self.file_group.setVisible(is_overlay)
         self.individual_frames_checkbox.setVisible(is_overlay)
         
         # Show frame height controls if needed
@@ -469,9 +814,8 @@ class RasterPlotWidget(QWidget):
             self.frame_height_label.setVisible(False)
             self.frame_height_spinbox.setVisible(False)
         
-        # Update file list if in overlay mode
-        if is_overlay and self._data:
-            self.update_file_list()
+        # Keep file/individual identity visible when it affects the plot.
+        self._refresh_file_group_visibility()
         
         # Update the plot
         self.update_plot()
@@ -601,6 +945,24 @@ class RasterPlotWidget(QWidget):
     def on_frame_height_changed(self, value):
         """Handle frame height change."""
         self.update_plot()
+
+    def on_vertical_grid_changed(self, state):
+        """Handle vertical grid visibility changes."""
+        self._show_vertical_grid = (state == Qt.CheckState.Checked.value)
+        self.update_plot()
+
+    def on_horizontal_grid_changed(self, state):
+        """Handle horizontal grid visibility changes."""
+        self._show_horizontal_grid = (state == Qt.CheckState.Checked.value)
+        self.update_plot()
+
+    def on_grid_color_clicked(self):
+        """Handle grid color changes."""
+        color = QColorDialog.getColor(QColor(self._grid_color), self, "Select Grid Color")
+        if color.isValid():
+            self._grid_color = color.name()
+            self._update_grid_color_button()
+            self.update_plot()
     
     def on_behavior_selection_changed(self, item):
         """Handle behavior checkbox state change."""
@@ -626,9 +988,9 @@ class RasterPlotWidget(QWidget):
             # Update color
             rgb = (color.red(), color.green(), color.blue())
             self._behavior_colors[behavior] = rgb
-            
+
             # Update item background
-            item.setBackground(color)
+            self._set_item_color(item, rgb)
             
             # Update plot
             self.update_plot()
@@ -660,15 +1022,18 @@ class RasterPlotWidget(QWidget):
     # Data management methods
     def set_data(self, data_dict):
         """Set the annotation data for visualization."""
+        previous_file_visibility = self._file_visibility.copy()
         self._data = data_dict
         self.logger.info(f"Visualization data set: {len(data_dict)} files")
-        
+
         # Clear existing behavior colors
         self._behavior_colors = {}
         self._behavior_visibility = {}
-        
+
         # Initialize file visibility
-        self._file_visibility = {path: True for path in data_dict.keys()}
+        self._file_visibility = self._initial_file_visibility(
+            data_dict, previous_file_visibility
+        )
         
         # Initialize custom file order if not already set
         if not self._custom_file_order:
@@ -677,9 +1042,8 @@ class RasterPlotWidget(QWidget):
         # Update the behavior list
         self.update_behavior_list()
         
-        # Update file list if in overlay mode
-        if self._display_mode == "Overlay Behaviors":
-            self.update_file_list()
+        # Update file list when the plot distinguishes files/individuals.
+        self._refresh_file_group_visibility()
         
         # Update the plot
         self.update_plot()
@@ -699,6 +1063,18 @@ class RasterPlotWidget(QWidget):
                 self.canvas.resize(viewport.size())
                 self.canvas.updateGeometry()
                 self.canvas.draw_idle()
+
+    def load_files_from_dialog(self):
+        """Select CSV annotation files for visualization."""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Load Annotation CSV Files",
+            "",
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        if file_paths:
+            self.logger.info(f"Selected {len(file_paths)} visualization file(s)")
+            self.files_selected.emit(file_paths)
     
     def set_custom_color_map(self, color_map):
         """Set a custom color mapping for behaviors."""
@@ -754,6 +1130,7 @@ class RasterPlotWidget(QWidget):
         self._file_visibility = {}
         self._custom_behavior_order = []
         self._custom_file_order = []
+        self.file_group.setVisible(False)
         
         # Clear lists
         self.behavior_list.clear()
@@ -780,17 +1157,20 @@ class RasterPlotWidget(QWidget):
         
         # Open file dialog
         file_dialog = QFileDialog()
-        file_path, _ = file_dialog.getSaveFileName(
+        file_path, selected_filter = file_dialog.getSaveFileName(
             self,
             "Save Plot",
             "behavioral_raster_plot.svg",
             "SVG Files (*.svg);;PNG Files (*.png);;PDF Files (*.pdf);;All Files (*)"
         )
-        
+
         if file_path:
             try:
+                file_path, file_format = self._normalise_plot_export_path(
+                    file_path, selected_filter
+                )
                 # Save the figure
-                self.canvas.fig.savefig(file_path, bbox_inches='tight', dpi=300)
+                self.canvas.fig.savefig(file_path, format=file_format, bbox_inches='tight', dpi=300)
                 self.logger.info(f"Plot saved to: {file_path}")
                 QMessageBox.information(self, "Success", f"Plot saved to:\n{file_path}")
             except Exception as e:
@@ -848,7 +1228,7 @@ class RasterPlotWidget(QWidget):
             
             # Set background color
             color = self._behavior_colors[behavior]
-            item.setBackground(QColor(*color))
+            self._set_item_color(item, color)
             
             self.behavior_list.addItem(item)
         
@@ -902,50 +1282,47 @@ class RasterPlotWidget(QWidget):
                 self._behavior_visibility[behavior] = True
 
     def update_file_list(self):
-        """Update the file list widget for overlay mode."""
+        """Update the file/individual list widget."""
+        was_blocked = self.file_list.blockSignals(True)
+
         # Remember checkbox states
         checkbox_states = {}
         for i in range(self.file_list.count()):
             item = self.file_list.item(i)
             file_path = item.data(Qt.ItemDataRole.UserRole)
             checkbox_states[file_path] = item.checkState()
-        
+
         # Clear existing items
         self.file_list.clear()
-        
-        # Get list of files
-        file_paths = list(self._data.keys())
-        
-        # Use custom order if available
-        if self._custom_file_order:
-            existing_files = set(file_paths)
-            ordered_files = [f for f in self._custom_file_order if f in existing_files]
-            new_files = [f for f in file_paths if f not in ordered_files]
-            file_paths = ordered_files + new_files
-        
+
+        # Get list of files in display order
+        file_paths = self._ordered_file_paths()
+
         # Update custom file order
         self._custom_file_order = file_paths
-        
+
         # Create items for each file
         for i, file_path in enumerate(file_paths):
             # Create display name with number
             display_name = f"{i + 1}: {os.path.basename(file_path)}"
-            
+
             # Create list item
             item = QListWidgetItem(display_name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            
+
             # Set check state
             if file_path in checkbox_states:
                 item.setCheckState(checkbox_states[file_path])
             else:
                 is_visible = self._file_visibility.get(file_path, True)
                 item.setCheckState(Qt.CheckState.Checked if is_visible else Qt.CheckState.Unchecked)
-            
+
             # Store the full file path as data
             item.setData(Qt.ItemDataRole.UserRole, file_path)
-            
+
             self.file_list.addItem(item)
+
+        self.file_list.blockSignals(was_blocked)
     
     # Main plotting methods
     def update_plot(self):
@@ -996,10 +1373,20 @@ class RasterPlotWidget(QWidget):
             self.status_label.setText("No behaviors selected")
             self._draw_canvas_safe()
             return
-        
+
+        selected_files = self._visible_file_paths()
+        if not selected_files:
+            self.status_label.setText("No files selected")
+            self._draw_canvas_safe()
+            return
+
+        if len(selected_files) > 1:
+            self._plot_separate_files_mode(selected_files, visible_behaviors)
+            return
+
         # Create behavior positions
         behavior_positions = {b: i for i, b in enumerate(reversed(visible_behaviors))}
-        
+
         # Track plot statistics
         max_time = 0
         file_count = 0
@@ -1007,7 +1394,8 @@ class RasterPlotWidget(QWidget):
         
         # Collect recording starts for all files
         file_recording_starts = {}
-        for file_path, df in self._data.items():
+        for file_path in selected_files:
+            df = self._data[file_path]
             file_name = os.path.basename(file_path)
             recording_start = self._get_recording_start(df, file_name)
             file_recording_starts[file_path] = recording_start
@@ -1018,7 +1406,8 @@ class RasterPlotWidget(QWidget):
                 max_time = max(max_time, file_max_time)
         
         # Plot events
-        for file_path, df in self._data.items():
+        for file_path in selected_files:
+            df = self._data[file_path]
             recording_start = file_recording_starts[file_path]
             
             for behavior in visible_behaviors:
@@ -1073,6 +1462,100 @@ class RasterPlotWidget(QWidget):
         
         # Draw the canvas
         self._draw_canvas_safe()
+
+    def _plot_separate_files_mode(self, selected_files, visible_behaviors):
+        """Plot separate behavior rows for each loaded file/individual."""
+        display_rows = [
+            (file_path, behavior)
+            for file_path in selected_files
+            for behavior in visible_behaviors
+        ]
+        row_positions = {
+            row: len(display_rows) - row_index - 1
+            for row_index, row in enumerate(display_rows)
+        }
+        file_numbers = {
+            file_path: file_index + 1
+            for file_index, file_path in enumerate(selected_files)
+        }
+
+        max_time = 0
+        event_count = 0
+
+        # Collect recording starts for all files.
+        file_recording_starts = {}
+        for file_path in selected_files:
+            df = self._data[file_path]
+            recording_start = self._get_recording_start(df, os.path.basename(file_path))
+            file_recording_starts[file_path] = recording_start
+
+            if 'Offset' in df.columns:
+                file_max_time = df['Offset'].max() - recording_start
+                max_time = max(max_time, file_max_time)
+
+        # Plot each file on its own block of behavior rows.
+        for file_path in selected_files:
+            df = self._data[file_path]
+            recording_start = file_recording_starts[file_path]
+
+            if 'Event' not in df.columns:
+                continue
+
+            for behavior in visible_behaviors:
+                behavior_events = df[df['Event'].astype(str) == behavior]
+                if behavior_events.empty:
+                    continue
+
+                color_rgb = self._behavior_colors.get(behavior, (0, 0, 0))
+                color = [c / 255 for c in color_rgb]
+                y_pos = row_positions[(file_path, behavior)]
+
+                for _, event in behavior_events.iterrows():
+                    if 'Onset' in event and 'Offset' in event:
+                        try:
+                            onset = float(event['Onset']) - recording_start
+                            offset = float(event['Offset']) - recording_start
+
+                            if onset >= 0:
+                                self.canvas.axes.plot(
+                                    [onset, offset], [y_pos, y_pos],
+                                    linewidth=self._bar_height, solid_capstyle='butt',
+                                    color=color, alpha=0.8, zorder=10
+                                )
+                                event_count += 1
+                        except (ValueError, TypeError) as e:
+                            self.logger.warning(
+                                f"Invalid timestamp in event: {event}, error: {str(e)}"
+                            )
+
+        # Add subtle separators between files/individuals.
+        rows_per_file = len(visible_behaviors)
+        if self._show_horizontal_grid:
+            for file_index in range(1, len(selected_files)):
+                boundary_row = display_rows[file_index * rows_per_file]
+                previous_row = display_rows[file_index * rows_per_file - 1]
+                boundary_y = (row_positions[boundary_row] + row_positions[previous_row]) / 2
+                self.canvas.axes.axhline(
+                    boundary_y, color=self._grid_color, linewidth=1.0, alpha=0.7, zorder=1
+                )
+
+        # Set y-axis labels. The file list shows which filename belongs to each number.
+        y_ticks = [row_positions[row] for row in display_rows]
+        y_labels = [
+            f"{file_numbers[file_path]}: {behavior}"
+            for file_path, behavior in display_rows
+        ]
+        self.canvas.axes.set_yticks(y_ticks)
+        self.canvas.axes.set_yticklabels(y_labels)
+
+        self._configure_plot_axes(max_time, len(display_rows))
+
+        self.status_label.setText(
+            f"Displaying {event_count} events across {len(selected_files)} individual file(s) "
+            f"and {len(visible_behaviors)} behavior(s)"
+        )
+
+        self._draw_canvas_safe()
     
     def update_plot_overlay_mode(self):
         """Update the plot in overlay mode."""
@@ -1091,13 +1574,7 @@ class RasterPlotWidget(QWidget):
                 visible_behaviors.append(behavior)
         
         # Get selected files
-        selected_files = []
-        if self._custom_file_order:
-            for file_path in self._custom_file_order:
-                if file_path in self._file_visibility and self._file_visibility[file_path]:
-                    selected_files.append(file_path)
-        else:
-            selected_files = [f for f, vis in self._file_visibility.items() if vis]
+        selected_files = self._visible_file_paths()
         
         if not selected_files:
             self.status_label.setText("No files selected")
@@ -1174,8 +1651,9 @@ class RasterPlotWidget(QWidget):
                                 self.logger.warning(f"Invalid timestamp in event: {event}, error: {str(e)}")
         
         # Set y-axis
-        y_ticks = sorted(file_positions.values())
-        y_labels = [str(i + 1) for i in range(len(selected_files))]
+        ordered_by_position = sorted(selected_files, key=lambda path: file_positions[path])
+        y_ticks = [file_positions[file_path] for file_path in ordered_by_position]
+        y_labels = [str(selected_files.index(file_path) + 1) for file_path in ordered_by_position]
         self.canvas.axes.set_yticks(y_ticks)
         self.canvas.axes.set_yticklabels(y_labels)
         
@@ -1321,30 +1799,29 @@ class RasterPlotWidget(QWidget):
     def _configure_individual_frame(self, ax, file_idx, num_files, max_time):
         """Configure an individual subplot frame."""
         # Set x-axis limits
-        display_max_time = max(max_time, self._x_range_max)
+        display_max_time = self._display_time_limit()
         ax.set_xlim(0, display_max_time)
-        
+
         # Create x-tick intervals
-        display_ticks = np.arange(0, display_max_time + self._tick_interval, self._tick_interval)
+        display_ticks = self._display_ticks(display_max_time)
         ax.set_xticks(display_ticks)
-        
+
         # Only show x-axis labels on the bottom subplot
         if file_idx == num_files - 1:
             if self._time_unit == "Minutes":
-                display_tick_labels = [f"{int(tick/60)}" for tick in display_ticks]
                 ax.set_xlabel('Time (minutes)', fontweight='bold')
             else:
-                display_tick_labels = [f"{tick:.0f}" for tick in display_ticks]
                 ax.set_xlabel('Time (seconds)', fontweight='bold')
-            
+            display_tick_labels = self._format_time_tick_labels(display_ticks)
+
             ax.set_xticklabels(display_tick_labels)
-            
+
             for label in ax.get_xticklabels():
                 label.set_fontweight('bold')
         else:
             ax.set_xticklabels([])
             ax.set_xlabel('')
-        
+
         # Set y-axis limits
         y_range = 0.5
         ax.set_ylim(-y_range, y_range)
@@ -1354,28 +1831,27 @@ class RasterPlotWidget(QWidget):
         for spine in ax.spines.values():
             spine.set_linewidth(2.5)
             spine.set_zorder(100)
-        
-        ax.tick_params(axis='both', which='major', 
+
+        ax.tick_params(axis='both', which='major',
                       length=6, width=2.5, labelsize=10, zorder=100)
-        
-        ax.grid(True, axis='x', linestyle='--', alpha=0.5, linewidth=1.8, zorder=0)
+
+        self._apply_grid(ax)
         ax.patch.set_alpha(0)
     
     def _configure_plot_axes(self, max_time, num_rows):
         """Configure plot axes, limits, and labels for single frame mode."""
-        # Set plot limits
-        display_max_time = max(max_time, self._x_range_max)
-        
+        # Max Range is a user-requested display cap, not a lower bound from data length.
+        display_max_time = self._display_time_limit()
+
         # Create ticks
-        display_ticks = np.arange(0, display_max_time + self._tick_interval, self._tick_interval)
-        
+        display_ticks = self._display_ticks(display_max_time)
+
         # Set labels based on time unit
         if self._time_unit == "Minutes":
             x_label = 'Time (minutes)'
-            display_tick_labels = [f"{int(tick/60)}" for tick in display_ticks]
         else:
             x_label = 'Time (seconds)'
-            display_tick_labels = [f"{tick:.0f}" for tick in display_ticks]
+        display_tick_labels = self._format_time_tick_labels(display_ticks)
         
         # Configure axes
         self.canvas.axes.set_xlim(0, display_max_time)
@@ -1398,7 +1874,7 @@ class RasterPlotWidget(QWidget):
         self.canvas.axes.tick_params(axis='both', which='major', 
                                     length=6, width=2.5, labelsize=10, zorder=100)
         
-        self.canvas.axes.grid(True, axis='x', linestyle='--', alpha=0.5, linewidth=1.8, zorder=0)
+        self._apply_grid(self.canvas.axes)
         
         # Draw with warning suppression
         self._draw_canvas_safe()
@@ -1457,11 +1933,16 @@ class VisualizationView(QWidget):
         
         # Add raster plot widget
         self.raster_plot = RasterPlotWidget()
+        self.raster_plot.files_selected.connect(self._on_files_selected)
         self.layout.addWidget(self.raster_plot, 10)
-    
+
     def set_data(self, data_dict):
         """Set the annotation data for visualization."""
         self.raster_plot.set_data(data_dict)
+
+    def _on_files_selected(self, file_paths):
+        """Forward files chosen from the toolbar to the controller path."""
+        self.files_dropped.emit(file_paths)
     
     def set_custom_color_map(self, color_map):
         """Set a custom color mapping for behaviors."""

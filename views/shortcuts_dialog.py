@@ -1,7 +1,7 @@
 """Keyboard shortcuts reference dialog.
 
 A small modal dialog listing every keyboard shortcut RABET responds to,
-plus the user's current key → behaviour mappings. Triggered from
+plus the user's current key-to-behaviour mappings. Triggered from
 ``Help -> Show Shortcuts``.
 """
 from __future__ import annotations
@@ -26,10 +26,11 @@ from PySide6.QtWidgets import (
 # unmapped or accelerator-less actions can still appear here for the user.
 _BUILTIN_SHORTCUTS: list[Tuple[str, str]] = [
     ("Space", "Toggle video play / pause"),
-    ("→", "Step forward by the configured step size"),
-    ("←", "Step backward by the configured step size"),
+    ("Right Arrow", "Step forward by the configured step size"),
+    ("Left Arrow", "Step backward by the configured step size"),
     ("Ctrl + Z", "Undo the most recently recorded annotation"),
-    ("F1 / Help → Show Shortcuts", "Open this shortcuts dialog"),
+    ("Delete / Backspace", "Delete the selected timeline annotation"),
+    ("F1 / Help -> Show Shortcuts", "Open this shortcuts dialog"),
     ("(any mapped key)", "Tag the corresponding behaviour while recording"),
 ]
 
@@ -90,7 +91,6 @@ class ShortcutsDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
-        # ``Close`` is the only button - connect its clicked() to accept().
         close_btn = buttons.button(QDialogButtonBox.StandardButton.Close)
         if close_btn is not None:
             close_btn.clicked.connect(self.accept)

@@ -26,6 +26,7 @@ class ProjectController(QObject):
         self._action_map_controller = action_map_controller
         self._annotation_controller = annotation_controller
         self._analysis_controller = analysis_controller
+        self._suppress_next_saved_message = False
         
         # Connect model signals
         self._connect_model_signals()
@@ -98,6 +99,10 @@ class ProjectController(QObject):
         
         # Update view with project information
         self._update_view_with_project_info()
+
+        if self._suppress_next_saved_message:
+            self._suppress_next_saved_message = False
+            return
         
         # Show auto-closing success message
         from utils.auto_close_message import AutoCloseMessageBox
@@ -112,6 +117,10 @@ class ProjectController(QObject):
     def on_project_closed(self):
         """Handle project closed event."""
         self.logger.info("Project closed")
+        if hasattr(self._video_controller, 'close_video'):
+            self._video_controller.close_video()
+        if hasattr(self._annotation_controller, 'clear_project_context'):
+            self._annotation_controller.clear_project_context()
         
         # Update view to show no project
         self._view.set_project_name("")
@@ -141,6 +150,14 @@ class ProjectController(QObject):
             "Error",
             error_message
         )
+
+    def _save_project_silently(self):
+        """Persist project changes without showing a transient success popup."""
+        self._suppress_next_saved_message = True
+        success = self._model.save_project()
+        if not success:
+            self._suppress_next_saved_message = False
+        return success
     
     @Slot(str, str, str)
     def on_create_project_requested(self, directory, name, description):
@@ -276,7 +293,7 @@ class ProjectController(QObject):
             self._update_file_lists()
             
             # Save project to persist changes
-            self._model.save_project()
+            self._save_project_silently()
     
     @Slot(str, str)
     def on_remove_file_requested(self, file_type, file_path):
@@ -295,7 +312,7 @@ class ProjectController(QObject):
             self._update_file_lists()
             
             # Save project to persist changes
-            self._model.save_project()
+            self._save_project_silently()
     
     @Slot(str, str)
     def on_open_file_requested(self, file_type, file_path):
@@ -404,7 +421,6 @@ class ProjectController(QObject):
         """
         # Prepare for annotation
         project_video_ref = project_video_ref or video_path
-        video_id = self._model.get_video_id(project_video_ref)
         
         # Tell the annotation controller this is a project video being annotated
         self._annotation_controller.set_project_mode(True)
@@ -413,15 +429,30 @@ class ProjectController(QObject):
         # Set annotation export path in the project directory
         if self._model.is_project_open():
             project_path = self._model.get_project_path()
-            annotations_dir = os.path.join(project_path, "annotations")
-            export_path = os.path.join(annotations_dir, f"{video_id}_annotations.csv")
+            annotation_rel_path = self._model.get_annotation_relative_path_for_video(
+                project_video_ref
+            )
+            export_path = os.path.join(project_path, annotation_rel_path)
             self._annotation_controller.set_auto_export_path(export_path)
+            if self._model.is_modified():
+                self._save_project_silently()
             
             # Tell annotation controller about the project model for status updates
             self._annotation_controller.set_project_model(self._model)
+
+        # Switch to the annotation page before loading. Under the legacy
+        # VLC backend this was necessary so libvlc could bind to a
+        # visible window handle; under 1.3.1's PyAV backend the only
+        # reason left is UX (the user should already be on the
+        # annotation view by the time the first frame paints).
+        main_window = self._view.window()
+        if hasattr(main_window, 'switch_to_video_mode'):
+            main_window.switch_to_video_mode()
+        elif hasattr(main_window, 'switch_to_view'):
+            main_window.switch_to_view("Annotation")
         
         # Load the video using video controller
-        if not self._video_controller.load_video(video_path):
+        if not self._video_controller.load_video(video_path, preserve_project_context=True):
             QMessageBox.warning(
                 self._view,
                 "Cannot Annotate Video",
@@ -429,44 +460,9 @@ class ProjectController(QObject):
             )
             return
 
-        # Since automatic switching is not always reliable, show an instruction dialog
-        main_window = self._view.parent()
         video_name = os.path.basename(video_path)
-        
-        # Create a more helpful message box
-        switch_msg = QMessageBox(self._view)
-        switch_msg.setWindowTitle("Switch to Annotation Mode")
-        switch_msg.setIcon(QMessageBox.Icon.Information)
-        
-        switch_msg.setText(f"<b>Video '{video_name}' is ready for annotation!</b>")
-        switch_msg.setInformativeText(
-            "Please click the <b>Annotation Mode</b> button in the toolbar to begin annotating.<br><br>"
-            "<span style='color: #FF9900; font-weight: bold;'>Look for 'Annotation Mode' in the toolbar at the top.</span><br><br>"
-            "The video has been loaded and is waiting for you."
-        )
-        
-        # Use a more helpful button
-        switch_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        switch_msg.button(QMessageBox.StandardButton.Ok).setText("Got it")
-        
-        # Temporarily adjust the toolbar action text to make the next step clearer.
-        if hasattr(main_window, 'annotation_mode_toolbar_action'):
-            original_text = main_window.annotation_mode_toolbar_action.text()
-            try:
-                main_window.annotation_mode_toolbar_action.setText("Annotation  <- select this")
-
-                from PySide6.QtCore import QCoreApplication
-                QCoreApplication.processEvents()
-                switch_msg.exec()
-
-                return
-            except Exception as e:
-                self.logger.error(f"Error highlighting annotation button: {str(e)}")
-            finally:
-                main_window.annotation_mode_toolbar_action.setText(original_text)
-        
-        # Fallback if highlighting doesn't work
-        switch_msg.exec()
+        if hasattr(main_window, 'set_status_message'):
+            main_window.set_status_message(f"Ready to annotate: {video_name}")
     
     def _open_video(self, video_path):
         """

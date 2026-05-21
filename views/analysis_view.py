@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox, QProgressBar, QPushButton,
     QGroupBox, QSpinBox, QCheckBox, QTabWidget, QApplication,
+    QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, Slot
 
@@ -24,6 +25,7 @@ class AnalysisView(QWidget):
         configure_metrics_requested: Emitted when configure metrics button is clicked
         export_metrics_config_requested: Emitted when export metrics config button is clicked
         import_metrics_config_requested: Emitted when import metrics config button is clicked
+        visualize_files_requested: Emitted when loaded files should open in Visualization
     """
     
     files_dropped = Signal(list)
@@ -35,6 +37,7 @@ class AnalysisView(QWidget):
     configure_metrics_requested = Signal()
     export_metrics_config_requested = Signal()
     import_metrics_config_requested = Signal()
+    visualize_files_requested = Signal()
     
     def __init__(self):
         super().__init__()
@@ -55,19 +58,22 @@ class AnalysisView(QWidget):
         # Main layout
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(6, 6, 6, 6)
+        self.layout.setSpacing(4)
         
         # Make instructions text much larger and position it lower
         self.instructions = QLabel("Drop CSV annotation files here")
         self.instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.instructions.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 40px; margin-bottom: 40px;")
+        self.instructions.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 16px; margin-bottom: 16px;")
         self.layout.addWidget(self.instructions)
         
         # Analysis Settings Group
         self.settings_group = QGroupBox("Analysis Settings")
-        self.settings_group.setMinimumHeight(150)  # Set minimum height
-        self.settings_group.setMaximumHeight(200)  # Set maximum height
+        self.settings_group.setMinimumHeight(110)
+        self.settings_group.setMaximumHeight(150)
         self.settings_group.setMaximumWidth(400)  # Set maximum height
         self.settings_layout = QVBoxLayout(self.settings_group)
+        self.settings_layout.setContentsMargins(8, 8, 8, 8)
+        self.settings_layout.setSpacing(4)
         
         # Interval analysis option
         self.interval_layout = QHBoxLayout()
@@ -117,7 +123,11 @@ class AnalysisView(QWidget):
 
         # Tabbed area: Files / Summary / Intervals
         self.tab_widget = QTabWidget()
-        self.tab_widget.setMinimumHeight(400)
+        self.tab_widget.setMinimumHeight(260)
+        self.tab_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         # --- Files tab ---------------------------------------------------
         self.files_tab = QWidget()
@@ -188,7 +198,7 @@ class AnalysisView(QWidget):
         # Intervals tab is only meaningful when interval analysis is enabled.
         self._set_intervals_tab_enabled(False)
 
-        self.layout.addWidget(self.tab_widget)
+        self.layout.addWidget(self.tab_widget, 1)
 
         # File management buttons layout
         self.buttons_layout = QHBoxLayout()
@@ -204,6 +214,11 @@ class AnalysisView(QWidget):
         # Clear all files button
         self.clear_button = QPushButton("Clear All")
         self.buttons_layout.addWidget(self.clear_button)
+
+        self.visualize_button = QPushButton("Visualize")
+        self.visualize_button.setToolTip("Open the loaded annotation files in Visualization")
+        self.visualize_button.setEnabled(False)
+        self.buttons_layout.addWidget(self.visualize_button)
         
         # Add spacer to push buttons to the left
         self.buttons_layout.addStretch()
@@ -218,6 +233,11 @@ class AnalysisView(QWidget):
         # Export button layout
         self.export_layout = QHBoxLayout()
         self.export_button = QPushButton("Export Summary Table")
+        self.export_button.setMinimumHeight(28)
+        self.export_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
         self.export_button.setStyleSheet("font-weight: bold;")
         self.export_layout.addWidget(self.export_button)
         self.export_layout.addStretch()
@@ -255,6 +275,7 @@ class AnalysisView(QWidget):
         self.remove_button.clicked.connect(self.on_remove_button_clicked)
         self.clear_button.clicked.connect(self.clear_files_requested)
         self.export_button.clicked.connect(self.export_table_requested)
+        self.visualize_button.clicked.connect(self.visualize_files_requested)
 
         # Connect interval analysis controls
         self.interval_checkbox.stateChanged.connect(self.on_interval_settings_changed)
@@ -384,6 +405,7 @@ class AnalysisView(QWidget):
         """
         # Store the file paths
         self._file_paths = file_paths
+        self.visualize_button.setEnabled(bool(file_paths))
         
         # Update table
         self.files_table.setRowCount(0)

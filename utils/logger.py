@@ -63,10 +63,17 @@ def setup_logger(use_file_logging=False):
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
     
+    # Silence third-party loggers that flood the log without adding signal.
+    # matplotlib.font_manager in particular emits hundreds of "findfont:
+    # score(...)" DEBUG lines every time a figure is drawn, which buries
+    # everything else. We never read those lines for debugging.
+    for noisy in ("matplotlib.font_manager", "matplotlib.ticker", "PIL"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     # Add a startup message with application version and time
     logger = logging.getLogger(__name__)
     logger.info(f"===== Application started at {time.strftime('%Y-%m-%d %H:%M:%S')} =====")
-    
+
     return root_logger
 
 def get_in_memory_handler():

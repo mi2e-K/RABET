@@ -14,6 +14,7 @@ from views.timeline_view import TimelineView
 from views.action_map_view import ActionMapView
 from views.recording_control_view import RecordingControlView
 from views.analysis_view import AnalysisView
+from utils.video_detection import is_video_file
 
 
 class CurrentPageStackedWidget(QStackedWidget):
@@ -454,11 +455,23 @@ class MainWindow(QMainWindow):
         self.visualization_mode_toolbar_action.setStatusTip("Switch to visualization mode")
         self.visualization_mode_toolbar_action.triggered.connect(lambda: self.switch_to_view("Visualization"))
         self.toolbar.addAction(self.visualization_mode_toolbar_action)
-        
+
+        # Add Reliability toolbar action (1.3.2)
+        self.reliability_mode_toolbar_action = QAction("Reliability", self)
+        self.reliability_mode_toolbar_action.setCheckable(True)
+        self.reliability_mode_toolbar_action.setStatusTip(
+            "Switch to reliability assessment mode"
+        )
+        self.reliability_mode_toolbar_action.triggered.connect(
+            lambda: self.switch_to_view("Reliability")
+        )
+        self.toolbar.addAction(self.reliability_mode_toolbar_action)
+
         # Add these actions to the mode group
         self.mode_group.addAction(self.annotation_mode_toolbar_action)
         self.mode_group.addAction(self.analysis_mode_toolbar_action)
         self.mode_group.addAction(self.visualization_mode_toolbar_action)
+        self.mode_group.addAction(self.reliability_mode_toolbar_action)
         
         # Add Project toolbar action
         self.project_mode_toolbar_action = QAction("Project", self)
@@ -554,17 +567,26 @@ class MainWindow(QMainWindow):
         self.visualization_mode_action.setStatusTip("Switch to visualization mode")
         self.visualization_mode_action.setCheckable(True)
         self.view_menu.addAction(self.visualization_mode_action)
-        
+
+        # Add Reliability menu action (1.3.2)
+        self.reliability_mode_action = QAction("Reliability", self)
+        self.reliability_mode_action.setStatusTip(
+            "Switch to reliability assessment mode"
+        )
+        self.reliability_mode_action.setCheckable(True)
+        self.view_menu.addAction(self.reliability_mode_action)
+
         # Add Project menu action
         self.project_mode_action = QAction("Project", self)
         self.project_mode_action.setStatusTip("Switch to project management mode")
         self.project_mode_action.setCheckable(True)
         self.view_menu.addAction(self.project_mode_action)
-        
+
         # Connect view menu actions
         self.annotation_mode_action.triggered.connect(lambda: self.switch_to_view("Annotation"))
         self.analysis_mode_action.triggered.connect(lambda: self.switch_to_view("Analysis"))
         self.visualization_mode_action.triggered.connect(lambda: self.switch_to_view("Visualization"))
+        self.reliability_mode_action.triggered.connect(lambda: self.switch_to_view("Reliability"))
         self.project_mode_action.triggered.connect(self.switch_to_project_mode)
         
         # Help menu
@@ -601,6 +623,7 @@ class MainWindow(QMainWindow):
         self.mode_group.addAction(self.annotation_mode_action)
         self.mode_group.addAction(self.analysis_mode_action)
         self.mode_group.addAction(self.visualization_mode_action)
+        self.mode_group.addAction(self.reliability_mode_action)
         self.mode_group.addAction(self.project_mode_action)
         self.mode_group.setExclusive(True)
     
@@ -615,16 +638,20 @@ class MainWindow(QMainWindow):
         # Select the annotation mode in the stacked widget
         self.stacked_widget.setCurrentIndex(self._view_index["Annotation"])
         
-        # Update checkable actions
+        # Update checkable actions. All mode actions are created during
+        # __init__, so the hasattr guards added during 1.3.2 development
+        # were redundant and have been removed.
         self.annotation_mode_action.setChecked(True)
         self.annotation_mode_toolbar_action.setChecked(True)
         self.analysis_mode_action.setChecked(False)
         self.analysis_mode_toolbar_action.setChecked(False)
         self.visualization_mode_action.setChecked(False)
         self.visualization_mode_toolbar_action.setChecked(False)
+        self.reliability_mode_action.setChecked(False)
+        self.reliability_mode_toolbar_action.setChecked(False)
         self.project_mode_action.setChecked(False)
         self.project_mode_toolbar_action.setChecked(False)
-        
+
         self._sync_toolbar_status_for_view("Annotation")
 
         # Ensure the video player view has focus for key events. Qt
@@ -652,6 +679,8 @@ class MainWindow(QMainWindow):
             self.analysis_mode_toolbar_action.setChecked(False)
             self.visualization_mode_action.setChecked(False)
             self.visualization_mode_toolbar_action.setChecked(False)
+            self.reliability_mode_action.setChecked(False)
+            self.reliability_mode_toolbar_action.setChecked(False)
             self.project_mode_action.setChecked(True)
             self.project_mode_toolbar_action.setChecked(True)
             
@@ -1108,6 +1137,7 @@ class MainWindow(QMainWindow):
                 self.annotation_mode_toolbar_action.setChecked(True)
                 self.analysis_mode_toolbar_action.setChecked(False)
                 self.visualization_mode_toolbar_action.setChecked(False)
+                self.reliability_mode_toolbar_action.setChecked(False)
                 if hasattr(self, 'project_mode_toolbar_action'):
                     self.project_mode_toolbar_action.setChecked(False)
                 QTimer.singleShot(0, self.video_player_view.refresh_empty_placeholder)
@@ -1115,18 +1145,28 @@ class MainWindow(QMainWindow):
                 self.annotation_mode_toolbar_action.setChecked(False)
                 self.analysis_mode_toolbar_action.setChecked(True)
                 self.visualization_mode_toolbar_action.setChecked(False)
+                self.reliability_mode_toolbar_action.setChecked(False)
                 if hasattr(self, 'project_mode_toolbar_action'):
                     self.project_mode_toolbar_action.setChecked(False)
             elif view_name == "Visualization":
                 self.annotation_mode_toolbar_action.setChecked(False)
                 self.analysis_mode_toolbar_action.setChecked(False)
                 self.visualization_mode_toolbar_action.setChecked(True)
+                self.reliability_mode_toolbar_action.setChecked(False)
+                if hasattr(self, 'project_mode_toolbar_action'):
+                    self.project_mode_toolbar_action.setChecked(False)
+            elif view_name == "Reliability":
+                self.annotation_mode_toolbar_action.setChecked(False)
+                self.analysis_mode_toolbar_action.setChecked(False)
+                self.visualization_mode_toolbar_action.setChecked(False)
+                self.reliability_mode_toolbar_action.setChecked(True)
                 if hasattr(self, 'project_mode_toolbar_action'):
                     self.project_mode_toolbar_action.setChecked(False)
             elif view_name == "Project":
                 self.annotation_mode_toolbar_action.setChecked(False)
                 self.analysis_mode_toolbar_action.setChecked(False)
                 self.visualization_mode_toolbar_action.setChecked(False)
+                self.reliability_mode_toolbar_action.setChecked(False)
                 if hasattr(self, 'project_mode_toolbar_action'):
                     self.project_mode_toolbar_action.setChecked(True)
         else:
@@ -1287,12 +1327,8 @@ class MainWindow(QMainWindow):
             )
             if result != QMessageBox.StandardButton.Yes:
                 return
-        if annotation_controller._annotation_model.import_from_csv(path):
-            annotation_controller._record_recent_annotation(path)
+        if annotation_controller.import_annotations_from_file(path):
             self.set_status_message(f"Annotations imported from {path}")
-            annotation_controller._timeline_view.set_events(
-                annotation_controller._annotation_model.get_all_events_with_active()
-            )
 
     def _clear_recent_files(self, file_type):
         """Empty the recent-files list for the given category."""
@@ -1384,10 +1420,10 @@ class MainWindow(QMainWindow):
                 vpv.rate_slider.blockSignals(False)
                 vpv.rate_value_label.setText(f"{rate:.2f}x")
 
-                volume = int(video_section.get("default_volume", 80) or 80)
-                vpv.volume_slider.blockSignals(True)
-                vpv.volume_slider.setValue(max(0, min(volume, 100)))
-                vpv.volume_slider.blockSignals(False)
+                # NOTE (1.3.1): volume restoration was removed along with
+                # audio playback in the PyAV migration. The setting value
+                # is left in settings.json so older builds can still read
+                # it; we just don't apply it here.
 
                 fbf = bool(video_section.get("enable_frame_by_frame", False))
                 vpv.frame_by_frame_checkbox.blockSignals(True)
@@ -1472,8 +1508,9 @@ class MainWindow(QMainWindow):
                                         int(vpv.step_size_spin.value()))
                 self.config_manager.set("video", "default_playback_rate",
                                         float(vpv.rate_slider.value()) / 100.0)
-                self.config_manager.set("video", "default_volume",
-                                        int(vpv.volume_slider.value()))
+                # ``default_volume`` no longer persisted as of 1.3.1
+                # (audio playback removed). Reading still works for
+                # backward-compat on older settings files.
                 self.config_manager.set("video", "enable_frame_by_frame",
                                         bool(vpv.frame_by_frame_checkbox.isChecked()))
 
@@ -1504,7 +1541,11 @@ class MainWindow(QMainWindow):
     # Recognised by the global handler. The per-view drop zones keep their
     # own filters; this is purely a fallback so users do not have to aim
     # at the right pane.
-    _VIDEO_EXTS = (".mp4", ".avi", ".mkv", ".mov", ".wmv", ".mpg", ".mpeg", ".m4v")
+    #
+    # Video acceptance now goes through utils.video_detection.is_video_file,
+    # which cascades extension whitelist -> magic-number sniff -> PyAV
+    # trial-open. The extension tuple below is kept as a convenience for
+    # docs/log messages but is no longer the authoritative gate.
     _CSV_EXTS = (".csv",)
 
     def _classify_dropped_paths(self, urls):
@@ -1516,10 +1557,10 @@ class MainWindow(QMainWindow):
             if not local_path:
                 continue
             lower = local_path.lower()
-            if lower.endswith(self._VIDEO_EXTS):
-                videos.append(local_path)
-            elif lower.endswith(self._CSV_EXTS):
+            if lower.endswith(self._CSV_EXTS):
                 csvs.append(local_path)
+            elif is_video_file(local_path):
+                videos.append(local_path)
         return videos, csvs
 
     def dragEnterEvent(self, event):

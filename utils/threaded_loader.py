@@ -4,13 +4,17 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 class ThreadedVideoLoader(QObject):
     """
-    Coordinates staged video loading while keeping VLC interactions on the
-    owning Qt thread.
+    Coordinates staged video loading while keeping decoder interactions on
+    the owning Qt thread.
 
-    VLC media objects and the timers owned by VideoModel are not thread-safe
-    across Qt threads, so the actual load is executed on the model's thread.
-    We still emit staged progress updates so the UI can remain responsive and
-    communicate progress consistently.
+    Originally the constraint was VLC: libvlc media objects were not
+    thread-safe across Qt threads, so the actual ``load_video`` call ran
+    on the model's thread. Under the 1.3.1 PyAV backend the constraint
+    is similar — PyAV's container objects own FFmpeg state that is
+    safest to touch from a single thread, and ``VideoModel`` itself
+    drives ``QTimer`` instances which must live on its owning thread.
+    The staged progress updates emitted here keep the UI responsive
+    regardless of how long ``av.open`` + first-frame decode take.
     """
 
     loading_started = Signal()

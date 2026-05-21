@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import random
+import shutil
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
@@ -46,7 +47,8 @@ class ProjectModel(QObject):
             "videos": [],
             "annotations": [],
             "action_maps": [],
-            "analyses": []
+            "analyses": [],
+            "video_annotation_files": {},
         }
         self._is_modified = False
     
@@ -93,7 +95,8 @@ class ProjectModel(QObject):
                 "annotations": [],
                 "action_maps": [],
                 "analyses": [],
-                "video_annotation_status": {}  # New field to track annotation status
+                "video_annotation_status": {},  # New field to track annotation status
+                "video_annotation_files": {},
             }
             
             # Save project configuration
@@ -148,6 +151,9 @@ class ProjectModel(QObject):
             # Ensure video_annotation_status exists (for backwards compatibility)
             if "video_annotation_status" not in self._project_config:
                 self._project_config["video_annotation_status"] = {}
+                self._is_modified = True
+            if "video_annotation_files" not in self._project_config:
+                self._project_config["video_annotation_files"] = {}
                 self._is_modified = True
             
             # Update current project
@@ -360,6 +366,95 @@ class ProjectModel(QObject):
         resolved_reference = self._resolve_video_reference(video_path)
         target = resolved_reference if resolved_reference is not None else video_path
         return self._get_video_id(target)
+
+    def _make_unique_annotation_relative_path(self, base_name, video_id):
+        """Return a project-relative annotation path without exposing hashes."""
+        mapping = self._project_config.setdefault("video_annotation_files", {})
+        used_paths = {
+            path for mapped_id, path in mapping.items()
+            if mapped_id != video_id
+        }
+
+        suffix = "_annotations.csv"
+        index = 1
+        while True:
+            if index == 1:
+                filename = f"{base_name}{suffix}"
+            else:
+                filename = f"{base_name}_{index}{suffix}"
+
+            rel_path = os.path.join("annotations", filename)
+            if rel_path not in used_paths:
+                return rel_path
+
+            index += 1
+
+    def get_annotation_relative_path_for_video(self, video_path):
+        """
+        Return the project-relative annotation CSV path for a video.
+
+        The stable internal video ID remains in ``project.json`` only; the
+        visible filename stays readable, e.g. ``mouse_annotations.csv``.
+        """
+        if not self._project_path:
+            return None
+
+        resolved_reference = self._resolve_video_reference(video_path)
+        target = resolved_reference if resolved_reference is not None else video_path
+        video_id = self._get_video_id(target)
+        mapping = self._project_config.setdefault("video_annotation_files", {})
+
+        if video_id in mapping:
+            return mapping[video_id]
+
+        base_name = self._get_legacy_video_id(target)
+        rel_path = self._make_unique_annotation_relative_path(base_name, video_id)
+        legacy_hashed_rel_path = os.path.join("annotations", f"{video_id}_annotations.csv")
+        legacy_hashed_full_path = Path(self._project_path) / legacy_hashed_rel_path
+        clean_full_path = Path(self._project_path) / rel_path
+
+        if legacy_hashed_full_path.exists() and not clean_full_path.exists():
+            try:
+                shutil.copy2(legacy_hashed_full_path, clean_full_path)
+                annotations = self._project_config.setdefault("annotations", [])
+                if rel_path not in annotations:
+                    annotations.append(rel_path)
+                self.logger.info(
+                    "Copied legacy hashed annotation file to readable name: %s -> %s",
+                    legacy_hashed_rel_path,
+                    rel_path,
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to copy legacy hashed annotation file %s: %s",
+                    legacy_hashed_rel_path,
+                    exc,
+                )
+
+        mapping[video_id] = rel_path
+        self._is_modified = True
+        return rel_path
+
+    def find_same_name_video_conflict(self, video_path):
+        """Return a stored project video with the same name but different path."""
+        if not self._project_path or not video_path:
+            return None
+
+        target_name = os.path.basename(str(video_path)).lower()
+        target_norm = self._normalize_video_reference(video_path)
+
+        for stored_video in self._project_config.get("videos", []):
+            if os.path.basename(str(stored_video)).lower() != target_name:
+                continue
+
+            resolved = self.resolve_path(stored_video)
+            if not resolved:
+                continue
+
+            if self._normalize_video_reference(resolved) != target_norm:
+                return stored_video, resolved
+
+        return None
     
     def save_project(self):
         """
@@ -422,7 +517,8 @@ class ProjectModel(QObject):
                 "annotations": [],
                 "action_maps": [],
                 "analyses": [],
-                "video_annotation_status": {}
+                "video_annotation_status": {},
+                "video_annotation_files": {},
             }
             self._is_modified = False
             
@@ -546,8 +642,15 @@ class ProjectModel(QObject):
                 # Use relative path for storage
                 rel_path = os.path.join("annotations", annotation_path.name)
             else:
-                # Store absolute path
-                rel_path = str(annotation_path)
+                try:
+                    project_root = Path(self._project_path).resolve()
+                    resolved_annotation = annotation_path.resolve()
+                    if os.path.commonpath([str(resolved_annotation), str(project_root)]) == str(project_root):
+                        rel_path = os.path.relpath(resolved_annotation, project_root)
+                    else:
+                        rel_path = str(annotation_path)
+                except ValueError:
+                    rel_path = str(annotation_path)
             
             # Check if annotation is already in the project
             if rel_path in self._project_config["annotations"]:
@@ -746,6 +849,10 @@ class ProjectModel(QObject):
             # Remove file from project
             self._project_config[file_type].remove(file_path)
             self._is_modified = True
+
+            if file_type == "videos":
+                video_id = self._get_video_id(file_path)
+                self._project_config.setdefault("video_annotation_files", {}).pop(video_id, None)
             
             # If file is in project directory, delete it
             stored_path = Path(file_path)
