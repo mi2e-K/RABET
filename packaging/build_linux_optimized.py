@@ -25,7 +25,6 @@ from build_packaging_common import (
     prepare_build_dirs,
     run_pyinstaller,
     write_readme,
-    write_vlc_runtime_hook,
 )
 
 
@@ -35,7 +34,7 @@ from build_packaging_common import (
 # ``/usr/lib*`` for ``libvlc.so``.
 
 
-def create_spec(args, runtime_hook_path):
+def create_spec(args):
     """Generate a PyInstaller spec for Linux."""
     excluded_modules = get_excluded_modules(args.exclude_module, args.include_module)
     binary_excludes = list(dict.fromkeys(COMMON_BINARY_EXCLUDE_PATTERNS + args.exclude_binary))
@@ -78,7 +77,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={{'matplotlib': {{'backends': ['QtAgg']}}}},
-    runtime_hooks=[{repr(str(runtime_hook_path))}],
+    runtime_hooks=[],
     excludes=excluded_modules,
     noarchive=False,
 )
@@ -233,11 +232,8 @@ def main():
     # 1.3.1: PyAV bundles FFmpeg inside its wheel, so the previous
     # ``find_linux_vlc`` runtime check is gone.
 
-    build_dir, dist_dir = prepare_build_dirs(skip_clean=args.skip_clean)
-    # ``write_vlc_runtime_hook`` is now a no-op stub kept for spec-template
-    # compatibility (see packaging/build_packaging_common.py).
-    runtime_hook = write_vlc_runtime_hook(build_dir / "rabet_linux_vlc_hook.py", "linux")
-    spec_path = create_spec(args, runtime_hook)
+    _build_dir, dist_dir = prepare_build_dirs(skip_clean=args.skip_clean)
+    spec_path = create_spec(args)
     print(f"Spec file written: {spec_path}")
 
     if args.spec_only:

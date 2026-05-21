@@ -26,7 +26,6 @@ from build_packaging_common import (
     prepare_build_dirs,
     run_pyinstaller,
     write_readme,
-    write_vlc_runtime_hook,
 )
 
 
@@ -36,7 +35,7 @@ from build_packaging_common import (
 # ``VLC.app``.
 
 
-def create_spec(args, runtime_hook_path):
+def create_spec(args):
     """Generate a PyInstaller spec for a macOS app bundle."""
     excluded_modules = get_excluded_modules(args.exclude_module, args.include_module)
     binary_excludes = list(dict.fromkeys(COMMON_BINARY_EXCLUDE_PATTERNS + args.exclude_binary))
@@ -79,7 +78,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={{'matplotlib': {{'backends': ['QtAgg']}}}},
-    runtime_hooks=[{repr(str(runtime_hook_path))}],
+    runtime_hooks=[],
     excludes=excluded_modules,
     noarchive=False,
 )
@@ -203,14 +202,8 @@ def main():
 
     # 1.3.1: no system VLC check; PyAV ships FFmpeg inside its wheel.
 
-    build_dir, dist_dir = prepare_build_dirs(skip_clean=args.skip_clean)
-    # ``write_vlc_runtime_hook`` is a 1.3.1 no-op stub that just deletes
-    # any pre-existing hook file. We still call it (and feed the result
-    # into ``create_spec``) so the spec template's runtime_hooks list
-    # remains structurally identical to earlier releases — PyInstaller
-    # is happy to receive an empty path.
-    runtime_hook = write_vlc_runtime_hook(build_dir / "rabet_macos_vlc_hook.py", "macos")
-    spec_path = create_spec(args, runtime_hook)
+    _build_dir, dist_dir = prepare_build_dirs(skip_clean=args.skip_clean)
+    spec_path = create_spec(args)
     print(f"Spec file written: {spec_path}")
 
     if args.spec_only:
