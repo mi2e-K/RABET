@@ -75,9 +75,29 @@ simply works on a clean Windows / macOS / Linux machine.
 
 ### Pre-built binaries (recommended)
 
-Download the latest release for your platform from the
-[GitHub Releases page](https://github.com/mi2e-K/RABET/releases) and
-launch the executable. No additional installation step is required.
+RABET is officially distributed via **[Zenodo](https://doi.org/10.5281/zenodo.15313025)**,
+which assigns each release a permanent DOI for citation:
+
+> [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.15313025-orange)](https://doi.org/10.5281/zenodo.15313025)
+> *concept DOI — always resolves to the latest version*
+
+Open the Zenodo record above and download the archive matching your
+platform:
+
+| Platform | Asset |
+| --- | --- |
+| Windows | `RABET-Windows-1.3.2.zip` |
+| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.2.zip` |
+| macOS (Intel) | `RABET-macOS-x86_64-1.3.2.zip` |
+| Linux | `RABET-Linux-x86_64-1.3.2.tar.gz` |
+
+The downloads are self-contained — no additional installation step is
+required. See the [User Guide](docs/USER_GUIDE.md#12-launching-rabet)
+for platform-specific launch instructions.
+
+A mirror of the same binaries is also published on the
+[GitHub Releases page](https://github.com/mi2e-K/RABET/releases) for
+convenience.
 
 ### From source
 
@@ -97,6 +117,18 @@ python main.py
 
 > **Python**: 3.11 or newer is required. The pinned conda environment
 > uses Python 3.12.
+
+---
+
+## Documentation
+
+- **[User Guide (English)](docs/USER_GUIDE.md)** — step-by-step walkthrough of every feature
+- **[ユーザーガイド (日本語)](docs/USER_GUIDE.ja.md)** — 日本語版ユーザーガイド
+- [CSV format specification](docs/CSV_FORMAT.md)
+- [Reliability assessment reference](docs/reliability/README.md)
+- [Build instructions for macOS / Linux](docs/BUILD_MACOS_LINUX.md)
+
+The [`docs/`](docs/) directory contains an index of all documentation.
 
 ---
 
