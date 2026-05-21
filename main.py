@@ -7,8 +7,7 @@ import os
 import argparse
 import logging
 from PySide6.QtWidgets import (
-    QApplication, QStyleFactory, QSplashScreen, QProgressBar, QLabel,
-    QVBoxLayout, QWidget,
+    QApplication, QStyleFactory, QSplashScreen, QProgressBar,
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont

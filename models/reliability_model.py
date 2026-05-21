@@ -140,7 +140,7 @@ def _parse_summary_table(path: str) -> pd.DataFrame:
     last_band = ""
     inside_band = False
 
-    for col_idx, (band_cell, header_cell) in enumerate(zip(band_row, header_row)):
+    for col_idx, (band_cell, header_cell) in enumerate(zip(band_row, header_row, strict=False)):
         band_cell = (band_cell or "").strip()
         header_cell = (header_cell or "").strip()
 
@@ -544,7 +544,7 @@ class ReliabilityModel(QObject):
             ))
 
             # Scatter-plot data: only include matched-and-finite animals.
-            scatter_animals = [a for a, ok in zip(matched, mask) if ok]
+            scatter_animals = [a for a, ok in zip(matched, mask, strict=False) if ok]
             result.scatter_data[metric] = (
                 scatter_animals,
                 va.tolist(),
