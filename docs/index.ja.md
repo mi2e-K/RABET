@@ -9,12 +9,10 @@ hide:
 
 # RABET
 
-### 動物行動イベントタガー（リアルタイム）
+### Real-time Animal Behavior Event Tagger
 
-動物行動の動画アノテーションを行うための、自己完結型デスクトップ
-アプリケーション。フレーム単位の精密再生、キーボード駆動のタギング、
-複数ファイル CSV 解析、ラスタープロット可視化、評価者間/内信頼性評価
-を備えている。
+動物行動の動画アノテーションに特化した、自己完結型のデスクトップアプリケーション。
+フレーム単位での精密な再生、キーボード操作による高速なタグ付け、複数CSVファイルの解析、ラスタープロットによる可視化、評価者間・評価者内信頼性の評価に対応。
 
 [ダウンロード（各 OS 向け） :material-download:](https://doi.org/10.5281/zenodo.15313025){ .md-button .md-button--primary }
 [ユーザーガイドを読む :material-book-open-page-variant:](USER_GUIDE.md){ .md-button }
@@ -38,15 +36,15 @@ hide:
 
     ---
 
-    PyAV / FFmpeg ベースのデコーダ。シングルフレーム送り、瞬時の
-    シーク。VLC やコーデックパックの別途インストールは不要。
+    PyAV / FFmpeg ベースのデコーダー。1フレームずつのコマ送りや即時シークに対応。
+    VLC やコーデックパックの別途インストールは不要。
 
--   :material-keyboard-outline:{ .lg .middle } &nbsp;**キーボード駆動のタギング**
+-   :material-keyboard-outline:{ .lg .middle } &nbsp;**キーボード駆動のタグ付け**
 
     ---
 
-    設定可能なキー → 行動マッピング。キー押下で開始、リリースで
-    終了。モノトニッククロックなので NTP 補正の影響を受けない。
+    キーと行動の対応関係を設定可能。キーを押すと記録が開始され、キーを離すと終了する。
+    モノトニッククロックを使用しているため、NTP による時刻補正の影響を受けない。
 
 -   :material-chart-timeline-variant:{ .lg .middle } &nbsp;**インタラクティブなタイムライン**
 
@@ -82,7 +80,7 @@ hide:
 
 ---
 
-## すぐに始める
+## クイックスタート
 
 <div class="grid" markdown>
 
@@ -122,23 +120,21 @@ hide:
 
 !!! tip "自己完結型バイナリ"
     VLC、FFmpeg、Python、scipy、R などのシステムインストールは
-    一切不要である。動画再生、フレームデコード、一致度メトリクス
-    計算に必要なすべての依存関係を RABET が同梱している。
+    一切不要。動画再生、フレームデコード、一致度メトリクス
+    計算に必要なすべての依存関係を RABET が同梱済み。
 
 ---
 
 ## RABET の引用
 
-研究に RABET が役立った場合は、ぜひ引用していただきたい。機械可読
-な引用情報は [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff)
-に格納されている。人間が読む形式では次のように引用する。
+研究で RABET をご利用いただいた場合は、ぜひ引用をお願いいたします。機械可読形式の引用情報は [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff)
+に記載されています。人間が読みやすい形式の引用例は以下のとおりです。
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
 > (Version 1.3.2). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
-上の DOI は **コンセプト DOI** で、常に Zenodo 上の最新リリースに
-解決される。新バージョン公開後も引用先は変わらない。
+上記の DOI は **コンセプト DOI** であり、Zenodo 上の最新リリースに常に紐づきます。新しいバージョンが公開された後も、引用先を変更する必要はありません。
 
 RABET を解説する論文を準備中。
 
@@ -147,4 +143,3 @@ RABET を解説する論文を準備中。
 ## ライセンス
 
 [**MIT License**](https://github.com/mi2e-K/RABET/blob/main/LICENSE)
-の下で公開している。
