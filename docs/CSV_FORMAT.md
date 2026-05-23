@@ -158,5 +158,3 @@ Interval analysis (60-second intervals)
 ,,,,Duration,,,,,,,,Frequency,,,,,,,,
 animal_id,Interval,Time (sec),,Attack bites,Sideways threats,...,,Attack bites,Sideways threats,...,,Total Aggression
 ```
-
----
