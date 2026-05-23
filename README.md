@@ -129,7 +129,7 @@ python main.py
 
 ## Documentation
 
-> 🌐 **Project website**: **[mi2e-k.github.io/RABET](https://mi2e-k.github.io/RABET/)** — searchable docs site with the full user guide, dark-mode support, and English / 日本語 language switcher.
+> 🌐 **Project website**: **[mi2e-k.github.io/RABET](https://mi2e-k.github.io/RABET/)** — searchable docs site with the full user guide, dark-mode support, and English / Japanese language switcher.
 
 The markdown source for every page below is also browsable directly on GitHub:
 
