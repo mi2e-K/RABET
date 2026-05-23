@@ -160,26 +160,3 @@ animal_id,Interval,Time (sec),,Attack bites,Sideways threats,...,,Attack bites,S
 ```
 
 ---
-
-## 4. Reading RABET CSVs from external tools
-
-```python
-import pandas as pd
-from io import StringIO
-
-# Annotation CSV: read just the Event section.
-def load_rabet_events(path):
-    with open(path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("Event,Onset,Offset"))
-    # Stop at the blank line or the Behavior section.
-    end = next(
-        (i for i in range(start + 1, len(lines))
-         if not lines[i].strip() or lines[i].startswith("Behavior,")),
-        len(lines),
-    )
-    return pd.read_csv(StringIO("".join(lines[start:end])))
-```
-
-The same parsing helper used internally is available via
-`utils.annotation_csv_parser.extract_event_dataframe`.
