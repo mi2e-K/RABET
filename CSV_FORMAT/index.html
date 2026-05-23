@@ -758,17 +758,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#4-reading-rabet-csvs-from-external-tools" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Reading RABET CSVs from external tools
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1030,17 +1019,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#4-reading-rabet-csvs-from-external-tools" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Reading RABET CSVs from external tools
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1249,25 +1227,6 @@ interval size in seconds.</p>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>animal_id,Interval,Time (sec),,Attack bites,Sideways threats,...,,Attack bites,Sideways threats,...,,Total Aggression
 </span></code></pre></div>
 <hr />
-<h2 id="4-reading-rabet-csvs-from-external-tools">4. Reading RABET CSVs from external tools<a class="headerlink" href="#4-reading-rabet-csvs-from-external-tools" title="Permanent link">&para;</a></h2>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringIO</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Annotation CSV: read just the Event section.</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">load_rabet_events</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
-</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">start</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Event,Onset,Offset&quot;</span><span class="p">))</span>
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="c1"># Stop at the blank line or the Behavior section.</span>
-</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>    <span class="n">end</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
-</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        <span class="p">(</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">))</span>
-</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>         <span class="k">if</span> <span class="ow">not</span> <span class="n">lines</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="n">lines</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Behavior,&quot;</span><span class="p">)),</span>
-</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">),</span>
-</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="p">)</span>
-</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">StringIO</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">end</span><span class="p">])))</span>
-</span></code></pre></div>
-<p>The same parsing helper used internally is available via
-<code>utils.annotation_csv_parser.extract_event_dataframe</code>.</p>
 
 
 
