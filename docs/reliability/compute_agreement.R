@@ -106,6 +106,7 @@ parse_summary <- function(path) {
 
   data$animal_id <- trimws(data$animal_id)
   data <- data[nzchar(data$animal_id), , drop = FALSE]
+  data <- data[!(tolower(data$animal_id) %in% c("mean", "sem")), , drop = FALSE]
 
   for (col in setdiff(colnames(data), "animal_id")) {
     data[[col]] <- suppressWarnings(as.numeric(data[[col]]))

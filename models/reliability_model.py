@@ -184,6 +184,9 @@ def _parse_summary_table(path: str) -> pd.DataFrame:
 
     # Drop fully empty rows (e.g. a trailing blank line).
     data = data[data["animal_id"].astype(bool)].reset_index(drop=True)
+    data = data[
+        ~data["animal_id"].str.casefold().isin({"mean", "sem"})
+    ].reset_index(drop=True)
 
     # Warn about and de-duplicate repeated animal_id values. Pandas would
     # silently keep the last occurrence after set_index later in the

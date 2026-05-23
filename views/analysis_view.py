@@ -1,6 +1,8 @@
 # views/analysis_view.py - Enhanced with metrics configuration, file management, and export options
 import logging
 import os
+import math
+import re
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView,
@@ -52,6 +54,48 @@ class AnalysisView(QWidget):
         
         self.setup_ui()
         self.connect_signals()
+
+    @staticmethod
+    def _animal_id_from_path(file_path):
+        """Return the display animal_id for an annotation path."""
+        animal_id = os.path.splitext(os.path.basename(file_path))[0]
+        if animal_id.endswith('_annotations'):
+            animal_id = animal_id[: -len('_annotations')]
+        return animal_id
+
+    @staticmethod
+    def _animal_sort_key(animal_id):
+        """Natural-sort key so RI_001 precedes RI_002 and RI_010."""
+        key_parts = []
+        for part in re.split(r'(\d+)', str(animal_id)):
+            if part.isdigit():
+                key_parts.append((1, int(part)))
+            else:
+                key_parts.append((0, part.casefold()))
+        return key_parts
+
+    @classmethod
+    def _sorted_result_items(cls, results):
+        """Return analysis result items ordered by animal_id."""
+        return sorted(
+            results.items(),
+            key=lambda item: cls._animal_sort_key(cls._animal_id_from_path(item[0])),
+        )
+
+    @staticmethod
+    def _mean_sem_strings(values):
+        """Return formatted mean and SEM for a list of numeric values."""
+        values = [value for value in values if math.isfinite(value)]
+        if not values:
+            return "", ""
+
+        mean_value = sum(values) / len(values)
+        sem_value = 0.0
+        if len(values) > 1:
+            variance = sum((value - mean_value) ** 2 for value in values) / (len(values) - 1)
+            sem_value = math.sqrt(variance) / math.sqrt(len(values))
+
+        return f"{mean_value:.2f}", f"{sem_value:.2f}"
     
     def setup_ui(self):
         """Set up simplified user interface for automatic analysis."""
@@ -479,35 +523,49 @@ class AnalysisView(QWidget):
         self.summary_table.clear()
         self.summary_table.setColumnCount(len(columns))
         self.summary_table.setHorizontalHeaderLabels(columns)
-        self.summary_table.setRowCount(len(results))
+        data_rows = []
 
-        for row_idx, (file_path, metrics) in enumerate(results.items()):
-            animal_id = os.path.splitext(os.path.basename(file_path))[0]
-            if animal_id.endswith('_annotations'):
-                animal_id = animal_id[: -len('_annotations')]
-
-            col_idx = 0
-            self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(animal_id))
-            col_idx += 1
+        for file_path, metrics in self._sorted_result_items(results):
+            animal_id = self._animal_id_from_path(file_path)
+            row = [animal_id]
 
             for behavior in behaviors:
                 value = float(metrics.get(f"{behavior}_duration", 0.0))
-                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
-                col_idx += 1
+                row.append(f"{value:.2f}")
             for behavior in behaviors:
                 value = int(metrics.get(f"{behavior}_count", 0))
-                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
-                col_idx += 1
+                row.append(str(value))
             for metric_name in latency_metric_names:
                 key = metric_name.lower().replace(' ', '_')
                 value = float(metrics.get(key, metrics.get('test_duration', 0.0)))
-                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
-                col_idx += 1
+                row.append(f"{value:.2f}")
             for metric_name in total_time_metric_names:
                 key = metric_name.lower().replace(' ', '_')
                 value = float(metrics.get(key, 0.0))
-                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(f"{value:.2f}"))
-                col_idx += 1
+                row.append(f"{value:.2f}")
+
+            data_rows.append(row)
+
+        display_rows = data_rows
+        if data_rows:
+            mean_row = ["mean"]
+            sem_row = ["SEM"]
+            for col_idx in range(1, len(columns)):
+                values = []
+                for row in data_rows:
+                    try:
+                        values.append(float(row[col_idx]))
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                mean_cell, sem_cell = self._mean_sem_strings(values)
+                mean_row.append(mean_cell)
+                sem_row.append(sem_cell)
+            display_rows = data_rows + [mean_row, sem_row]
+
+        self.summary_table.setRowCount(len(display_rows))
+        for row_idx, row in enumerate(display_rows):
+            for col_idx, value in enumerate(row):
+                self.summary_table.setItem(row_idx, col_idx, QTableWidgetItem(value))
 
         self.summary_table.resizeColumnsToContents()
 
@@ -550,10 +608,8 @@ class AnalysisView(QWidget):
         columns.extend(f"{m} (s)" for m in total_time_metric_names)
 
         rows = []
-        for source_path, intervals in interval_results.items():
-            animal_id = os.path.splitext(os.path.basename(source_path))[0]
-            if animal_id.endswith('_annotations'):
-                animal_id = animal_id[: -len('_annotations')]
+        for source_path, intervals in self._sorted_result_items(interval_results):
+            animal_id = self._animal_id_from_path(source_path)
 
             for interval in intervals:
                 row = [animal_id,

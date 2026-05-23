@@ -640,11 +640,19 @@ class AnalysisModel(QObject):
             self.logger.info(f"Data validation:")
             self.logger.info(f"  Found {len(rs_events)} RecordingStart events")
             self.logger.info(f"  Found {len(attack_events)} Attack bites events")
-            
+
             if not rs_events.empty:
-                self.logger.info(f"  RecordingStart time: {rs_events['Onset'].iloc[0]}")
+                rs_onsets = pd.to_numeric(rs_events['Onset'], errors='coerce').dropna()
+                if not rs_onsets.empty:
+                    self.logger.info(f"  RecordingStart time: {rs_onsets.min()}")
+                else:
+                    self.logger.warning("  RecordingStart events have no valid numeric onset")
             if not attack_events.empty:
-                self.logger.info(f"  First Attack bites time: {attack_events['Onset'].min()}")
+                attack_onsets = pd.to_numeric(attack_events['Onset'], errors='coerce').dropna()
+                if not attack_onsets.empty:
+                    self.logger.info(f"  First Attack bites time: {attack_onsets.min()}")
+                else:
+                    self.logger.warning("  Attack bites events have no valid numeric onset")
             
             # First, ensure all values are properly converted to numeric
             try:
@@ -686,14 +694,28 @@ class AnalysisModel(QObject):
             # Use the combined list of default and custom behaviors
             for behavior in self._behaviors:
                 behavior_df = df[df['Event'] == behavior]
-                
+
                 # Calculate total duration in seconds
                 if not behavior_df.empty:
-                    # Explicitly convert to float to ensure proper calculations
-                    durations = behavior_df['Offset'].astype(float) - behavior_df['Onset'].astype(float)
+                    onsets = pd.to_numeric(behavior_df['Onset'], errors='coerce')
+                    offsets = pd.to_numeric(behavior_df['Offset'], errors='coerce')
+                    valid_mask = (
+                        np.isfinite(onsets.to_numpy(dtype=float))
+                        & np.isfinite(offsets.to_numpy(dtype=float))
+                        & (offsets >= onsets).to_numpy()
+                    )
+                    invalid_count = int((~valid_mask).sum())
+                    if invalid_count:
+                        self.logger.warning(
+                            "Ignoring %d invalid %s event(s) in %s",
+                            invalid_count,
+                            behavior,
+                            os.path.basename(file_path),
+                        )
+                    durations = offsets[valid_mask] - onsets[valid_mask]
                     duration = durations.sum()
-                    count = len(behavior_df)
-                    
+                    count = int(valid_mask.sum())
+
                     self.logger.debug(f"Behavior '{behavior}': {count} occurrences, {duration:.2f}s total duration")
                 else:
                     duration = 0
@@ -802,9 +824,17 @@ class AnalysisModel(QObject):
         for behavior in self._behaviors:
             behavior_df = df[df['Event'] == behavior]
             if not behavior_df.empty:
-                onsets = behavior_df['Onset'].astype(float).to_numpy()
-                offsets = behavior_df['Offset'].astype(float).to_numpy()
-                behavior_arrays[behavior] = (onsets, offsets)
+                onsets = pd.to_numeric(behavior_df['Onset'], errors='coerce').to_numpy(dtype=float)
+                offsets = pd.to_numeric(behavior_df['Offset'], errors='coerce').to_numpy(dtype=float)
+                valid_mask = np.isfinite(onsets) & np.isfinite(offsets) & (offsets >= onsets)
+                if np.any(~valid_mask):
+                    self.logger.warning(
+                        "Ignoring %d invalid %s event(s) during interval analysis",
+                        int((~valid_mask).sum()),
+                        behavior,
+                    )
+                if np.any(valid_mask):
+                    behavior_arrays[behavior] = (onsets[valid_mask], offsets[valid_mask])
 
         # Process each interval starting from RecordingStart
         for i in range(num_intervals):
@@ -874,6 +904,11 @@ class AnalysisModel(QObject):
         """
         # Make a copy to avoid SettingWithCopyWarning
         filtered_df = df.copy()
+
+        filtered_df.loc[:, 'Onset'] = pd.to_numeric(filtered_df['Onset'], errors='coerce')
+        filtered_df.loc[:, 'Offset'] = pd.to_numeric(filtered_df['Offset'], errors='coerce')
+        filtered_df = filtered_df.dropna(subset=['Onset', 'Offset'])
+        filtered_df = filtered_df[filtered_df['Offset'] >= filtered_df['Onset']]
         
         # For our calculation, we need to clip event boundaries to the interval
         # But first, filter to only events that overlap with the interval
@@ -901,33 +936,38 @@ class AnalysisModel(QObject):
         try:
             # First, look for a RecordingStart event
             recording_start = df[df['Event'] == 'RecordingStart']
-            
+
             if not recording_start.empty:
-                # Convert to float explicitly and ensure no NaN values
-                onset_value = recording_start['Onset'].iloc[0]
-                if pd.notnull(onset_value):
-                    start_time = float(onset_value)
+                onset_values = pd.to_numeric(recording_start['Onset'], errors='coerce').dropna()
+                onset_values = onset_values[np.isfinite(onset_values)]
+                if not onset_values.empty:
+                    start_time = float(onset_values.min())
                     self.logger.debug(f"Found RecordingStart event at time: {start_time}")
-                    
+
                     # Get the last offset time of any event
-                    offset_values = df['Offset'].dropna()
+                    offset_values = pd.to_numeric(df['Offset'], errors='coerce').dropna()
+                    offset_values = offset_values[np.isfinite(offset_values)]
                     if not offset_values.empty:
                         last_time = float(offset_values.max())
                         duration = last_time - start_time
-                        self.logger.debug(f"Test duration from RecordingStart to last offset: {duration}s")
-                        return duration
-            
+                        if duration > 0:
+                            self.logger.debug(f"Test duration from RecordingStart to last offset: {duration}s")
+                            return duration
+
             # Fallback: Use the range from the first Onset to the last Offset
             if not df.empty and 'Onset' in df.columns and 'Offset' in df.columns:
-                onset_values = df['Onset'].dropna()
-                offset_values = df['Offset'].dropna()
-                
+                onset_values = pd.to_numeric(df['Onset'], errors='coerce').dropna()
+                offset_values = pd.to_numeric(df['Offset'], errors='coerce').dropna()
+                onset_values = onset_values[np.isfinite(onset_values)]
+                offset_values = offset_values[np.isfinite(offset_values)]
+
                 if not onset_values.empty and not offset_values.empty:
                     min_time = float(onset_values.min())
                     max_time = float(offset_values.max())
                     duration = max_time - min_time
-                    self.logger.debug(f"Test duration from first onset to last offset: {duration}s")
-                    return duration
+                    if duration > 0:
+                        self.logger.debug(f"Test duration from first onset to last offset: {duration}s")
+                        return duration
             
             # Default assumption: 5 minutes (300 seconds)
             self.logger.debug("Could not determine test duration from data, using default: 300 seconds")
@@ -1219,16 +1259,84 @@ class AnalysisModel(QObject):
             dict: Interval analysis results
         """
         return self._interval_results
-    
+
     def get_behaviors_list(self):
         """
         Get the list of all behaviors found in the loaded data.
-        
+
         Returns:
             list: List of behavior names
         """
         return self._behaviors.copy()
-    
+
+    @staticmethod
+    def _animal_id_from_path(source_path):
+        """Return the exported animal_id for a source annotation path."""
+        animal_id = os.path.splitext(os.path.basename(source_path))[0]
+        if animal_id.endswith("_annotations"):
+            animal_id = animal_id[:-12]
+        return animal_id
+
+    @staticmethod
+    def _animal_sort_key(animal_id):
+        """Natural-sort key so RI_001 precedes RI_002 and RI_010."""
+        key_parts = []
+        for part in re.split(r"(\d+)", str(animal_id)):
+            if part.isdigit():
+                key_parts.append((1, int(part)))
+            else:
+                key_parts.append((0, part.casefold()))
+        return key_parts
+
+    def _sorted_results_items(self):
+        """Return whole-session results ordered by animal_id."""
+        return sorted(
+            self._results.items(),
+            key=lambda item: self._animal_sort_key(self._animal_id_from_path(item[0])),
+        )
+
+    def _sorted_interval_items(self):
+        """Return interval results ordered by animal_id."""
+        return sorted(
+            self._interval_results.items(),
+            key=lambda item: self._animal_sort_key(self._animal_id_from_path(item[0])),
+        )
+
+    @staticmethod
+    def _append_standard_summary_stats(writer, data_rows, column_headers):
+        """Append mean and SEM rows to a standard summary_table export."""
+        if not data_rows:
+            return
+
+        stats_rows = [["mean"], ["SEM"]]
+        for col_idx, header in enumerate(column_headers[1:], start=1):
+            if not header:
+                stats_rows[0].append("")
+                stats_rows[1].append("")
+                continue
+
+            values = []
+            for row in data_rows:
+                try:
+                    values.append(float(row[col_idx]))
+                except (TypeError, ValueError, IndexError):
+                    continue
+            values = [value for value in values if np.isfinite(value)]
+
+            if not values:
+                stats_rows[0].append("")
+                stats_rows[1].append("")
+                continue
+
+            mean_value = float(np.mean(values))
+            sem_value = 0.0
+            if len(values) > 1:
+                sem_value = float(np.std(values, ddof=1) / np.sqrt(len(values)))
+            stats_rows[0].append(f"{mean_value:.2f}")
+            stats_rows[1].append(f"{sem_value:.2f}")
+
+        writer.writerows(stats_rows)
+
     def export_summary_csv(self, file_path):
         """
         Export the summary table to CSV.
@@ -1321,12 +1429,10 @@ class AnalysisModel(QObject):
                 # Write data rows and validate metrics for each file. We use
                 # ``source_path`` here to avoid shadowing the ``file_path``
                 # argument of this method, which refers to the export target.
-                for source_path, metrics in self._results.items():
-                    # Get animal ID from filename without _annotations suffix
-                    animal_id = os.path.splitext(os.path.basename(source_path))[0]
-                    if animal_id.endswith("_annotations"):
-                        animal_id = animal_id[:-12]  # Remove "_annotations"
-                    
+                data_rows = []
+                for source_path, metrics in self._sorted_results_items():
+                    animal_id = self._animal_id_from_path(source_path)
+
                     # Start with animal_id
                     row = [animal_id]
                     
@@ -1360,7 +1466,7 @@ class AnalysisModel(QObject):
                         value = float(metrics.get(key, metrics.get('test_duration', 300)))
                         self.logger.info(f"  {metric_name}: {value:.2f}s")
                         row.append(f"{value:.2f}")
-                    
+
                     # Add total time metrics
                     for metric in total_time_metrics:
                         metric_name = metric["name"]
@@ -1368,8 +1474,11 @@ class AnalysisModel(QObject):
                         value = float(metrics.get(key, 0))
                         self.logger.info(f"  {metric_name}: {value:.2f}s")
                         row.append(f"{value:.2f}")
-                    
+
+                    data_rows.append(row)
                     writer.writerow(row)
+
+                self._append_standard_summary_stats(writer, data_rows, column_headers)
             
             self.logger.info(f"Successfully exported standard summary table to {file_path}")
             return True
@@ -1447,12 +1556,9 @@ class AnalysisModel(QObject):
                 # Write data rows for each file and each interval. We use
                 # ``source_path`` here to avoid shadowing the ``file_path``
                 # argument of this method, which refers to the export target.
-                for source_path, intervals in self._interval_results.items():
-                    # Get animal ID from filename
-                    animal_id = os.path.splitext(os.path.basename(source_path))[0]
-                    if animal_id.endswith("_annotations"):
-                        animal_id = animal_id[:-12]  # Remove "_annotations"
-                    
+                for source_path, intervals in self._sorted_interval_items():
+                    animal_id = self._animal_id_from_path(source_path)
+
                     # Write rows for each interval
                     for interval in intervals:
                         # Start with animal_id, interval number, and time range

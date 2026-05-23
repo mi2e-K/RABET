@@ -30,7 +30,7 @@ class VisualizationController(QObject):
         
         # Initialize config path manager if not provided
         if not self._config_path_manager:
-            self.logger.warning("No config path manager provided, creating fallback")
+            self.logger.info("No config path manager provided, creating local default")
             try:
                 from utils.config_path_manager import ConfigPathManager
                 self._config_path_manager = ConfigPathManager()

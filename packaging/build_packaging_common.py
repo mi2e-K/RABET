@@ -62,6 +62,8 @@ HIDDEN_DEPENDENCIES = [
     "av.error",
     "matplotlib.backends.backend_qtagg",
     "matplotlib.backends.backend_qt5agg",
+    "matplotlib.backends.backend_svg",
+    "matplotlib.backends.backend_pdf",
     "PIL",
     "PIL.Image",
     # 1.3.2: pingouin powers the in-app Reliability tab. It pulls in

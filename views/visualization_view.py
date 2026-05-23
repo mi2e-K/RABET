@@ -1,6 +1,7 @@
 # views/visualization_view.py - Visualization tools for annotation data
 import logging
 import os
+import json
 import colorsys
 import warnings
 import numpy as np
@@ -340,14 +341,19 @@ class RasterPlotWidget(QWidget):
         self._tick_interval = 60     # Tick interval in seconds (default 1 minute)
         self._x_range_max = 300      # X-axis maximum in seconds (default 5 minutes)
         self._bar_height = 15        # Height of raster plot bars (line width)
+        self._text_font_size = 10    # Axis/tick/behavior label font size
+        self._png_dpi = 300          # PNG export DPI
         self._display_mode = "Separate Behaviors"  # Display mode setting
         self._show_vertical_grid = True
         self._show_horizontal_grid = True
         self._grid_color = "#B0B0B0"
-        
+        self._border_mode = "All"
+
         # Track custom ordering
         self._custom_behavior_order = []
         self._custom_file_order = []
+        self._fixed_behavior_order = []
+        self._fixed_action_map_path = None
         
         # Individual frames setting for overlay mode
         self._individual_frames = False
@@ -389,25 +395,22 @@ class RasterPlotWidget(QWidget):
     def _create_control_panel(self):
         """Create the control panel for plot settings."""
         self.controls_group = QGroupBox("Plot Controls")
-        self.controls_group.setMaximumHeight(100)
+        self.controls_group.setMaximumHeight(110)
         self.controls_layout = QGridLayout(self.controls_group)
         self.controls_layout.setContentsMargins(5, 5, 5, 5)
-        self.controls_layout.setSpacing(3)
+        self.controls_layout.setHorizontalSpacing(12)
         self.controls_layout.setVerticalSpacing(2)
-        
-        # Row 0: Display mode, Color map, Display unit
-        row = 0
-        
+        for column in range(4):
+            self.controls_layout.setColumnStretch(column, 1)
+
         # Display mode selection
         self.display_mode_label = QLabel("Display Mode:")
         self.display_mode_combo = QComboBox()
         self.display_mode_combo.addItems(["Separate Behaviors", "Overlay Behaviors"])
+        self.display_mode_combo.setFixedWidth(170)
         self.display_mode_combo.setCurrentText(self._display_mode)
         self.display_mode_combo.currentTextChanged.connect(self.on_display_mode_changed)
-        
-        self.controls_layout.addWidget(self.display_mode_label, row, 0)
-        self.controls_layout.addWidget(self.display_mode_combo, row, 1)
-        
+
         # Colormap selection
         self.colormap_label = QLabel("Color Map:")
         self.colormap_combo = QComboBox()
@@ -416,60 +419,91 @@ class RasterPlotWidget(QWidget):
             'Dark2', 'viridis', 'plasma', 'inferno'
         ]
         self.colormap_combo.addItems(self.builtin_colormaps)
+        self.colormap_combo.setFixedWidth(120)
         self.colormap_combo.setCurrentText(self._default_colormap)
         self.colormap_combo.currentTextChanged.connect(self.on_colormap_changed)
-        
-        self.controls_layout.addWidget(self.colormap_label, row, 2)
-        self.controls_layout.addWidget(self.colormap_combo, row, 3)
-        
+
         # Time unit
         self.time_unit_label = QLabel("Display Unit:")
         self.time_unit_combo = QComboBox()
         self.time_unit_combo.addItems(["Seconds", "Minutes"])
+        self.time_unit_combo.setFixedWidth(100)
         self.time_unit_combo.setCurrentText("Seconds")
         self.time_unit_combo.currentTextChanged.connect(self.on_time_unit_changed)
-        
-        self.controls_layout.addWidget(self.time_unit_label, row, 4)
-        self.controls_layout.addWidget(self.time_unit_combo, row, 5)
-        
-        # Row 1: Tick interval, X-axis range, Bar height
-        row = 1
-        
+
+        # Text font size
+        self.text_font_size_label = QLabel("Font Size:")
+        self.text_font_size_spinbox = QSpinBox()
+        self.text_font_size_spinbox.setMinimum(6)
+        self.text_font_size_spinbox.setMaximum(24)
+        self.text_font_size_spinbox.setValue(self._text_font_size)
+        self.text_font_size_spinbox.setFixedWidth(70)
+        self.text_font_size_spinbox.valueChanged.connect(self.on_text_font_size_changed)
+
         # Tick interval
         self.tick_interval_label = QLabel("Tick Interval (sec):")
         self.tick_interval_spinbox = QSpinBox()
         self.tick_interval_spinbox.setMinimum(1)
         self.tick_interval_spinbox.setMaximum(600)
         self.tick_interval_spinbox.setValue(60)
+        self.tick_interval_spinbox.setFixedWidth(80)
         self.tick_interval_spinbox.valueChanged.connect(self.on_tick_interval_changed)
-        
-        self.controls_layout.addWidget(self.tick_interval_label, row, 0)
-        self.controls_layout.addWidget(self.tick_interval_spinbox, row, 1)
-        
+
         # X-axis range
         self.x_range_label = QLabel("Max Range (sec):")
         self.x_range_spinbox = QSpinBox()
         self.x_range_spinbox.setMinimum(60)
         self.x_range_spinbox.setMaximum(7200)
         self.x_range_spinbox.setValue(300)
+        self.x_range_spinbox.setFixedWidth(90)
         self.x_range_spinbox.valueChanged.connect(self.on_x_range_changed)
-        
-        self.controls_layout.addWidget(self.x_range_label, row, 2)
-        self.controls_layout.addWidget(self.x_range_spinbox, row, 3)
-        
+
         # Bar height control
         self.bar_height_label = QLabel("Bar Height:")
         self.bar_height_spinbox = QSpinBox()
         self.bar_height_spinbox.setMinimum(1)
         self.bar_height_spinbox.setMaximum(100)
         self.bar_height_spinbox.setValue(20)
+        self.bar_height_spinbox.setFixedWidth(70)
         self.bar_height_spinbox.valueChanged.connect(self.on_bar_height_changed)
-        
-        self.controls_layout.addWidget(self.bar_height_label, row, 4)
-        self.controls_layout.addWidget(self.bar_height_spinbox, row, 5)
-        
+
+        # PNG export DPI
+        self.png_dpi_label = QLabel("PNG DPI:")
+        self.png_dpi_spinbox = QSpinBox()
+        self.png_dpi_spinbox.setMinimum(72)
+        self.png_dpi_spinbox.setMaximum(1200)
+        self.png_dpi_spinbox.setValue(self._png_dpi)
+        self.png_dpi_spinbox.setFixedWidth(80)
+        self.png_dpi_spinbox.valueChanged.connect(self.on_png_dpi_changed)
+
+        self._add_labeled_control(0, 0, self.display_mode_label, self.display_mode_combo)
+        self._add_labeled_control(0, 1, self.colormap_label, self.colormap_combo)
+        self._add_labeled_control(0, 2, self.time_unit_label, self.time_unit_combo)
+        self._add_labeled_control(0, 3, self.text_font_size_label, self.text_font_size_spinbox)
+        self._add_labeled_control(1, 0, self.tick_interval_label, self.tick_interval_spinbox)
+        self._add_labeled_control(1, 1, self.x_range_label, self.x_range_spinbox)
+        self._add_labeled_control(1, 2, self.bar_height_label, self.bar_height_spinbox)
+        self._add_labeled_control(1, 3, self.png_dpi_label, self.png_dpi_spinbox)
+
         # Add controls to main layout
         self.layout.addWidget(self.controls_group, 0)
+
+    def _add_labeled_control(self, row, column, label, control):
+        """Add a compact label/control pair to the Plot Controls grid."""
+        pair_widget = QWidget()
+        pair_layout = QHBoxLayout(pair_widget)
+        pair_layout.setContentsMargins(0, 0, 0, 0)
+        pair_layout.setSpacing(4)
+        pair_widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        pair_layout.addWidget(label)
+        pair_layout.addWidget(control)
+        self.controls_layout.addWidget(
+            pair_widget,
+            row,
+            column,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
     
     def _create_button_panel(self):
         """Create the button panel."""
@@ -482,6 +516,23 @@ class RasterPlotWidget(QWidget):
         self.load_button.clicked.connect(self.load_files_from_dialog)
         self.load_button.setMaximumWidth(120)
         self.load_button.setMaximumHeight(30)
+
+        # Optional action map behavior source for visualization only
+        self.load_action_map_button = QPushButton("Load Action Map")
+        self.load_action_map_button.clicked.connect(self.load_action_map_from_dialog)
+        self.load_action_map_button.setMaximumWidth(150)
+        self.load_action_map_button.setMaximumHeight(30)
+
+        self.clear_action_map_button = QPushButton("Use Data Behaviors")
+        self.clear_action_map_button.clicked.connect(self.clear_action_map_behavior_source)
+        self.clear_action_map_button.setMaximumWidth(160)
+        self.clear_action_map_button.setMaximumHeight(30)
+        self.clear_action_map_button.setEnabled(False)
+
+        self.action_map_status_label = QLabel("Behaviors: data")
+        self.action_map_status_label.setMaximumHeight(30)
+        self.action_map_status_label.setMinimumWidth(120)
+        self.action_map_status_label.setMaximumWidth(220)
 
         # Refresh button
         self.refresh_button = QPushButton("Refresh Plot")
@@ -502,6 +553,10 @@ class RasterPlotWidget(QWidget):
         self.clear_button.setMaximumHeight(30)
         
         button_layout.addWidget(self.load_button)
+        button_layout.addWidget(self.load_action_map_button)
+        button_layout.addWidget(self.clear_action_map_button)
+        button_layout.addWidget(self.action_map_status_label)
+        button_layout.addSpacing(15)
         button_layout.addWidget(self.refresh_button)
         button_layout.addWidget(self.save_button)
         button_layout.addSpacing(15)
@@ -614,7 +669,16 @@ class RasterPlotWidget(QWidget):
         self.height_spinbox.setSuffix(" px")
         self.height_spinbox.setMaximumHeight(25)
         self.height_spinbox.valueChanged.connect(self.on_plot_size_changed)
-        
+
+        # Border visibility
+        self.border_label = QLabel("Border:")
+        self.border_combo = QComboBox()
+        self.border_combo.addItems(["All", "Left + Bottom", "Bottom Only"])
+        self.border_combo.setCurrentText(self._border_mode)
+        self.border_combo.setMaximumHeight(25)
+        self.border_combo.setFixedWidth(125)
+        self.border_combo.currentTextChanged.connect(self.on_border_mode_changed)
+
         # Auto-size checkbox
         self.auto_size_checkbox = QCheckBox("Auto-fit")
         self.auto_size_checkbox.setChecked(True)
@@ -665,6 +729,9 @@ class RasterPlotWidget(QWidget):
         self.plot_controls_layout.addWidget(self.height_label)
         self.plot_controls_layout.addWidget(self.height_spinbox)
         self.plot_controls_layout.addSpacing(15)
+        self.plot_controls_layout.addWidget(self.border_label)
+        self.plot_controls_layout.addWidget(self.border_combo)
+        self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.auto_size_checkbox)
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.vertical_grid_checkbox)
@@ -703,7 +770,24 @@ class RasterPlotWidget(QWidget):
         if 'Event' in df.columns:
             recording_start_events = df[df['Event'] == 'RecordingStart']
             if not recording_start_events.empty and 'Onset' in recording_start_events.columns:
-                recording_start = float(recording_start_events['Onset'].iloc[0])
+                starts = []
+                for raw_onset in recording_start_events['Onset']:
+                    try:
+                        onset = float(raw_onset)
+                    except (TypeError, ValueError):
+                        continue
+                    if np.isfinite(onset):
+                        starts.append(onset)
+
+                if starts:
+                    recording_start = min(starts)
+                    if len(starts) > 1:
+                        self.logger.warning(
+                            "Multiple RecordingStart events found in %s; "
+                            "using earliest finite onset %.4fs",
+                            file_name or "loaded data",
+                            recording_start,
+                        )
                 if file_name:
                     self.logger.info(f"Found RecordingStart at {recording_start}s in {file_name}")
         return recording_start
@@ -842,6 +926,19 @@ class RasterPlotWidget(QWidget):
                 alpha=0.45, linewidth=1.1, zorder=0
             )
 
+    def _apply_border_style(self, ax):
+        """Apply the selected axes border/spine visibility."""
+        visible_spines = {
+            "All": {"left", "right", "top", "bottom"},
+            "Left + Bottom": {"left", "bottom"},
+            "Bottom Only": {"bottom"},
+        }.get(self._border_mode, {"left", "right", "top", "bottom"})
+
+        for name, spine in ax.spines.items():
+            spine.set_visible(name in visible_spines)
+            spine.set_linewidth(2.5)
+            spine.set_zorder(100)
+
     def _update_grid_color_button(self):
         """Style the grid color button with the current color."""
         color = QColor(self._grid_color)
@@ -933,6 +1030,20 @@ class RasterPlotWidget(QWidget):
         """Handle bar height change."""
         self._bar_height = value
         self.logger.debug(f"Bar height changed to: {value}")
+        self.update_plot()
+
+    def on_text_font_size_changed(self, value):
+        """Handle text font size changes."""
+        self._text_font_size = value
+        self.update_plot()
+
+    def on_png_dpi_changed(self, value):
+        """Handle PNG export DPI changes."""
+        self._png_dpi = value
+
+    def on_border_mode_changed(self, mode):
+        """Handle plot border visibility changes."""
+        self._border_mode = mode
         self.update_plot()
     
     def on_plot_size_changed(self, value):
@@ -1162,7 +1273,84 @@ class RasterPlotWidget(QWidget):
         if file_paths:
             self.logger.info(f"Selected {len(file_paths)} visualization file(s)")
             self.files_selected.emit(file_paths)
-    
+
+    def load_action_map_from_dialog(self):
+        """Load an optional action map to fix the behavior list/order."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Action Map",
+            "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        try:
+            behaviors = self._read_action_map_behaviors(file_path)
+        except Exception as e:
+            self.logger.error(f"Failed to load visualization action map: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Action Map Error",
+                f"Failed to load action map:\n{e}"
+            )
+            return
+
+        self._fixed_behavior_order = behaviors
+        self._fixed_action_map_path = file_path
+        self._custom_behavior_order = behaviors.copy()
+        self._behavior_colors = {}
+        self._behavior_visibility = {
+            behavior: self._behavior_visibility.get(behavior, True)
+            for behavior in behaviors
+        }
+        self.clear_action_map_button.setEnabled(True)
+        self.action_map_status_label.setText(f"Behaviors: {os.path.basename(file_path)}")
+        self.logger.info(
+            "Loaded visualization action map with %d behavior(s): %s",
+            len(behaviors),
+            file_path,
+        )
+        self.update_behavior_list()
+        self.update_plot()
+
+    def clear_action_map_behavior_source(self):
+        """Return visualization behavior discovery to the loaded data."""
+        self._fixed_behavior_order = []
+        self._fixed_action_map_path = None
+        self._custom_behavior_order = []
+        self._behavior_colors = {}
+        self._behavior_visibility = {}
+        self.clear_action_map_button.setEnabled(False)
+        self.action_map_status_label.setText("Behaviors: data")
+        self.update_behavior_list()
+        self.update_plot()
+
+    def _read_action_map_behaviors(self, file_path):
+        """Return unique behavior names from a RABET action map JSON file."""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError("Action map must be a JSON object.")
+
+        behaviors = []
+        seen = set()
+        for key, behavior in data.items():
+            if not isinstance(key, str) or len(key) != 1:
+                raise ValueError(f"Invalid key in action map: {key!r}")
+            if not isinstance(behavior, str) or not behavior.strip():
+                raise ValueError(f"Invalid behavior label for key {key!r}.")
+            behavior = behavior.strip()
+            if behavior not in seen:
+                behaviors.append(behavior)
+                seen.add(behavior)
+
+        if not behaviors:
+            raise ValueError("Action map does not contain any behaviors.")
+
+        return behaviors
+
     def set_custom_color_map(self, color_map):
         """Set a custom color mapping for behaviors."""
         if color_map and isinstance(color_map, dict):
@@ -1183,29 +1371,33 @@ class RasterPlotWidget(QWidget):
         
         # Remember current selection
         current_selection = self.colormap_combo.currentText()
-        
-        # Clear and rebuild the dropdown
-        self.colormap_combo.clear()
-        
-        # Add built-in colormaps first
-        self.colormap_combo.addItems(self.builtin_colormaps)
-        
-        # Add separator if we have custom colormaps
-        if custom_colormaps:
-            self.colormap_combo.insertSeparator(self.colormap_combo.count())
-        
-        # Add custom colormaps
-        custom_names = sorted(custom_colormaps.keys())
-        for name in custom_names:
-            self.colormap_combo.addItem(name)
-        
-        # Restore selection if it still exists
-        index = self.colormap_combo.findText(current_selection)
-        if index >= 0:
-            self.colormap_combo.setCurrentIndex(index)
-        else:
-            self.colormap_combo.setCurrentText(self._default_colormap)
-        
+
+        was_blocked = self.colormap_combo.blockSignals(True)
+        try:
+            # Clear and rebuild the dropdown
+            self.colormap_combo.clear()
+
+            # Add built-in colormaps first
+            self.colormap_combo.addItems(self.builtin_colormaps)
+
+            # Add separator if we have custom colormaps
+            if custom_colormaps:
+                self.colormap_combo.insertSeparator(self.colormap_combo.count())
+
+            # Add custom colormaps
+            custom_names = sorted(custom_colormaps.keys())
+            for name in custom_names:
+                self.colormap_combo.addItem(name)
+
+            # Restore selection if it still exists
+            index = self.colormap_combo.findText(current_selection)
+            if index >= 0:
+                self.colormap_combo.setCurrentIndex(index)
+            else:
+                self.colormap_combo.setCurrentText(self._default_colormap)
+        finally:
+            self.colormap_combo.blockSignals(was_blocked)
+
         self.logger.info(f"Successfully added {len(custom_colormaps)} custom colormaps to dropdown")
     
     def clear_data(self):
@@ -1264,7 +1456,13 @@ class RasterPlotWidget(QWidget):
                     file_path, selected_filter
                 )
                 # Save the figure
-                self.canvas.fig.savefig(file_path, format=file_format, bbox_inches='tight', dpi=300)
+                save_kwargs = {
+                    "format": file_format,
+                    "bbox_inches": "tight",
+                }
+                if file_format == "png":
+                    save_kwargs["dpi"] = self._png_dpi
+                self.canvas.fig.savefig(file_path, **save_kwargs)
                 self.logger.info(f"Plot saved to: {file_path}")
                 QMessageBox.information(self, "Success", f"Plot saved to:\n{file_path}")
             except Exception as e:
@@ -1307,6 +1505,15 @@ class RasterPlotWidget(QWidget):
                         if behavior_str and behavior_str != "nan":
                             all_behaviors.add(behavior_str)
 
+            fixed_behaviors = []
+            if self._fixed_behavior_order:
+                seen = set()
+                for behavior in self._fixed_behavior_order:
+                    if behavior not in seen:
+                        fixed_behaviors.append(behavior)
+                        seen.add(behavior)
+                all_behaviors = set(fixed_behaviors)
+
             # 1.3.3+: prune stale visibility / colour entries whose
             # behaviour is no longer present in the loaded data. Keeping
             # them around does no immediate harm but encourages
@@ -1318,7 +1525,19 @@ class RasterPlotWidget(QWidget):
                 self._behavior_colors.pop(stale, None)
 
             # Order behaviors
-            if self._custom_behavior_order:
+            if fixed_behaviors:
+                if self._custom_behavior_order:
+                    fixed_set = set(fixed_behaviors)
+                    ordered_behaviors = [
+                        b for b in self._custom_behavior_order if b in fixed_set
+                    ]
+                    missing_behaviors = [
+                        b for b in fixed_behaviors if b not in ordered_behaviors
+                    ]
+                    behaviors = ordered_behaviors + missing_behaviors
+                else:
+                    behaviors = fixed_behaviors
+            elif self._custom_behavior_order:
                 existing_behaviors = set(all_behaviors)
                 ordered_behaviors = [b for b in self._custom_behavior_order if b in existing_behaviors]
                 new_behaviors = sorted(list(existing_behaviors - set(ordered_behaviors)))
@@ -1565,7 +1784,7 @@ class RasterPlotWidget(QWidget):
         y_ticks = [behavior_positions[b] for b in visible_behaviors]
         y_labels = list(visible_behaviors)
         self.canvas.axes.set_yticks(y_ticks)
-        self.canvas.axes.set_yticklabels(y_labels)
+        self.canvas.axes.set_yticklabels(y_labels, fontsize=self._text_font_size)
         
         # Configure plot
         self._configure_plot_axes(max_time, len(visible_behaviors))
@@ -1661,7 +1880,7 @@ class RasterPlotWidget(QWidget):
             for file_path, behavior in display_rows
         ]
         self.canvas.axes.set_yticks(y_ticks)
-        self.canvas.axes.set_yticklabels(y_labels)
+        self.canvas.axes.set_yticklabels(y_labels, fontsize=self._text_font_size)
 
         self._configure_plot_axes(max_time, len(display_rows))
 
@@ -1766,7 +1985,7 @@ class RasterPlotWidget(QWidget):
         y_ticks = [file_positions[file_path] for file_path in ordered_by_position]
         y_labels = [str(selected_files.index(file_path) + 1) for file_path in ordered_by_position]
         self.canvas.axes.set_yticks(y_ticks)
-        self.canvas.axes.set_yticklabels(y_labels)
+        self.canvas.axes.set_yticklabels(y_labels, fontsize=self._text_font_size)
         
         # Configure plot
         self._configure_plot_axes(max_time, len(selected_files))
@@ -1897,7 +2116,14 @@ class RasterPlotWidget(QWidget):
             self._configure_individual_frame(ax, file_idx, num_files, max_time)
             
             # Set y-axis label
-            ax.set_ylabel(str(file_idx + 1), fontweight='bold', rotation=0, ha='right', va='center')
+            ax.set_ylabel(
+                str(file_idx + 1),
+                fontweight='bold',
+                fontsize=self._text_font_size,
+                rotation=0,
+                ha='right',
+                va='center',
+            )
         
         # Draw with warning suppression
         self._draw_canvas_safe()
@@ -1920,15 +2146,27 @@ class RasterPlotWidget(QWidget):
         # Only show x-axis labels on the bottom subplot
         if file_idx == num_files - 1:
             if self._time_unit == "Minutes":
-                ax.set_xlabel('Time (minutes)', fontweight='bold')
+                ax.set_xlabel(
+                    'Time (minutes)',
+                    fontweight='bold',
+                    fontsize=self._text_font_size,
+                )
             else:
-                ax.set_xlabel('Time (seconds)', fontweight='bold')
+                ax.set_xlabel(
+                    'Time (seconds)',
+                    fontweight='bold',
+                    fontsize=self._text_font_size,
+                )
             display_tick_labels = self._format_time_tick_labels(display_ticks)
 
-            ax.set_xticklabels(display_tick_labels)
+            ax.set_xticklabels(
+                display_tick_labels,
+                fontsize=self._text_font_size,
+            )
 
             for label in ax.get_xticklabels():
                 label.set_fontweight('bold')
+                label.set_fontsize(self._text_font_size)
         else:
             ax.set_xticklabels([])
             ax.set_xlabel('')
@@ -1938,13 +2176,10 @@ class RasterPlotWidget(QWidget):
         ax.set_ylim(-y_range, y_range)
         ax.set_yticks([])
         
-        # Style the frame
-        for spine in ax.spines.values():
-            spine.set_linewidth(2.5)
-            spine.set_zorder(100)
+        self._apply_border_style(ax)
 
         ax.tick_params(axis='both', which='major',
-                      length=6, width=2.5, labelsize=10, zorder=100)
+                      length=6, width=2.5, labelsize=self._text_font_size, zorder=100)
 
         self._apply_grid(ax)
         ax.patch.set_alpha(0)
@@ -1967,24 +2202,31 @@ class RasterPlotWidget(QWidget):
         # Configure axes
         self.canvas.axes.set_xlim(0, display_max_time)
         self.canvas.axes.set_xticks(display_ticks)
-        self.canvas.axes.set_xticklabels(display_tick_labels)
+        self.canvas.axes.set_xticklabels(
+            display_tick_labels,
+            fontsize=self._text_font_size,
+        )
         self.canvas.axes.set_ylim(-0.5, num_rows - 0.5)
-        self.canvas.axes.set_xlabel(x_label, fontweight='bold')
-        
+        self.canvas.axes.set_xlabel(
+            x_label,
+            fontweight='bold',
+            fontsize=self._text_font_size,
+        )
+
         # Make text bold
         for label in self.canvas.axes.get_xticklabels():
             label.set_fontweight('bold')
+            label.set_fontsize(self._text_font_size)
         for label in self.canvas.axes.get_yticklabels():
             label.set_fontweight('bold')
-        
-        # Style the frame
-        for spine in self.canvas.axes.spines.values():
-            spine.set_linewidth(2.5)
-            spine.set_zorder(100)
-        
-        self.canvas.axes.tick_params(axis='both', which='major', 
-                                    length=6, width=2.5, labelsize=10, zorder=100)
-        
+            label.set_fontsize(self._text_font_size)
+
+        self._apply_border_style(self.canvas.axes)
+
+        self.canvas.axes.tick_params(axis='both', which='major',
+                                    length=6, width=2.5,
+                                    labelsize=self._text_font_size, zorder=100)
+
         self._apply_grid(self.canvas.axes)
         
         # Draw with warning suppression
