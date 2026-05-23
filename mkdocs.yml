@@ -1,0 +1,154 @@
+# MkDocs Material configuration for the RABET project site.
+# Deployed to https://mi2e-k.github.io/RABET/ by .github/workflows/docs.yml
+# on every push to main.
+
+site_name: RABET
+site_description: Real-time Animal Behavior Event Tagger — a self-contained desktop app for video-based behavioural annotation, analysis, and reliability assessment.
+site_url: https://mi2e-k.github.io/RABET/
+site_author: Koshiro Mitsui
+
+repo_name: mi2e-K/RABET
+repo_url: https://github.com/mi2e-K/RABET
+edit_uri: edit/main/docs/
+
+# The docs/ folder also doubles as the GitHub-web-readable documentation
+# folder, so the markdown source lives there directly rather than under
+# a separate site/ tree.
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.png
+  favicon: assets/logo.png
+
+  features:
+    # Navigation
+    - navigation.tabs           # top-level sections as tabs
+    - navigation.tabs.sticky    # tabs stick on scroll
+    - navigation.sections       # group sub-pages on the side nav
+    - navigation.top            # back-to-top button
+    - navigation.tracking       # update URL hash while scrolling
+    - navigation.indexes        # section landing pages
+    - toc.follow                # highlight active anchor in ToC
+    # Search
+    - search.suggest
+    - search.highlight
+    - search.share
+    # Code
+    - content.code.copy
+    - content.code.annotate
+    # Tabs / Tooltips
+    - content.tabs.link
+    - content.tooltips
+
+  palette:
+    # System default first, then light/dark toggles.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mi2e-K/RABET
+    - icon: simple/zenodo
+      link: https://doi.org/10.5281/zenodo.15313025
+      name: Zenodo (concept DOI)
+
+  generator: false
+
+# Per-page i18n.  English is the default; Japanese variants are picked
+# up automatically when a sibling ``<page>.ja.md`` exists. Pages without
+# a ``.ja.md`` counterpart fall back to English in the JA navigation.
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: ja
+          name: 日本語
+          build: true
+          site_name: RABET
+          nav_translations:
+            Home: ホーム
+            User Guide: ユーザーガイド
+            Reference: リファレンス
+            CSV format: CSV 形式
+            Reliability assessment: 信頼性評価
+            Build from source: ソースからビルド
+
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  # PyMdown extensions
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - User Guide: USER_GUIDE.md
+  - Reference:
+      - CSV format: CSV_FORMAT.md
+      - Reliability assessment: reliability/README.md
+      - Build from source: BUILD_MACOS_LINUX.md

@@ -1,0 +1,57 @@
+name: Docs site
+
+# Build the MkDocs Material site from main and publish it to the
+# gh-pages branch. The GitHub Pages settings should be configured to
+# serve from "gh-pages branch / (root)".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mkdocs.yml"
+      - "docs/**"
+      - "images/**"
+      - "requirements-docs.txt"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to push the built site to gh-pages
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy MkDocs site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # mkdocs-material's git-revision-date wants full history
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install documentation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docs.txt
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Deploy to gh-pages
+        run: |
+          python -m pip install ghp-import
+          ghp-import \
+            --no-jekyll \
+            --branch gh-pages \
+            --message "Deploy docs site (${GITHUB_SHA::7})" \
+            --push \
+            site
