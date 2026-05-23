@@ -31,6 +31,12 @@ runtime (VLC, FFmpeg, codec packs) needs to be installed: the
 application bundles its own frame-accurate decoder, so the executable
 simply works on a clean Windows / macOS / Linux machine.
 
+<p align="center">
+  <img src="images/screenshot_annotation.png" alt="RABET annotation view" width="820" />
+  <br>
+  <em>The Annotation view — video player, recording controls, action map, and colour-coded timeline.</em>
+</p>
+
 ---
 
 ## Key Features
@@ -146,13 +152,6 @@ Build outputs land in `dist/RABET/` (one-directory mode) or
 [`packaging/README.md`](packaging/README.md) for build-script flags and
 [`docs/BUILD_MACOS_LINUX.md`](docs/BUILD_MACOS_LINUX.md) for
 platform-specific notes.
-
----
-
-## Screenshots
-
-*Screenshots of the annotation, analysis, and reliability views will be
-added shortly.*
 
 ---
 
