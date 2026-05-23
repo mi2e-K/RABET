@@ -1064,9 +1064,26 @@ class MainWindow(QMainWindow):
                 self.video_player_view.step_backward_clicked.emit(step_size)
                 return
             
+        # 1.3.3+: Esc is the emergency escape hatch for stuck active
+        # events. Routed straight to the annotation controller, which
+        # prompts for confirmation before discarding anything.
+        if event.key() == Qt.Key.Key_Escape and not event.isAutoRepeat():
+            annotation_controller = getattr(self, 'annotation_controller', None)
+            if annotation_controller is not None and hasattr(
+                annotation_controller, 'abort_all_active_events'
+            ):
+                try:
+                    annotation_controller.abort_all_active_events()
+                except Exception:
+                    self.logger.exception(
+                        "Esc handler: abort_all_active_events raised"
+                    )
+                event.accept()
+                return
+
         # Convert key to string for normal key handling
         key = event.text()
-        
+
         # Check if in waiting state for recording
         if self.recording_control_view.is_in_waiting_state():
             # Start actual recording upon any key press

@@ -500,12 +500,32 @@ class VideoController(QObject):
             if self._warn_on_project_same_name_conflict(file_path):
                 return False
             self._clear_annotation_project_context_for_regular_load()
-        
+
         # Check if loading is already in progress
         if self._loader.is_loading():
             self.logger.warning("Video loading already in progress")
             return False
-        
+
+        # 1.3.3+: notify the annotation controller BEFORE the loader
+        # starts emitting position-changed signals. Without this the
+        # loader's reset-to-position-0 would race against
+        # ``_on_video_loaded`` and the "rewound past recording start"
+        # dialog could fire on top of the loading overlay (Issue #2).
+        # The annotation controller uses this hook to auto-stop any
+        # in-progress recording and to set the one-shot
+        # ``_skip_next_seek_rewind`` flag.
+        main_window = self._view.window()
+        annotation_controller = getattr(main_window, "annotation_controller", None)
+        if annotation_controller is not None and hasattr(
+            annotation_controller, "on_new_video_load_starting"
+        ):
+            try:
+                annotation_controller.on_new_video_load_starting()
+            except Exception:
+                self.logger.exception(
+                    "load_video: on_new_video_load_starting hook raised"
+                )
+
         # Ensure the loading overlay is shown before starting the load
         self._view.show_loading_overlay(True)
         self._view.set_loading_progress(0)

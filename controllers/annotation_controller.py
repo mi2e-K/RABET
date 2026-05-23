@@ -47,6 +47,11 @@ class AnnotationController(QObject):
         self._current_video_path = None
         self._annotations_dirty = False
         self._suppress_annotation_dirty = False
+        # 1.3.3+: one-shot flag set in _on_video_loaded to absorb the
+        # immediate seek-to-0 the loader fires for a freshly-loaded
+        # video, so it does not look like a rewind past the previous
+        # recording start.
+        self._skip_next_seek_rewind = False
         
         # Key press tracking with high-precision system time
         self._key_press_times = {}  # Key -> (timestamp, system_time)
@@ -108,6 +113,17 @@ class AnnotationController(QObject):
         recording_control_view.timed_recording_requested.connect(self.start_timed_recording)
         recording_control_view.timed_recording_canceled.connect(self.stop_timed_recording)
         recording_control_view.preserve_annotations_changed.connect(self.set_preserve_annotations)
+
+        # 1.3.3+: react to FBF mode toggles so any active events from the
+        # old mode get cleanly finalised (or aborted) instead of being
+        # stranded when the press/release contract changes underfoot.
+        video_player_view = getattr(self._main_window, 'video_player_view', None)
+        if video_player_view is not None and hasattr(
+            video_player_view, 'frame_by_frame_mode_changed'
+        ):
+            video_player_view.frame_by_frame_mode_changed.connect(
+                self._on_fbf_mode_toggled
+            )
     
     def _record_recent_annotation(self, file_path):
         """Append a file path to the Recent Annotations list."""
@@ -525,7 +541,47 @@ class AnnotationController(QObject):
                 
         return False
     
-    @Slot(str)
+    @Slot()
+    def on_new_video_load_starting(self):
+        """Hook called by ``VideoController.load_video`` BEFORE the
+        background loader is kicked off.
+
+        This is the earliest place we can intervene in a video switch —
+        crucially earlier than ``_on_video_loaded``. Without this hook
+        the loader's reset-to-position-0 used to reach
+        ``handle_seek(0)`` while a recording was still ``_is_recording``,
+        which tripped the "You have rewound before the recording start
+        point" dialog on top of the loading overlay (Issue #2).
+        """
+        if self._is_recording:
+            self.logger.info(
+                "New video load starting while recording is active — "
+                "auto-stopping the recording session first."
+            )
+            # Suppress auto-export so the partial session does not write
+            # itself out under the previous video's path; the Discard
+            # Unsaved Annotations prompt fires later in _on_video_loaded
+            # and lets the user keep or drop the in-memory events.
+            self._skip_auto_export = True
+            try:
+                self.stop_timed_recording()
+            except Exception:
+                self.logger.exception(
+                    "on_new_video_load_starting: stop_timed_recording raised"
+                )
+            finally:
+                # Belt-and-braces: stop_timed_recording normally clears
+                # this flag on its happy path, but if it raised before
+                # that point we MUST reset it here. Otherwise the next
+                # legitimate stop would silently skip auto-export.
+                self._skip_auto_export = False
+
+        # One-shot guard: when the loader subsequently fires its
+        # position=0 seek, ``handle_seek`` will see this flag and skip
+        # the rewind-detection branch entirely.
+        self._skip_next_seek_rewind = True
+        self._last_position = 0
+
     def _on_video_loaded(self, video_path):
         """
         Handle video loaded event.
@@ -533,7 +589,16 @@ class AnnotationController(QObject):
         Args:
             video_path (str): Path to the loaded video
         """
+        # 1.3.3+: the heavy lifting (auto-stopping any in-progress
+        # recording, arming the seek-rewind guard) moved to
+        # ``on_new_video_load_starting`` so it runs strictly *before*
+        # any loader-emitted position signals. By the time we get here
+        # the previous session is already closed and the next seek=0
+        # will be silently absorbed.
         self._current_video_path = video_path
+        # Belt-and-braces: keep the guard armed in case some path reaches
+        # _on_video_loaded without going through load_video (e.g. tests).
+        self._skip_next_seek_rewind = True
         self._last_position = 0
         self.logger.debug(f"Video loaded: {video_path}")
 
@@ -580,6 +645,122 @@ class AnnotationController(QObject):
             return bool(vpv.is_frame_by_frame_mode())
         except Exception:  # pragma: no cover - defensive
             return False
+
+    @Slot(bool)
+    def _on_fbf_mode_toggled(self, enabled):
+        """React to the user toggling the frame-by-frame checkbox.
+
+        The press/release contract changes between modes (real-time mode
+        uses press + release; FBF uses press + press), so any in-progress
+        events from the previous mode would otherwise be stranded.  Offer
+        to finalise them at the current playhead position; otherwise
+        leave them alone (the user can use Esc to abort manually).
+
+        Only acts during an open recording session — toggling FBF outside
+        of recording can never have active events.
+        """
+        if not self._is_recording:
+            return
+        active = self._annotation_model.get_active_events()
+        if not active:
+            return
+
+        # 1.3.3+: pause playback before the modal dialog appears.
+        # Otherwise the video keeps running behind the QMessageBox, which
+        # both wastes time and (in real-time mode) silently extends
+        # active events while the user reads the dialog.
+        if self._video_model is not None:
+            try:
+                if self._video_model.is_playing():
+                    self._video_model.pause()
+            except Exception:
+                self.logger.exception(
+                    "FBF toggle: pausing video before dialog raised"
+                )
+
+        mode_label = "frame-by-frame" if enabled else "real-time"
+        names = ", ".join(
+            f"{ev.behavior} (key={k})" for k, ev in active.items()
+        )
+        result = QMessageBox.question(
+            self._main_window,
+            "End active annotations?",
+            f"You just switched to {mode_label} mode while these annotations "
+            f"are still in progress:\n\n  {names}\n\n"
+            f"End them at the current video position? Choose No to keep "
+            f"them open — but note that the new mode may not finish them "
+            f"the way you expect.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if result != QMessageBox.StandardButton.Yes:
+            self.logger.info(
+                f"FBF toggle ({enabled}): user chose to keep "
+                f"{len(active)} active event(s) open."
+            )
+            return
+
+        position = self._video_model.get_position() if self._video_model else 0
+        ended = 0
+        for key in list(active.keys()):
+            if self._annotation_model.end_event(key, position):
+                ended += 1
+        # Drop any stale real-time press-time tracking so the next press
+        # starts cleanly under the new contract.
+        self._key_press_times.clear()
+        self._timeline_view.set_events(
+            self._annotation_model.get_all_events_with_active()
+        )
+        self.logger.info(
+            f"FBF toggle ({enabled}): ended {ended}/{len(active)} active "
+            f"event(s) at position {position}ms."
+        )
+        self._main_window.set_status_message(
+            f"Ended {ended} active annotation(s) on mode switch."
+        )
+
+    @Slot()
+    def abort_all_active_events(self):
+        """Discard every in-progress annotation. Bound to Esc.
+
+        Used as an emergency escape hatch when the user thinks the
+        active-events dict is out of sync (e.g. a key seems "stuck"
+        despite repeated presses). Confirmation is intentional — we do
+        not want Esc to silently destroy work if it is mashed by accident.
+        """
+        if not self._is_recording:
+            return
+        active = self._annotation_model.get_active_events()
+        if not active:
+            self._main_window.set_status_message("No active annotations to cancel.")
+            return
+
+        names = ", ".join(
+            f"{ev.behavior} (key={k})" for k, ev in active.items()
+        )
+        result = QMessageBox.question(
+            self._main_window,
+            "Cancel active annotations?",
+            f"Discard the following in-progress annotation(s) without "
+            f"recording them?\n\n  {names}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        for key in list(active.keys()):
+            self._annotation_model.discard_active_event(key)
+        self._key_press_times.clear()
+        self._timeline_view.set_events(
+            self._annotation_model.get_all_events_with_active()
+        )
+        self.logger.warning(
+            f"Esc abort: discarded {len(active)} active annotation(s)."
+        )
+        self._main_window.set_status_message(
+            f"Cancelled {len(active)} active annotation(s)."
+        )
 
     def _handle_fbf_key_press(self, key):
         """
@@ -650,6 +831,15 @@ class AnnotationController(QObject):
                     f"Frame-by-frame: start marked for '{behavior}' — "
                     f"press '{key}' again at the end frame"
                 )
+        else:
+            # 1.3.3+: start_event refused the press because the key is
+            # already active. Surface this to the user instead of failing
+            # silently — invisible duplicate-ignore was a likely
+            # contributor to the "FBF won't stop" report.
+            self._main_window.set_status_message(
+                f"Key '{key}' is already active — press again at the end "
+                f"frame, or press Esc to cancel."
+            )
 
     @Slot(str)
     def on_key_pressed(self, key):
@@ -709,6 +899,17 @@ class AnnotationController(QObject):
             self.logger.debug(f"Started event for key {key} at {position}ms (system time: {system_time:.6f})")
             # Update timeline to show active event
             self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
+        else:
+            # 1.3.3+: duplicate press for an already-active key. In
+            # real-time mode this normally only happens when the OS
+            # produced two press events without an intervening release
+            # (e.g. focus loss, foreign key-event hooks). Make the
+            # situation visible so the user can release & re-press or
+            # use Esc to abort.
+            self._main_window.set_status_message(
+                f"Key '{key}' is already active — release it before pressing again, "
+                f"or press Esc to cancel."
+            )
     
     @Slot(str)
     def on_key_released(self, key):
@@ -1019,10 +1220,18 @@ class AnnotationController(QObject):
     def handle_seek(self, position):
         """
         Handle seek operation.
-        
+
         Args:
             position (int): New position in milliseconds
         """
+        # 1.3.3+: swallow the loader-emitted seek that fires immediately
+        # after _on_video_loaded so we do not interpret it as a user
+        # rewind past the (now-irrelevant) previous recording start.
+        if getattr(self, "_skip_next_seek_rewind", False):
+            self._skip_next_seek_rewind = False
+            self._last_position = position
+            return
+
         # Check for rewind in any recording state (paused or active)
         if self._is_recording:
             if self._last_position > position:
@@ -1500,8 +1709,15 @@ class AnnotationController(QObject):
 
     @Slot(int)
     def delete_timeline_annotation(self, index):
-        """Delete the annotation selected on the timeline."""
-        events = self._annotation_model.get_all_events()
+        """Delete the annotation selected on the timeline.
+
+        Uses ``get_all_events_with_active`` (1.3.3+) so the deletion path
+        reaches in-progress events too — previously the active tail of the
+        combined list was selectable on the timeline but the ``_events``-
+        only ``get_all_events`` range check below silently dropped the
+        request, leaving stuck FBF events un-deletable until restart.
+        """
+        events = self._annotation_model.get_all_events_with_active()
         if not (0 <= index < len(events)):
             return
 
@@ -1513,6 +1729,13 @@ class AnnotationController(QObject):
         if self._annotation_model.remove_event(index):
             if hasattr(self._timeline_view, 'clear_selection'):
                 self._timeline_view.clear_selection()
+            # Refresh the timeline so the discarded active event vanishes
+            # from view immediately (active events live in a separate
+            # dict, so the model's annotation_removed signal alone does
+            # not redraw their bars).
+            self._timeline_view.set_events(
+                self._annotation_model.get_all_events_with_active()
+            )
             self.logger.info(
                 f"Deleted timeline annotation #{index}: {event.behavior} "
                 f"({event.onset}-{event.offset}ms)"

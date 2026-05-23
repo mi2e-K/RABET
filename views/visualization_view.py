@@ -166,28 +166,86 @@ class BehaviorItemDelegate(QStyledItemDelegate):
         checkbox lives), which doesn't necessarily match the rect we drew.
         For clicks outside the indicator, fall back to the default handler
         so double-click-to-recolour and selection still work.
+
+        1.3.3+ FIX: the previous implementation toggled by calling
+        ``model.setData(index, Qt.CheckState.<X>, CheckStateRole)`` and
+        relied on that to flip the QListWidgetItem's checkState. On the
+        PySide6 versions RABET ships with, that path sometimes leaves
+        the QListWidgetItem.checkState() unchanged even though the
+        QModelIndex data round-trip succeeds — producing the exact
+        symptom users hit in 1.3.2: unchecking works once, the
+        ``itemChanged`` slot then reads the new ``Unchecked`` state, but
+        every subsequent click re-fires with the same ``Unchecked``
+        reading and never restores the trace.
+        The fix below writes the new state in **three** ways: (1) the
+        QListWidgetItem directly (the canonical source QListWidget reads
+        from), (2) the model index via setData (keeps Qt's standard
+        delegate-hook contract), (3) an explicit consume-return so the
+        default style logic does not silently double-toggle on the same
+        click.
         """
         if not (index.flags() & Qt.ItemFlag.ItemIsUserCheckable):
             return super().editorEvent(event, model, option, index)
 
-        if event.type() == QEvent.Type.MouseButtonRelease:
-            click_point = event.position().toPoint()
-            if self._indicator_rect(option).contains(click_point):
-                current = index.data(Qt.ItemDataRole.CheckStateRole)
-                # Normalise int -> enum so the comparison below is stable.
-                if isinstance(current, int):
-                    try:
-                        current = Qt.CheckState(current)
-                    except ValueError:
-                        current = Qt.CheckState.Unchecked
-                new_state = (
-                    Qt.CheckState.Unchecked
-                    if current == Qt.CheckState.Checked
-                    else Qt.CheckState.Checked
-                )
-                return model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
+        # Only handle mouse-release clicks INSIDE our indicator rect.
+        # Everything else (clicks on text, drag-start, double-click for
+        # recolour) bubbles up to the default handler.
+        if event.type() != QEvent.Type.MouseButtonRelease:
+            return super().editorEvent(event, model, option, index)
+        click_point = event.position().toPoint()
+        if not self._indicator_rect(option).contains(click_point):
+            return super().editorEvent(event, model, option, index)
 
-        return super().editorEvent(event, model, option, index)
+        # Read current state robustly. PySide6 returns this either as
+        # ``Qt.CheckState`` (newer wheels) or as a raw ``int`` (older
+        # wheels and some platform builds).
+        raw = index.data(Qt.ItemDataRole.CheckStateRole)
+        if isinstance(raw, Qt.CheckState):
+            current_value = raw.value
+        elif raw is None:
+            current_value = 0
+        else:
+            try:
+                current_value = int(raw)
+            except (TypeError, ValueError):
+                current_value = 0
+
+        new_state = (
+            Qt.CheckState.Unchecked
+            if current_value == Qt.CheckState.Checked.value
+            else Qt.CheckState.Checked
+        )
+
+        # Write through the QListWidgetItem directly. This is the
+        # authoritative source that QListWidget.itemChanged reads from
+        # and fires the signal RABET's controller listens for.
+        #
+        # 1.3.3+: we explicitly do NOT also call
+        # ``model.setData(index, new_state, CheckStateRole)`` here. The
+        # symptom that hint led to was: on re-checking a behaviour, the
+        # ``True`` reading would log first, and ~200 ms later a second
+        # ``itemChanged`` would land with ``False`` and silently overwrite
+        # the visibility back to off (see logs from 1.3.3-dev with both
+        # writes enabled). The double-write produced two ``itemChanged``
+        # emissions whose interleaving — combined with PySide6's internal
+        # CheckState normalisation for the ``setData`` path — could land
+        # the second one with the *previous* state and clobber the user's
+        # intent. Going via ``setCheckState`` only keeps things simple
+        # and consistent.
+        widget = self.parent()
+        item = None
+        if widget is not None and hasattr(widget, "item"):
+            try:
+                item = widget.item(index.row())
+            except Exception:
+                item = None
+        if item is not None:
+            item.setCheckState(new_state)
+
+        # Consume the event so the base implementation does not run its
+        # own SE_ItemViewItemCheckIndicator-based toggle, which would
+        # otherwise flip the state right back to where it started.
+        return True
 
 
 # Custom reorderable list widget
@@ -242,6 +300,12 @@ class RasterPlotWidget(QWidget):
     """Widget for displaying raster plots of behavioral events."""
 
     files_selected = Signal(list)
+    # 1.3.3+: emitted from the Clear button so the controller can drop
+    # its own cache. Without this, clicking Clear only wipes the in-view
+    # state and a subsequent re-drop of the same files restored the
+    # previous data straight out of the controller's _visualization_data
+    # cache.
+    clear_data_requested = Signal()
     
     # Default custom color mapping for common behaviors
     DEFAULT_COLOR_MAP = {
@@ -665,10 +729,17 @@ class RasterPlotWidget(QWidget):
         ]
 
     def _should_show_file_group(self):
-        """Return whether the file/individual list should be visible."""
-        return bool(self._data) and (
-            self._display_mode == "Overlay Behaviors" or len(self._data) > 1
-        )
+        """Return whether the file/individual list should be visible.
+
+        1.3.3+: previously hidden whenever a *single* file was loaded in
+        Separate Behaviors mode, on the (now obsolete) reasoning that
+        one-track lists carry no information. In practice users want to
+        see the file's checkbox even for a single file — both as a
+        reminder of which file is being plotted and so they can toggle it
+        off without going through Clear first. Show the panel whenever
+        any data is loaded.
+        """
+        return bool(self._data)
 
     def _refresh_file_group_visibility(self):
         """Show the file list when individual identity matters."""
@@ -967,13 +1038,21 @@ class RasterPlotWidget(QWidget):
     def on_behavior_selection_changed(self, item):
         """Handle behavior checkbox state change."""
         behavior = item.text()
-        self._behavior_visibility[behavior] = (item.checkState() == Qt.CheckState.Checked)
+        new_state = (item.checkState() == Qt.CheckState.Checked)
+        self._behavior_visibility[behavior] = new_state
+        self.logger.debug(
+            f"behavior visibility -> {behavior}={new_state}"
+        )
         self.update_plot()
-    
+
     def on_file_selection_changed(self, item):
         """Handle file selection change in overlay mode."""
         file_path = item.data(Qt.ItemDataRole.UserRole)
-        self._file_visibility[file_path] = (item.checkState() == Qt.CheckState.Checked)
+        new_state = (item.checkState() == Qt.CheckState.Checked)
+        self._file_visibility[file_path] = new_state
+        self.logger.debug(
+            f"file visibility -> {os.path.basename(file_path)}={new_state}"
+        )
         self.update_plot()
     
     def on_behavior_double_clicked(self, item):
@@ -989,9 +1068,17 @@ class RasterPlotWidget(QWidget):
             rgb = (color.red(), color.green(), color.blue())
             self._behavior_colors[behavior] = rgb
 
-            # Update item background
-            self._set_item_color(item, rgb)
-            
+            # 1.3.3+: ``setBackground`` fires ``itemChanged`` on widgets
+            # that already own the item, which would otherwise re-enter
+            # ``on_behavior_selection_changed`` and rewrite
+            # ``_behavior_visibility[behavior]`` from a stale checkState.
+            # Block the signal while we mutate the cosmetics.
+            was_blocked = self.behavior_list.blockSignals(True)
+            try:
+                self._set_item_color(item, rgb)
+            finally:
+                self.behavior_list.blockSignals(was_blocked)
+
             # Update plot
             self.update_plot()
     
@@ -1131,22 +1218,29 @@ class RasterPlotWidget(QWidget):
         self._custom_behavior_order = []
         self._custom_file_order = []
         self.file_group.setVisible(False)
-        
+
         # Clear lists
         self.behavior_list.clear()
         self.file_list.clear()
-        
+
         # Clear the plot
         self.canvas.fig.clear()
         self.canvas.axes = self.canvas.fig.add_subplot(111)
         self.canvas.axes.clear()
-        
+
         # Update status
         self.status_label.setText("No data loaded")
-        
+
         # Draw the empty canvas
         self._draw_canvas_safe()
-        
+
+        # 1.3.3+ FIX: notify the controller so its in-memory
+        # ``_visualization_data`` dict is wiped too. Otherwise a later
+        # re-drop of the same CSV(s) appears to "resurrect" the cleared
+        # session because the controller's cached frames are still
+        # there.
+        self.clear_data_requested.emit()
+
         self.logger.info("Cleared all data and reset plot")
     
     def save_plot(self):
@@ -1179,62 +1273,84 @@ class RasterPlotWidget(QWidget):
     
     # List update methods
     def update_behavior_list(self):
-        """Update the behavior list with available behaviors and colors."""
-        # Remember checkbox states
-        checkbox_states = {}
-        for i in range(self.behavior_list.count()):
-            item = self.behavior_list.item(i)
-            behavior = item.text()
-            checkbox_states[behavior] = item.checkState()
-        
-        # Clear existing items
-        self.behavior_list.clear()
-        
-        # Get all unique behaviors from the data
-        all_behaviors = set()
-        for file_path, df in self._data.items():
-            if 'Event' in df.columns:
-                for behavior in df['Event'].dropna().unique():
-                    # Skip invalid or system events
-                    if behavior is None or behavior == "" or behavior == "nan" or behavior == "RecordingStart":
-                        continue
-                    
-                    behavior_str = str(behavior).strip()
-                    if behavior_str and behavior_str != "nan":
-                        all_behaviors.add(behavior_str)
-        
-        # Order behaviors
-        if self._custom_behavior_order:
-            existing_behaviors = set(all_behaviors)
-            ordered_behaviors = [b for b in self._custom_behavior_order if b in existing_behaviors]
-            new_behaviors = sorted(list(existing_behaviors - set(ordered_behaviors)))
-            behaviors = ordered_behaviors + new_behaviors
-        else:
-            behaviors = sorted(list(all_behaviors))
-        
-        # Generate colors
-        self._generate_behavior_colors(behaviors)
-        
-        # Create list items
-        for behavior in behaviors:
-            item = QListWidgetItem(behavior)
-            
-            # Set checkbox
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            if behavior in checkbox_states:
-                item.setCheckState(checkbox_states[behavior])
+        """Update the behavior list with available behaviors and colors.
+
+        1.3.3+: the entire rebuild is wrapped in ``blockSignals`` so the
+        ``setCheckState`` / ``setBackground`` calls below do not fire a
+        cascade of ``itemChanged`` signals into
+        ``on_behavior_selection_changed`` — previously that path could
+        corrupt ``_behavior_visibility`` mid-rebuild and made re-checking
+        a behaviour fail to bring it back onto the plot.
+        """
+        was_blocked = self.behavior_list.blockSignals(True)
+        try:
+            # Remember checkbox states
+            checkbox_states = {}
+            for i in range(self.behavior_list.count()):
+                item = self.behavior_list.item(i)
+                behavior = item.text()
+                checkbox_states[behavior] = item.checkState()
+
+            # Clear existing items
+            self.behavior_list.clear()
+
+            # Get all unique behaviors from the data
+            all_behaviors = set()
+            for file_path, df in self._data.items():
+                if 'Event' in df.columns:
+                    for behavior in df['Event'].dropna().unique():
+                        # Skip invalid or system events
+                        if behavior is None or behavior == "" or behavior == "nan" or behavior == "RecordingStart":
+                            continue
+
+                        behavior_str = str(behavior).strip()
+                        if behavior_str and behavior_str != "nan":
+                            all_behaviors.add(behavior_str)
+
+            # 1.3.3+: prune stale visibility / colour entries whose
+            # behaviour is no longer present in the loaded data. Keeping
+            # them around does no immediate harm but encourages
+            # ghost-state confusion when the same RABET session loads,
+            # clears, and re-loads heterogeneous CSV sets.
+            for stale in [b for b in self._behavior_visibility if b not in all_behaviors]:
+                self._behavior_visibility.pop(stale, None)
+            for stale in [b for b in self._behavior_colors if b not in all_behaviors]:
+                self._behavior_colors.pop(stale, None)
+
+            # Order behaviors
+            if self._custom_behavior_order:
+                existing_behaviors = set(all_behaviors)
+                ordered_behaviors = [b for b in self._custom_behavior_order if b in existing_behaviors]
+                new_behaviors = sorted(list(existing_behaviors - set(ordered_behaviors)))
+                behaviors = ordered_behaviors + new_behaviors
             else:
-                item.setCheckState(Qt.CheckState.Checked if self._behavior_visibility.get(behavior, True) else Qt.CheckState.Unchecked)
-            
-            # Set background color
-            color = self._behavior_colors[behavior]
-            self._set_item_color(item, color)
-            
-            self.behavior_list.addItem(item)
-        
-        # Update custom order
-        if behaviors:
-            self._custom_behavior_order = behaviors
+                behaviors = sorted(list(all_behaviors))
+
+            # Generate colors
+            self._generate_behavior_colors(behaviors)
+
+            # Create list items
+            for behavior in behaviors:
+                item = QListWidgetItem(behavior)
+
+                # Set checkbox
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                if behavior in checkbox_states:
+                    item.setCheckState(checkbox_states[behavior])
+                else:
+                    item.setCheckState(Qt.CheckState.Checked if self._behavior_visibility.get(behavior, True) else Qt.CheckState.Unchecked)
+
+                # Set background color
+                color = self._behavior_colors[behavior]
+                self._set_item_color(item, color)
+
+                self.behavior_list.addItem(item)
+
+            # Update custom order
+            if behaviors:
+                self._custom_behavior_order = behaviors
+        finally:
+            self.behavior_list.blockSignals(was_blocked)
     
     def _generate_behavior_colors(self, behaviors):
         """Generate colors for behaviors using current colormap settings."""
@@ -1355,18 +1471,17 @@ class RasterPlotWidget(QWidget):
     
     def update_plot_separate_mode(self):
         """Update the plot in separate behaviors mode."""
-        # Update behavior visibility from list
-        for i in range(self.behavior_list.count()):
-            item = self.behavior_list.item(i)
-            behavior = item.text()
-            self._behavior_visibility[behavior] = (item.checkState() == Qt.CheckState.Checked)
-        
-        # Get visible behaviors in order
+        # 1.3.3+: visibility is now owned by on_behavior_selection_changed.
+        # Previously this method re-derived ``_behavior_visibility`` from
+        # ``item.checkState()`` at every replot, which could overwrite a
+        # just-toggled True back to False if the checkState was read while
+        # Qt was still mid-update (the reproducible "uncheck works, but
+        # re-check does not bring the behaviour back" bug).
         visible_behaviors = []
         for i in range(self.behavior_list.count()):
             item = self.behavior_list.item(i)
             behavior = item.text()
-            if self._behavior_visibility[behavior]:
+            if self._behavior_visibility.get(behavior, True):
                 visible_behaviors.append(behavior)
         
         if not visible_behaviors:
@@ -1559,18 +1674,14 @@ class RasterPlotWidget(QWidget):
     
     def update_plot_overlay_mode(self):
         """Update the plot in overlay mode."""
-        # Update visibility from lists
-        for i in range(self.behavior_list.count()):
-            item = self.behavior_list.item(i)
-            behavior = item.text()
-            self._behavior_visibility[behavior] = (item.checkState() == Qt.CheckState.Checked)
-        
-        # Get visible behaviors
+        # 1.3.3+: visibility is owned by on_behavior_selection_changed
+        # (see note in update_plot_separate_mode). Read from the
+        # authoritative ``_behavior_visibility`` dict directly.
         visible_behaviors = []
         for i in range(self.behavior_list.count()):
             item = self.behavior_list.item(i)
             behavior = item.text()
-            if self._behavior_visibility.get(behavior, False):
+            if self._behavior_visibility.get(behavior, True):
                 visible_behaviors.append(behavior)
         
         # Get selected files

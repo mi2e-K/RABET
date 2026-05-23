@@ -315,25 +315,38 @@ class AnalysisView(QWidget):
     def set_interval_settings(self, enabled, seconds):
         """
         Set the interval analysis settings in the UI.
-        
+
         Args:
             enabled (bool): Whether interval analysis is enabled
             seconds (int): Size of each interval in seconds
         """
-        # Block signals to prevent recursion
+        # Block signals to prevent recursion / double emission while we
+        # write both control values inside the same batch.
         self.interval_checkbox.blockSignals(True)
         self.interval_seconds_spinner.blockSignals(True)
-        
+
         # Set values
         self.interval_checkbox.setChecked(enabled)
         self.interval_seconds_spinner.setValue(seconds)
-        
+
         # Update control states
         self.update_interval_controls_state()
-        
+
         # Restore signals
         self.interval_checkbox.blockSignals(False)
         self.interval_seconds_spinner.blockSignals(False)
+
+        # 1.3.3+ FIX: emit explicitly after the batch write.  Previously
+        # the surrounding ``blockSignals(True)`` swallowed the
+        # ``stateChanged`` emission that normally drives
+        # ``on_interval_settings_changed`` -> controller ->
+        # ``model.set_interval_analysis``.  That meant a config-restored
+        # "Enable interval analysis" checkbox displayed as ON at launch
+        # while the model still believed interval analysis was disabled,
+        # and the very first drop of CSVs produced an empty Intervals
+        # tab.  Toggling the checkbox off-then-on used to be the only
+        # way to push the state through.
+        self.interval_settings_changed.emit(enabled, seconds)
     
     def get_interval_settings(self):
         """

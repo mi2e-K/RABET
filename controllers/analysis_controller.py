@@ -452,6 +452,15 @@ class AnalysisController(QObject):
         self._model.clear_loaded_data()
         self._view.update_file_list([])
         self._current_results = {}
+        # 1.3.3+: also wipe the Summary / Intervals tables so the UI does
+        # not show stale rows after a Clear All. Previously the file list
+        # disappeared but the tables stayed populated, which made it look
+        # as though the analysis was still loaded.
+        try:
+            self._view.update_summary_table({})
+            self._view.update_interval_table({})
+        except Exception:
+            self.logger.exception("Clear All: failed to reset tables")
         self._view.set_status_message("All files cleared")
         self.logger.info("All files cleared")
     

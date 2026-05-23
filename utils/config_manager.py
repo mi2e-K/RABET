@@ -39,7 +39,11 @@ class ConfigManager:
             "last_recording_hours": 0,
             "last_recording_minutes": 5,
             "last_recording_seconds": 0,
-            "preserve_on_rewind": False,
+            # 1.3.3+: default ON so first-launch users do not lose
+            # still-pressed events when they rewind a few frames to
+            # double-check a behaviour. Existing users keep whatever they
+            # last set in the Recording controls panel.
+            "preserve_on_rewind": True,
         },
         "analysis": {
             "default_export_format": "csv",

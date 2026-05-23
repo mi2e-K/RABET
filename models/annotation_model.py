@@ -162,7 +162,16 @@ class AnnotationModel(QObject):
         # Reject a duplicate press for an already-active key. ``debug`` level
         # so the log file is not flooded by accidental retriggers.
         if key in self._active_events:
-            self.logger.debug(f"Event already active for key '{key}'; ignoring duplicate press")
+            # Promoted to WARNING (1.3.3+) so the log line is visible in
+            # release builds. Hitting this branch in real-time mode means
+            # the OS released-and-re-pressed the key without the in-between
+            # key-up reaching RABET; in FBF mode the press is supposed to
+            # land in end_event instead, so we should never get here.
+            self.logger.warning(
+                f"start_event: key '{key}' already has an active event "
+                f"(behavior='{self._active_events[key].behavior}', "
+                f"onset={self._active_events[key].onset}ms); ignoring duplicate press"
+            )
             return False
 
         # Get monotonic high-precision time (immune to wall-clock jumps / NTP)
@@ -184,60 +193,118 @@ class AnnotationModel(QObject):
     def end_event(self, key, timestamp):
         """
         End an active behavior event.
-        
+
+        Structurally fail-safe (1.3.3+): the active-events dict is cleared
+        inside a ``finally`` block so any exception during offset / duration
+        calculation cannot leave a "stuck" entry behind. Bugs that used to
+        manifest as "FBF keeps not ending the event no matter how many
+        times I press" are now contained — at worst the event is finalised
+        with a best-effort offset rather than stranded in the active dict.
+
         Args:
             key (str): Key character
             timestamp (int): Offset timestamp in milliseconds
-            
+
         Returns:
-            bool: True if event was ended successfully, False otherwise
+            bool: True if event was ended successfully (or finalised on a
+                  best-effort basis), False if no active event existed.
         """
-        # Check if event is active. Demoted to debug because in practice
-        # this is mostly hit by spurious release events (e.g. when the user
-        # was holding the key before recording started).
         if key not in self._active_events:
             self.logger.debug(f"No active event for key '{key}'; nothing to end")
             return False
 
-        # Get monotonic high-precision time (immune to wall-clock jumps / NTP)
-        system_time = time.monotonic()
-        
-        # Update event with offset time
         event = self._active_events[key]
-        event.system_offset_time = system_time
-        
-        # Calculate actual duration using high-precision system time
-        system_duration_ms = int((event.system_offset_time - event.system_onset_time) * 1000)
-        
-        # Get frame duration for minimum duration enforcement
-        frame_duration_ms = self.get_frame_duration()
-        
-        # Use system time to calculate minimum duration - ensure at least one frame
-        if system_duration_ms < frame_duration_ms:
-            # Use at least one frame duration
-            adjusted_timestamp = event.onset + frame_duration_ms
-            self.logger.debug(f"Adjusting duration from {system_duration_ms}ms to {frame_duration_ms}ms for key {key}")
-            event.offset = adjusted_timestamp
-        else:
-            # Use the provided timestamp if the duration is already sufficient
-            event.offset = timestamp
-            
-        # Add to events list and emit signal
-        self._events.append(event)
-        self.annotation_added.emit(event)
-        
-        # Remove from active events
-        del self._active_events[key]
-        
-        # Set behavior as inactive in action map
-        self._action_map_model.set_behavior_active(key, False)
-        
-        # Emit signal for active event changes
-        self.active_events_changed.emit()
-        
-        self.logger.debug(f"Ended event: {key} -> {event.behavior} at {timestamp}ms (system time: {system_time:.6f}, duration: {event.duration}ms)")
-        
-        return True
+        finalised = False
+        try:
+            # Get monotonic high-precision time (immune to wall-clock
+            # jumps / NTP).
+            system_time = time.monotonic()
+            event.system_offset_time = system_time
+
+            # Calculate actual duration using high-precision system time.
+            # system_onset_time should always be set by start_event but the
+            # try/except keeps a stale event from blocking the dict cleanup
+            # below.
+            try:
+                system_duration_ms = int(
+                    (event.system_offset_time - event.system_onset_time) * 1000
+                )
+            except (TypeError, AttributeError):
+                self.logger.exception(
+                    f"end_event: could not compute system duration for key '{key}'"
+                )
+                system_duration_ms = 0
+
+            frame_duration_ms = self.get_frame_duration() or 33
+
+            # Use system time to calculate minimum duration - ensure at
+            # least one frame.
+            if system_duration_ms < frame_duration_ms:
+                event.offset = event.onset + frame_duration_ms
+                self.logger.debug(
+                    f"Adjusting duration from {system_duration_ms}ms to "
+                    f"{frame_duration_ms}ms for key {key}"
+                )
+            else:
+                event.offset = timestamp
+
+            # Last-resort sanity: offset must be a finite, non-decreasing
+            # number; if anything upstream produced rubbish, fall back to
+            # onset + 1 frame so the event is at least exportable.
+            if (
+                event.offset is None
+                or not isinstance(event.offset, (int, float))
+                or event.offset < event.onset
+            ):
+                self.logger.warning(
+                    f"end_event: invalid offset for key '{key}' "
+                    f"(onset={event.onset}, offset={event.offset}); "
+                    f"clamping to onset + frame_duration"
+                )
+                event.offset = event.onset + frame_duration_ms
+
+            self._events.append(event)
+            self.annotation_added.emit(event)
+            finalised = True
+            self.logger.debug(
+                f"Ended event: {key} -> {event.behavior} at {timestamp}ms "
+                f"(system time: {system_time:.6f}, duration: {event.duration}ms)"
+            )
+        except Exception:
+            # Final safety net. Log with full traceback and try a
+            # best-effort finalisation so the user does not lose the
+            # event entirely.
+            self.logger.exception(
+                f"end_event: unexpected error finalising key '{key}'; "
+                f"attempting best-effort recovery"
+            )
+            try:
+                frame_duration_ms = self.get_frame_duration() or 33
+                if event.offset is None or event.offset < event.onset:
+                    event.offset = event.onset + frame_duration_ms
+                if event not in self._events:
+                    self._events.append(event)
+                    self.annotation_added.emit(event)
+                finalised = True
+            except Exception:
+                self.logger.exception(
+                    f"end_event: best-effort recovery failed for key '{key}'; "
+                    f"event will be dropped from the active dict but lost"
+                )
+        finally:
+            # CRITICAL: always remove from active events, even if
+            # finalisation raised. This is what prevents the
+            # "FBF won't stop" class of bugs.
+            self._active_events.pop(key, None)
+            try:
+                self._action_map_model.set_behavior_active(key, False)
+            except Exception:
+                self.logger.exception(
+                    f"end_event: action_map.set_behavior_active failed for '{key}'"
+                )
+            self.active_events_changed.emit()
+
+        return finalised
     
     def discard_active_event(self, key):
         """
@@ -320,10 +387,19 @@ class AnnotationModel(QObject):
     def remove_event(self, index):
         """
         Remove an event.
-        
+
+        Accepts indices that address either the completed events list
+        (``self._events``) or the active-events tail used by
+        ``get_all_events_with_active`` (1.3.3+). When the index falls in
+        the active range the in-progress event is *discarded* (same
+        semantics as ``discard_active_event``) — useful for letting the
+        Timeline delete an event that was never finished, e.g. after the
+        FBF bug investigated in v1.3.2.
+
         Args:
-            index (int): Index of the event to remove
-            
+            index (int): Index of the event to remove, in the combined
+                ``_events + _active_events.values()`` layout.
+
         Returns:
             bool: True if removed successfully, False otherwise
         """
@@ -332,10 +408,38 @@ class AnnotationModel(QObject):
             self.annotation_removed.emit(index)
             self.logger.debug(f"Removed event at index {index}: {event.behavior}")
             return True
-        else:
-            self.logger.warning(f"Invalid event index: {index}")
-            return False
-    
+
+        # 1.3.3+: index points into the active-events tail. The order is
+        # ``list(self._active_events.values())`` as produced by
+        # get_all_events_with_active.
+        active_index = index - len(self._events)
+        if 0 <= active_index < len(self._active_events):
+            active_keys = list(self._active_events.keys())
+            try:
+                key = active_keys[active_index]
+            except IndexError:
+                return False
+            discarded = self._active_events.pop(key, None)
+            if discarded is None:
+                return False
+            try:
+                self._action_map_model.set_behavior_active(key, False)
+            except Exception:
+                self.logger.exception(
+                    f"remove_event: action_map.set_behavior_active failed for '{key}'"
+                )
+            self.annotation_removed.emit(index)
+            self.active_events_changed.emit()
+            self.logger.info(
+                f"Discarded active event at index {index} (key={key}, "
+                f"behavior={discarded.behavior}, onset={discarded.onset}ms) "
+                f"via Timeline delete"
+            )
+            return True
+
+        self.logger.warning(f"Invalid event index: {index}")
+        return False
+
     def get_event(self, index):
         """
         Get event at index.

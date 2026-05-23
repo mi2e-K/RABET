@@ -264,6 +264,15 @@ class _FilePickerRow(QWidget):
         radio is toggled)."""
         self.label.setText(text)
 
+    def set_dialog_title(self, title: str) -> None:
+        """Update the file-dialog title shown by the next Browse click.
+
+        Paired with :meth:`set_label_text` so the Reliability tab can
+        keep the picker label *and* the dialog header in sync when the
+        Inter/Intra-rater radio toggles.
+        """
+        self._dialog_title = title
+
     def path(self) -> str:
         return self.path_edit.text().strip()
 
@@ -330,11 +339,11 @@ class ReliabilityView(QWidget):
         input_layout = QVBoxLayout(input_box)
 
         self.summary_picker_a = _FilePickerRow(
-            "Scorer A summary:", "Select scorer A's summary_table.csv",
+            "Scorer A summary:", "Select scorer A's summary table CSV",
             "CSV files (*.csv);;All files (*)",
         )
         self.summary_picker_b = _FilePickerRow(
-            "Scorer B summary:", "Select scorer B's summary_table.csv",
+            "Scorer B summary:", "Select scorer B's summary table CSV",
             "CSV files (*.csv);;All files (*)",
         )
         input_layout.addWidget(self.summary_picker_a)
@@ -584,20 +593,48 @@ class ReliabilityView(QWidget):
     # ---------------- Mode toggle handlers ---------------- #
 
     def _on_summary_mode_toggled(self, inter_checked: bool) -> None:
+        # 1.3.3+: sync the file-dialog title too. Previously the picker
+        # label flipped between "Scorer A summary:" and "Session 1
+        # summary:" but the Browse dialog header stayed on the inter-
+        # rater wording even in intra-rater mode.
         if inter_checked:
             self.summary_picker_a.set_label_text("Scorer A summary:")
             self.summary_picker_b.set_label_text("Scorer B summary:")
+            self.summary_picker_a.set_dialog_title(
+                "Select scorer A's summary table CSV"
+            )
+            self.summary_picker_b.set_dialog_title(
+                "Select scorer B's summary table CSV"
+            )
         else:
             self.summary_picker_a.set_label_text("Session 1 summary:")
             self.summary_picker_b.set_label_text("Session 2 summary:")
+            self.summary_picker_a.set_dialog_title(
+                "Select session 1 summary table CSV"
+            )
+            self.summary_picker_b.set_dialog_title(
+                "Select session 2 summary table CSV"
+            )
 
     def _on_detailed_mode_toggled(self, inter_checked: bool) -> None:
         if inter_checked:
             self.detailed_picker_a.set_label_text("Scorer A CSV:")
             self.detailed_picker_b.set_label_text("Scorer B CSV:")
+            self.detailed_picker_a.set_dialog_title(
+                "Select scorer A's annotation CSV"
+            )
+            self.detailed_picker_b.set_dialog_title(
+                "Select scorer B's annotation CSV"
+            )
         else:
             self.detailed_picker_a.set_label_text("Session 1 CSV:")
             self.detailed_picker_b.set_label_text("Session 2 CSV:")
+            self.detailed_picker_a.set_dialog_title(
+                "Select session 1 annotation CSV"
+            )
+            self.detailed_picker_b.set_dialog_title(
+                "Select session 2 annotation CSV"
+            )
 
     # ---------------- Slots / event handlers ---------------- #
 
@@ -607,7 +644,7 @@ class ReliabilityView(QWidget):
         if not path_a or not path_b:
             QMessageBox.information(
                 self, "Reliability",
-                "Please select both summary_table.csv files first."
+                "Please select both summary table CSV files first."
             )
             return
         if not os.path.isfile(path_a) or not os.path.isfile(path_b):

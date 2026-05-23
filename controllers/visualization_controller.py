@@ -64,6 +64,30 @@ class VisualizationController(QObject):
         """Connect signals from view."""
         if self._view:
             self._view.files_dropped.connect(self.on_files_dropped)
+            # 1.3.3+: the Clear button now tells us to drop the cached
+            # data. Without this hook a subsequent re-drop of the same
+            # CSVs revives the previously-cleared session.
+            if hasattr(self._view, "clear_data_requested"):
+                self._view.clear_data_requested.connect(
+                    self.on_clear_data_requested
+                )
+
+    @Slot()
+    def on_clear_data_requested(self):
+        """Drop the in-memory cache when the user clicks Clear.
+
+        Intentionally does NOT touch the view (the view already cleared
+        itself before emitting this signal). Calling
+        ``self._view.set_data({})`` here would re-trigger the view's
+        clear path and risk a redundant re-render.
+        """
+        if not self._visualization_data:
+            return
+        n = len(self._visualization_data)
+        self._visualization_data = {}
+        self.logger.info(
+            f"Cleared {n} cached file(s) from the visualization controller"
+        )
     
     def _discover_custom_colormaps(self):
         """
