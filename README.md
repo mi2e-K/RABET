@@ -11,6 +11,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#installation)
 [![CI](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml/badge.svg)](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-mi2e--k.github.io%2FRABET-ff5722?logo=githubpages&logoColor=white)](https://mi2e-k.github.io/RABET/)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.15313025-orange)](https://doi.org/10.5281/zenodo.15313025)
 
 </div>
@@ -127,6 +128,10 @@ python main.py
 ---
 
 ## Documentation
+
+> 🌐 **Project website**: **[mi2e-k.github.io/RABET](https://mi2e-k.github.io/RABET/)** — searchable docs site with the full user guide, dark-mode support, and English / 日本語 language switcher.
+
+The markdown source for every page below is also browsable directly on GitHub:
 
 - **[User Guide (English)](docs/USER_GUIDE.md)** — step-by-step walkthrough of every feature
 - **[User Guide (Japanese)](docs/USER_GUIDE.ja.md)** — Japanese version user guide
