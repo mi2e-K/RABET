@@ -1,0 +1,2977 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time Animal Behavior Event Tagger — a self-contained desktop app for video-based behavioural annotation, analysis, and reliability assessment.">
+      
+      
+        <meta name="author" content="Koshiro Mitsui">
+      
+      
+        <link rel="canonical" href="https://mi2e-k.github.io/RABET/ja/USER_GUIDE/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../CSV_FORMAT/">
+      
+      
+        
+          <link rel="alternate" href="../../USER_GUIDE/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ja">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>ユーザーガイド - RABET</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rabet" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../" title="RABET" class="md-header__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RABET
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ユーザーガイド
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="言語切り替え">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../USER_GUIDE/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ja" class="md-select__link">
+              日本語
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="共有" aria-label="共有" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ユーザーガイド
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../CSV_FORMAT/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  リファレンス
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="RABET" class="md-nav__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    RABET
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ユーザーガイド
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ユーザーガイド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目次
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. はじめに
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. はじめに">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 RABET をダウンロードする
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 RABET を起動する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2 RABET を起動する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 初回起動時に作成されるフォルダ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 メインウィンドウの構成
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 動画にアノテーションを付ける
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 動画にアノテーションを付ける">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 動画を開く
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 アクションマップ・パネル
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 動画のコントロール
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 記録セッションの設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 録画の状態遷移
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 タイムラインビュー
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 アノテーションを保存する
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.8 アノテーションを読み込む
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 複数の記録ファイルを解析する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 複数の記録ファイルを解析する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 CSV ファイルを読み込む
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Summary タブ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-intervals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Intervals タブ — 時間ビン解析
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 カスタムメトリクスの設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4 カスタムメトリクスの設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Latency メトリクス（潜時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#total-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Total-time メトリクス（合計時間）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 結果をエクスポートする
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. データを可視化する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. データを可視化する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 ラスタープロットの基本
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 フィルタリング
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 色をカスタマイズする
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 グリッドと軸範囲
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 プロットを書き出す
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 評価者間／評価者内の信頼性を評価する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 評価者間／評価者内の信頼性を評価する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Reliability タブの役割
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Summary モード
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-detailed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Detailed モード
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 解釈の指針
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-r" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 R での再現性チェック
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. プロジェクトモード
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. プロジェクトモード">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 新規プロジェクトの作成
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 ファイルを追加する
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 プロジェクト内からアノテーションを付ける
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 プロジェクトの保存と再オープン
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. キーボードショートカット一覧
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 設定ファイルと永続化される設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 設定ファイルと永続化される設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 ユーザーデータの保存場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 永続化される UI 設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 デフォルトに戻す
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. CSV ファイル形式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. トラブルシューティング
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. トラブルシューティング">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vlc-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「VLC では再生できるのに、RABET では開けない」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reliability-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「Reliability タブの数値が空白／None になる」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「巻き戻したらイベントが消えた」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「macOS の初回起動時にフォント警告が出る」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ログファイルの場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. ヘルプと引用
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. ヘルプと引用">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ヘルプとバグ報告
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rabet_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RABET の引用
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../reliability/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リファレンス
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    リファレンス
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CSV_FORMAT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSV 形式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BUILD_MACOS_LINUX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ソースからビルド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目次
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. はじめに
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. はじめに">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 RABET をダウンロードする
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 RABET を起動する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1.2 RABET を起動する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        macOS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 初回起動時に作成されるフォルダ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 メインウィンドウの構成
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 動画にアノテーションを付ける
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 動画にアノテーションを付ける">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 動画を開く
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 アクションマップ・パネル
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 動画のコントロール
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 記録セッションの設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 録画の状態遷移
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 タイムラインビュー
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 アノテーションを保存する
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.8 アノテーションを読み込む
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 複数の記録ファイルを解析する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 複数の記録ファイルを解析する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 CSV ファイルを読み込む
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Summary タブ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-intervals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Intervals タブ — 時間ビン解析
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 カスタムメトリクスの設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3.4 カスタムメトリクスの設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#latency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Latency メトリクス（潜時）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#total-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Total-time メトリクス（合計時間）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 結果をエクスポートする
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. データを可視化する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. データを可視化する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 ラスタープロットの基本
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 フィルタリング
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 色をカスタマイズする
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 グリッドと軸範囲
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 プロットを書き出す
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 評価者間／評価者内の信頼性を評価する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 評価者間／評価者内の信頼性を評価する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Reliability タブの役割
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Summary モード
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-detailed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Detailed モード
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 解釈の指針
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-r" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 R での再現性チェック
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. プロジェクトモード
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. プロジェクトモード">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 新規プロジェクトの作成
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 ファイルを追加する
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 プロジェクト内からアノテーションを付ける
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 プロジェクトの保存と再オープン
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. キーボードショートカット一覧
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 設定ファイルと永続化される設定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 設定ファイルと永続化される設定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 ユーザーデータの保存場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 永続化される UI 設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 デフォルトに戻す
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-csv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. CSV ファイル形式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. トラブルシューティング
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. トラブルシューティング">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vlc-rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「VLC では再生できるのに、RABET では開けない」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reliability-none" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「Reliability タブの数値が空白／None になる」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「巻き戻したらイベントが消えた」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macos_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        「macOS の初回起動時にフォント警告が出る」
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ログファイルの場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. ヘルプと引用
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. ヘルプと引用">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ヘルプとバグ報告
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rabet_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RABET の引用
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rabet">RABET ユーザーガイド<a class="headerlink" href="#rabet" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>対象読者:</strong> 本ガイドは、動物行動の動画をスコアリングし、結果を集計・解析し、
+評価者間の一致度を評価したい行動科学の研究者を想定している。デスクトップ
+アプリケーションと CSV ファイルに関する基本的な知識のみを前提とする。</p>
+<p><strong>範囲:</strong> RABET 1.3.2 のすべての機能を網羅している。英語版は別ファイル
+<a href="./"><code>USER_GUIDE.md</code></a> として用意されている。</p>
+</blockquote>
+<hr />
+<h2 id="_1">目次<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#1-はじめに">はじめに</a></li>
+<li><a href="#2-動画にアノテーションを付ける">動画にアノテーションを付ける</a></li>
+<li><a href="#3-複数の記録ファイルを解析する">複数の記録ファイルを解析する</a></li>
+<li><a href="#4-データを可視化する">データを可視化する</a></li>
+<li><a href="#5-評価者間評価者内の信頼性を評価する">評価者間／評価者内の信頼性を評価する</a></li>
+<li><a href="#6-プロジェクトモード">プロジェクトモード</a></li>
+<li><a href="#7-キーボードショートカット一覧">キーボードショートカット一覧</a></li>
+<li><a href="#8-設定ファイルと永続化される設定">設定ファイルと永続化される設定</a></li>
+<li><a href="#9-csv-ファイル形式">CSV ファイル形式</a></li>
+<li><a href="#10-トラブルシューティング">トラブルシューティング</a></li>
+<li><a href="#11-ヘルプと引用">ヘルプと引用</a></li>
+</ol>
+<hr />
+<h2 id="1">1. はじめに<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<h3 id="11-rabet">1.1 RABET をダウンロードする<a class="headerlink" href="#11-rabet" title="Permanent link">&para;</a></h3>
+<p>RABET は <strong>Zenodo を公式の配布元</strong> としており、リリースごとに引用可能な永続
+DOI が付与される。</p>
+<blockquote>
+<p><strong>Zenodo（公式）</strong>: https://doi.org/10.5281/zenodo.15313025
+<em>(コンセプト DOI — 常に最新版を指す)</em></p>
+</blockquote>
+<p>Zenodo のレコードを開き、使用するプラットフォームに対応するアーカイブを
+ダウンロードする。</p>
+<table>
+<thead>
+<tr>
+<th>プラットフォーム</th>
+<th>アセット</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td><code>RABET-Windows-1.3.2.zip</code></td>
+</tr>
+<tr>
+<td>macOS (Apple Silicon)</td>
+<td><code>RABET-macOS-arm64-1.3.2.zip</code></td>
+</tr>
+<tr>
+<td>macOS (Intel)</td>
+<td><code>RABET-macOS-x86_64-1.3.2.zip</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>RABET-Linux-x86_64-1.3.2.tar.gz</code></td>
+</tr>
+</tbody>
+</table>
+<p>同じバイナリのミラーが
+<a href="https://github.com/mi2e-K/RABET/releases">GitHub Releases</a> でも配布されている。
+どちらをダウンロードしても中身は同じである。</p>
+<h3 id="12-rabet">1.2 RABET を起動する<a class="headerlink" href="#12-rabet" title="Permanent link">&para;</a></h3>
+<h4 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h4>
+<ol>
+<li>アーカイブ（<code>RABET-Windows-1.3.2.zip</code>）を任意の場所に展開する。
+   デスクトップでも、専用の <code>Tools\</code> フォルダでも構わない。</li>
+<li>展開した <code>RABET</code> フォルダを開き、<strong><code>RABET.exe</code></strong> をダブルクリックする。
+   ショートカットを使いたい場合は同梱の <strong><code>Launch RABET.bat</code></strong> でも構わない。</li>
+<li>初回起動時に Windows SmartScreen が「PC が保護されました」と表示する
+   ことがある。これは実行ファイルがコード署名されていないためである。
+   <em>詳細情報</em> → <em>実行</em> を選んで進める。</li>
+</ol>
+<h4 id="macos">macOS<a class="headerlink" href="#macos" title="Permanent link">&para;</a></h4>
+<ol>
+<li>CPU アーキテクチャに合うアーカイブを展開する
+   （Apple Silicon = M1/M2/M3/M4、Intel = 2020 年以前の Mac）。</li>
+<li>展開した <strong><code>RABET.app</code></strong> を <code>Applications</code> フォルダへ移動する。</li>
+<li>バンドルが署名されていないため、初回起動だけ右クリック → <strong>開く</strong> で
+   起動する。2 回目以降は通常通り起動できる。</li>
+</ol>
+<h4 id="linux">Linux<a class="headerlink" href="#linux" title="Permanent link">&para;</a></h4>
+<ol>
+<li>tarball を展開する。
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tar<span class="w"> </span>-xzf<span class="w"> </span>RABET-Linux-x86_64-1.3.2.tar.gz
+</span></code></pre></div></li>
+<li>展開したディレクトリに入り、次のコマンドで起動する。
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./run_rabet.sh
+</span></code></pre></div></li>
+<li>アプリケーションメニューに RABET を登録する場合は、次を実行する。
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./install_desktop_entry.sh
+</span></code></pre></div></li>
+</ol>
+<h3 id="13">1.3 初回起動時に作成されるフォルダ<a class="headerlink" href="#13" title="Permanent link">&para;</a></h3>
+<p>RABET は初回起動時に、OS のユーザーアプリケーションデータディレクトリ配下に
+3 つのフォルダを作成する。</p>
+<ul>
+<li><strong><code>configs/</code></strong> — アクションマップ、カスタムメトリクス、配色の JSON</li>
+<li><strong><code>logs/</code></strong> — 実行ログ（<code>rabet_&lt;日付&gt;.log</code>）。トラブルシューティングに使用</li>
+<li><strong><code>projects/</code></strong> — 新規プロジェクトのデフォルト保存先</li>
+</ul>
+<p>具体的なパスは OS により異なる。</p>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>場所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td><code>%APPDATA%\RABET\</code></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>~/Library/Application Support/RABET/</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>~/.config/RABET/</code></td>
+</tr>
+</tbody>
+</table>
+<p>RABET は各ファイルダイアログで最後に使ったディレクトリも記憶し、次回以降
+そこを既定として開く。</p>
+<h3 id="14">1.4 メインウィンドウの構成<a class="headerlink" href="#14" title="Permanent link">&para;</a></h3>
+<p>アプリケーションウィンドウは次のように構成されている。</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>┌──────────────────────────────────────────────────────────────────┐
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>│  File   Edit   View   Log   Help                                 │  ← メニューバー
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>├──────────────────────────────────────────────────────────────────┤
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>│  [Annotation] [Analysis] [Visualization] [Reliability] [Project] │  ← モードタブ
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>├──────────────────────────────────────────────────────────────────┤
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>│                                                                  │
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>│                  （アクティブなモードのメイン画面）                 │
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>│                                                                  │
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>├──────────────────────────────────────────────────────────────────┤
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>│  ステータスバー：簡易メッセージ、現在ファイル、録画状態               │
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>└──────────────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<p><strong>モードタブ</strong> は RABET の 5 つの主要ワークフローに対応する。<strong>View</strong>
+メニューから、またはタブを直接クリックして、いつでも切り替えられる。
+アクティブなモードは強調表示される。</p>
+<hr />
+<h2 id="2">2. 動画にアノテーションを付ける<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p><strong>Annotation</strong> ビューは RABET の中核となる作業画面である。ビデオプレイヤー、
+タイムライン、録画操作パネル、アクションマップパネルがひとつの画面に
+まとまっている。</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>┌───────────────────────────────────────────────────────────────────┐
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>│                                                  │ アクションマップ │
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>│            ビデオプレイヤー（フレーム精度）         │ ┌────┬───────┐ │
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>│                                                  │ │キー│  行動  │ │
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>│                                                  │ ├────┼───────┤ │
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>│                                                  │ │ o  │Attack │ │
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>│                                                  │ │ j  │Side.  │ │
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>│                                                  │ │... │ ...   │ │
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>├──────────────────────────────────────────────────│ └────┴───────┘ │
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>│  録画操作 — 時間設定、Start / Pause / Stop        │ [Add][Edit]    │
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>├──────────────────────────────────────────────────────────────────┤
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>│  タイムライン — 色分けされたイベント、再生ヘッド                     │
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>└──────────────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<h3 id="21">2.1 動画を開く<a class="headerlink" href="#21" title="Permanent link">&para;</a></h3>
+<p>3 つの同等な方法がある。</p>
+<ol>
+<li><strong>メニュー</strong>: <code>File → Open Video</code></li>
+<li><strong>最近開いた動画</strong>: <code>File → Open Recent Video</code> — 直近 10 件を一覧表示</li>
+<li><strong>ドラッグ&amp;ドロップ</strong>: 動画ファイルを RABET ウィンドウの任意の場所に
+   ドラッグする。自動的に Annotation モードへ切り替わる。</li>
+</ol>
+<p>標準的な拡張子（<code>.mp4</code>、<code>.mov</code>、<code>.avi</code>、<code>.mkv</code>、<code>.webm</code>、<code>.m4v</code>、<code>.wmv</code>、
+<code>.flv</code>、<code>.ts</code>）は拡張子で受け付ける。録画ソフトが独自の拡張子（標準
+MP4 コンテナに <code>.video</code> を付けるなど）を使っている場合でも、RABET は
+マジックナンバー判定と PyAV による試験的なオープンの 2 段階フォールバック
+を持っているため、ファイルの中身が有効な動画なら開ける。</p>
+<p>オープン後は最初のフレームが表示され、再生ヘッドは 0 にリセットされる。</p>
+<h3 id="22">2.2 アクションマップ・パネル<a class="headerlink" href="#22" title="Permanent link">&para;</a></h3>
+<p>アクションマップは <strong>キーボードの 1 キー</strong> を <strong>行動ラベル</strong> に対応付ける。
+録画中は、マップされたキーを押すと行動イベントが開始し、同じキーを離すと
+終了する。</p>
+<p><strong>デフォルトのマッピング</strong>（<code>configs/default_action_map.json</code> から読み込み）:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">キー</th>
+<th>行動</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;"><code>o</code></td>
+<td>Attack bites</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>j</code></td>
+<td>Sideways threats</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>p</code></td>
+<td>Tail rattles</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>q</code></td>
+<td>Chasing</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>a</code></td>
+<td>Social contact</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>e</code></td>
+<td>Self-grooming</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>t</code></td>
+<td>Locomotion</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>r</code></td>
+<td>Rearing</td>
+</tr>
+</tbody>
+</table>
+<p>Annotation ビューの右側にあるアクションマップ・パネルには、アクティブな
+マップが編集可能なテーブルとして表示される。テーブル下のボタンで
+次の操作ができる。</p>
+<ul>
+<li><strong>Add</strong> — 新しい「キー → 行動」マッピングを追加する。キー欄は英数字
+  1 文字を受け付ける。既存のマッピングを上書きするときは確認ダイアログ
+  が出る。</li>
+<li><strong>Edit</strong> — 選択した行の行動ラベルを変更する。</li>
+<li><strong>Remove</strong> — マッピングを削除する。<strong>既に記録済みのアノテーション</strong>
+  は削除されない。</li>
+</ul>
+<p>マップの保存・読み込み:</p>
+<ul>
+<li><code>File → Save Action Map</code> で現在のマップを <code>.json</code> ファイルに保存する。</li>
+<li><code>File → Load Action Map</code> で保存済みのマップを読み込む（現在のマップ
+  は置き換えられる）。</li>
+<li><code>File → Reset Action Map to Default</code> で組み込みデフォルトに戻す。</li>
+</ul>
+<h3 id="23">2.3 動画のコントロール<a class="headerlink" href="#23" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>ショートカット</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>再生 / 一時停止の切替</td>
+<td><code>Space</code></td>
+</tr>
+<tr>
+<td>指定ステップ分だけ進む</td>
+<td><code>→</code>（右矢印）</td>
+</tr>
+<tr>
+<td>指定ステップ分だけ戻る</td>
+<td><code>←</code>（左矢印）</td>
+</tr>
+</tbody>
+</table>
+<p>ステップ幅と再生レートは、ビデオフレーム下のコントロール帯で変更できる。
+ステップ幅のデフォルトは 1 フレームだが、一時停止中の粗い移動には
+5 フレームや 10 フレームを使うのも便利である。</p>
+<p>現在の再生位置はビデオ下に <code>hh:mm:ss.ms</code> 形式で表示される。録画セッション
+中は、同じ場所にセッション開始からの <strong>相対時刻</strong> も表示される。</p>
+<h3 id="24">2.4 記録セッションの設定<a class="headerlink" href="#24" title="Permanent link">&para;</a></h3>
+<p>タイムライン上部の <strong>Recording controls</strong> パネルで、テスト時間を <code>hh:mm:ss</code>
+形式の入力欄に入れる（例: <code>00:05:00</code> で 5 分間）。</p>
+<p><strong>Preserve on rewind</strong>（巻き戻し時にイベントを保持）チェックボックスが
+オンの場合、再生ヘッドが「まだ押されている最中」のイベントの開始時刻を
+逆方向に超えても、そのイベントは <strong>保持</strong> される。オフ（デフォルト）
+の場合は <strong>破棄</strong> される。「行動を数秒早くマークしすぎた」と気づいたときに便利である。</p>
+<h3 id="25">2.5 録画の状態遷移<a class="headerlink" href="#25" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>        Start Recording                   Pause
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>   IDLE ─────────────────► WAITING ──► RECORDING ─► PAUSED
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    ▲                                    ▲   │       │
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    │                                    │   │ Resume│
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    │                                    └───┴───────┘
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    │                                    │
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    │           Stop / 時間経過           │
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    └────────────────────────────────────┘
+</span></code></pre></div>
+<p>Recording controls パネルの視覚的な手がかり:</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>ボタン表示</th>
+<th>状態色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>アイドル</td>
+<td><strong>Start Recording</strong>（緑）</td>
+<td>（無表示）</td>
+</tr>
+<tr>
+<td>待機中</td>
+<td><strong>Cancel</strong>（グレー）</td>
+<td>青</td>
+</tr>
+<tr>
+<td>録画中</td>
+<td><strong>Pause</strong>（オレンジ）</td>
+<td>赤</td>
+</tr>
+<tr>
+<td>一時停止</td>
+<td><strong>Resume</strong>（緑）／<strong>Stop</strong>（赤）</td>
+<td>オレンジ</td>
+</tr>
+</tbody>
+</table>
+<p>録画の典型的な流れ:</p>
+<ol>
+<li>動画を開いてテスト時間を設定する。</li>
+<li><strong>Start Recording</strong> をクリックする。状態が <strong>Waiting</strong> に変わる。</li>
+<li>動画を再生する（<code>Space</code>）。再生ヘッドが動き始めた瞬間にセッションが
+   開始（状態 → <strong>Recording</strong>）し、その時刻が全イベントの基準時刻となる。</li>
+<li>行動キーを押してイベントを記録する。キーを離すとイベントが終了する。</li>
+<li>途中で中断したいときは <strong>Pause</strong> を押す。再生も停止する。<strong>Resume</strong>
+   で再開できる。</li>
+<li>テスト時間が経過するか、<strong>Stop</strong> を押すとセッションが終了する。</li>
+</ol>
+<p>セッションが終了すると動画も自動的に一時停止される。プロジェクト内から
+録画を開始していた場合は、自動保存のあと <strong>Project</strong> タブに自動で戻る。</p>
+<h3 id="26">2.6 タイムラインビュー<a class="headerlink" href="#26" title="Permanent link">&para;</a></h3>
+<p>Annotation ビュー下部のタイムラインには、記録された全イベントが色分けされた
+バーで表示される。垂直線の再生ヘッドが動画と連動する。</p>
+<p>主な操作:</p>
+<ul>
+<li><strong>ズームイン／ズームアウト</strong> — ズームボタン、またはタイムライン上での
+  マウスホイール</li>
+<li><strong>イベントを選択</strong> — クリックする。選択がハイライトされ、開始時刻と
+  終了時刻がステータスバーに表示される。</li>
+<li><strong>選択中のイベントを削除</strong> — <code>Delete</code> または <code>Backspace</code></li>
+<li><strong>最後に記録したイベントを取り消す</strong> — <code>Edit → Undo Last Annotation</code>
+  または <code>Ctrl + Z</code>。<code>RecordingStart</code> の合成マーカーは取り消し対象から
+  除外される。</li>
+</ul>
+<p>タイムラインは再生中に再生ヘッドが画面内に収まるよう自動でスクロールする。</p>
+<h3 id="27">2.7 アノテーションを保存する<a class="headerlink" href="#27" title="Permanent link">&para;</a></h3>
+<p><code>File → Export Annotations</code> を選ぶと、次の 3 セクションから成る CSV
+ファイルを書き出す。</p>
+<ol>
+<li><strong>メタデータ</strong> — RABET バージョン、テスト時間</li>
+<li><strong>イベントログ</strong> — <code>Event, Onset, Offset</code>（秒、小数点以下 4 桁）</li>
+<li><strong>行動別サマリー</strong> — <code>Behavior, Duration, Frequency</code></li>
+</ol>
+<p>完全な仕様は <a href="../CSV_FORMAT/"><code>CSV_FORMAT.md</code></a> を参照のこと。</p>
+<p>保存先に既にファイルがある場合、上書き確認ダイアログが出る。「いいえ」
+を選ぶとダイアログが再表示され、別の名前を選べる。RABET がデータを
+無断で消すことはない。</p>
+<h3 id="28">2.8 アノテーションを読み込む<a class="headerlink" href="#28" title="Permanent link">&para;</a></h3>
+<p><code>File → Import Annotations</code> で過去に書き出した CSV を読み込む。</p>
+<p><code>File → Recent Annotations</code> には直近 10 件のアノテーションファイルが並ぶ。</p>
+<p>イベントが既にロードされている状態で別ファイルを読み込むと、確認ダイアログ
+が表示され、確認後に既存のアノテーションがクリアされる。</p>
+<hr />
+<h2 id="3">3. 複数の記録ファイルを解析する<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<p><strong>Analysis</strong> ビューは複数のアノテーション CSV をひとつの表に集計し、
+スクリプトを書かずに動物・条件・反復セッション間の比較ができる。</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>┌────────────────────────────────────────────────────────────────┐
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>│ [Load Files]  [Configure Metrics]   ✓ Enable interval (60 sec) │
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>├────────────────────────────────────────────────────────────────┤
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>│ ┌────────────────┬─────────────────────────────────────────┐  │
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>│ │   Summary      │  Intervals                              │  │
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>│ ├────────────────┴─────────────────────────────────────────┤  │
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>│ │ animal_id │ Attack Latency │ Total Aggression │ ...      │  │
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>│ │ rat-01    │ 18.43          │ 92.11            │ ...      │  │
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>│ │ rat-02    │ 25.92          │ 71.30            │ ...      │  │
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>│ │ ...                                                       │  │
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>│ └───────────────────────────────────────────────────────────┘  │
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>│ [Copy to Clipboard]  [Export CSV]  [Visualize Files]           │
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>└────────────────────────────────────────────────────────────────┘
+</span></code></pre></div>
+<h3 id="31-csv">3.1 CSV ファイルを読み込む<a class="headerlink" href="#31-csv" title="Permanent link">&para;</a></h3>
+<p>2 通りの方法がある。</p>
+<ol>
+<li><strong>Load Files</strong> ボタンから 1 つ以上の CSV を選択</li>
+<li>ウィンドウに CSV をドラッグ&amp;ドロップ</li>
+</ol>
+<p>RABET は各ファイルをパースし、ファイル名のステム部分をデフォルトの
+<code>animal_id</code> として抽出する。続いて、現在のメトリクス設定に従って集計
+する。パースに失敗したファイルはログに警告が出力されてスキップされる。</p>
+<h3 id="32-summary">3.2 Summary タブ<a class="headerlink" href="#32-summary" title="Permanent link">&para;</a></h3>
+<p><strong>Summary</strong> タブには次の列が並ぶ（1 行 = 1 ファイル）。</p>
+<ul>
+<li><code>animal_id</code></li>
+<li>行動ごとに <code>&lt;行動&gt; Duration</code> と <code>&lt;行動&gt; Frequency</code> の 2 列ずつ</li>
+<li>カスタムメトリクスの列（§3.4）</li>
+</ul>
+<p><code>Duration</code> はセッション全体での合計時間（秒）、<code>Frequency</code> はイベント
+回数である。</p>
+<p><strong>Copy to Clipboard</strong> で表全体をクリップボードにコピーする。Excel、JASP、
+R、SPSS のいずれにも直接ペーストできる形式である。</p>
+<h3 id="33-intervals">3.3 Intervals タブ — 時間ビン解析<a class="headerlink" href="#33-intervals" title="Permanent link">&para;</a></h3>
+<p><strong>Enable interval analysis</strong> にチェックを入れると、各セッションを一定長の
+時間ウィンドウ（デフォルト 60 秒）に分割する。Intervals タブは
+<code>(animal, interval)</code> のペアごとに 1 行を表示する。</p>
+<p>解釈の重要ポイント:</p>
+<ul>
+<li><strong><code>Duration</code></strong> は当該インターバルと <strong>重なる秒数</strong>。2 つのインターバル
+  に跨る行動は、それぞれに按分される。</li>
+<li><strong><code>Frequency</code></strong> は <strong>開始時刻</strong> がインターバル内に入る行動の数。
+  複数のインターバルに跨る行動でも 1 回しかカウントされない。</li>
+</ul>
+<p>このため、累積率プロットには Duration、イベント数の統計には Frequency が
+適している。</p>
+<h3 id="34">3.4 カスタムメトリクスの設定<a class="headerlink" href="#34" title="Permanent link">&para;</a></h3>
+<p><strong>Configure Metrics</strong> ボタンでメトリクスエディタを開く。2 種類の
+メトリクスを扱える。</p>
+<h4 id="latency">Latency メトリクス（潜時）<a class="headerlink" href="#latency" title="Permanent link">&para;</a></h4>
+<p>セッション開始から、指定した行動の <strong>最初の発生</strong> までの秒数である。
+デフォルト設定では:</p>
+<ul>
+<li><em>Attack Latency</em> — 最初の <code>Attack bites</code> イベントまでの潜時</li>
+</ul>
+<p>必要に応じて好きなだけ追加でき（例: <em>Sideways threats Latency</em>）、
+個別に有効／無効を切り替えられる。</p>
+<h4 id="total-time">Total-time メトリクス（合計時間）<a class="headerlink" href="#total-time" title="Permanent link">&para;</a></h4>
+<p>指定した行動セットの <code>Duration</code> の合計である。デフォルト設定では:</p>
+<ul>
+<li><em>Total Aggression</em> — Attack bites + Sideways threats + Tail rattles</li>
+<li>Chasing</li>
+<li><em>Total Aggression (without tail-rattles)</em> — Attack bites + Sideways
+  threats + Chasing</li>
+</ul>
+<p>各 Total-time メトリクスに含める行動は編集可能なので、研究に
+合った合計（例: <em>Exploration</em> = Locomotion + Rearing）を定義できる。</p>
+<h3 id="35">3.5 結果をエクスポートする<a class="headerlink" href="#35" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Copy to Clipboard</strong> はアクティブなタブを TSV（タブ区切り）形式で
+  クリップボードに書き出す。スプレッドシートに直接ペースト可能である。</li>
+<li><strong>Export CSV</strong> は Summary 表を <code>summary_table.csv</code> として保存する。
+  インターバル解析が有効な場合は <code>summary_intervals.csv</code> も一緒に書き出す。</li>
+<li><strong>Visualize Files</strong> は、現在読み込んでいるファイルを引き継いだまま
+  Visualization タブへ切り替える。</li>
+</ul>
+<hr />
+<h2 id="4">4. データを可視化する<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<p><strong>Visualization</strong> ビューはラスタープロットを描画する。1 行 = 1 動物
+／1 ファイル、1 ティック = 1 イベント、色は行動で分かれる。</p>
+<h3 id="41">4.1 ラスタープロットの基本<a class="headerlink" href="#41" title="Permanent link">&para;</a></h3>
+<p>アノテーション CSV を読み込む（または Analysis から <strong>Visualize Files</strong>
+で来る）と、各ファイルが 1 つの横軸トラックになる。イベントは開始
+時刻の位置に色付きの縦バーで表示される。</p>
+<p>複数ファイルを初めて読み込んだとき、見やすさのため <strong>デフォルトでは
+最初のファイルのみ</strong> が表示される。残りのファイルは右側のファイル一覧
+にチェックが入っていない状態で並ぶ。</p>
+<h3 id="42">4.2 フィルタリング<a class="headerlink" href="#42" title="Permanent link">&para;</a></h3>
+<p>2 つのチェックボックス群で表示を制御する。</p>
+<ul>
+<li><strong>ファイル／個体</strong> — 各動物トラックの表示／非表示</li>
+<li><strong>行動</strong> — 各行動色の表示／非表示。色見本（スウォッチ）が行動ラベルの
+  横に表示される。</li>
+</ul>
+<p>サブセット（攻撃行動のみ、条件 A の動物のみ、など）に絞り込む際に、
+データを読み直す必要はない。</p>
+<h3 id="43">4.3 色をカスタマイズする<a class="headerlink" href="#43" title="Permanent link">&para;</a></h3>
+<p>行動名横の色スウォッチをクリックするとカラーピッカーが開く。
+選択した色は即座に適用され、<code>configs/custom_color_map.json</code> に保存される
+ので、再起動後も維持される。</p>
+<p>デフォルトの配色に戻すには、RABET を閉じてから <code>custom_color_map.json</code>
+を削除すればよい。</p>
+<h3 id="44">4.4 グリッドと軸範囲<a class="headerlink" href="#44" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>垂直グリッド／水平グリッド</strong> — 個別にトグル</li>
+<li><strong>グリッド色</strong> — グリッド色スウォッチをクリックして変更</li>
+<li><strong>Max range</strong> — 横軸の最大値（秒）を指定する。5 分セッションと
+  10 分セッションを並べて比較するとき、短い方が伸びてしまうのを防げる。</li>
+</ul>
+<h3 id="45">4.5 プロットを書き出す<a class="headerlink" href="#45" title="Permanent link">&para;</a></h3>
+<p><strong>Export</strong> で現在の表示を <strong>PNG</strong>／<strong>SVG</strong>／<strong>PDF</strong> で保存する。
+拡張子から自動判別される。拡張子を省いた場合は、ダイアログのフィルタ
+で選んだ形式が適用される。</p>
+<hr />
+<h2 id="5">5. 評価者間／評価者内の信頼性を評価する<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<p><strong>Reliability</strong> ビューは RABET 自身の出力から一致度メトリクスを計算する。
+2 つのモードがあり、ビュー上部のモードバーから切り替える。</p>
+<h3 id="51-reliability">5.1 Reliability タブの役割<a class="headerlink" href="#51-reliability" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>評価者間信頼性</strong> — 2 人の評価者が同じ動画をコーディングし、両者の
+  数値がどれくらい一致しているかを知りたい場合に使う。</li>
+<li><strong>評価者内信頼性</strong> — 1 人の評価者が同じ動画を時間を空けて 2 回コーディング
+  し、自分自身の一貫性を確かめたい場合に使う。</li>
+</ul>
+<p>同じ Reliability タブで両方を扱える。RABET は 2 つの CSV が同じ評価者
+か違う評価者かを区別しない。</p>
+<h3 id="52-summary">5.2 Summary モード<a class="headerlink" href="#52-summary" title="Permanent link">&para;</a></h3>
+<p><strong>必要な入力。</strong> Analysis ビューから書き出した <code>summary_table.csv</code> を
+2 ファイル（評価者ごと、またはラウンドごとに 1 つずつ）。各行が 1 個体に
+対応し、<code>animal_id</code> で識別される。</p>
+<p><strong>手順。</strong></p>
+<ol>
+<li><strong>Reliability</strong> ビューに切り替える（<code>View → Reliability</code>）。</li>
+<li><strong>Summary mode</strong> を選ぶ。</li>
+<li><strong>Load Summary CSV A</strong> で 1 つ目のファイルを読み込む。</li>
+<li><strong>Load Summary CSV B</strong> で 2 つ目のファイルを読み込む。</li>
+<li>RABET は <code>animal_id</code> で 2 ファイルの動物を突き合わせ、<strong>メトリクス単位</strong>
+   で次を計算する。</li>
+<li><strong>ICC(2,1)</strong> — Two-way random, 単一測定の級内相関係数</li>
+<li><strong>Pearson r</strong> — 線形相関係数</li>
+<li><strong>平均絶対差</strong> — 突合した動物に対する <code>|A − B|</code> の平均
+   メトリクスごとの散布図も自動で描画される。</li>
+</ol>
+<p><strong>出力。</strong> 結果テーブルは Cicchetti (1994) のバンドで色分けされる。</p>
+<table>
+<thead>
+<tr>
+<th>ICC</th>
+<th>解釈</th>
+<th>色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≥ 0.75</td>
+<td>優秀</td>
+<td>緑</td>
+</tr>
+<tr>
+<td>0.50 – 0.75</td>
+<td>中〜良</td>
+<td>橙</td>
+</tr>
+<tr>
+<td>&lt; 0.50</td>
+<td>不良</td>
+<td>赤</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Export Results</strong> でテーブルを CSV として保存できる。</p>
+<p>片方のファイルにしか登場しない動物は、テーブル下の <strong>Unmatched animals</strong>
+に列挙される。意図しないファイル間の不一致を見落とさないための表示である。</p>
+<h3 id="53-detailed">5.3 Detailed モード<a class="headerlink" href="#53-detailed" title="Permanent link">&para;</a></h3>
+<p><strong>必要な入力。</strong> <strong>同じ動画</strong> をコーディングした 2 つのアノテーション CSV。
+開始時刻と終了時刻が直接比較できる必要がある。</p>
+<p><strong>手順。</strong></p>
+<ol>
+<li>Reliability ビューで <strong>Detailed mode</strong> を選ぶ。</li>
+<li>アノテーション CSV A と B を読み込む。</li>
+<li><strong>bin width</strong>（時間ビン幅、秒）を設定する。1 秒は瞬間的な行動コーディング
+   でよく使われるデフォルト値である。</li>
+<li>RABET は各アノテーション系列を「時間ビンごとの行動ベクトル」に変換し、
+   両ファイルに現れる <strong>すべての行動</strong> について次を計算する。</li>
+<li><strong>Cohen's κ</strong> — 偶然の一致を補正した一致度</li>
+<li><strong>Krippendorff's α</strong> — 名義尺度として計算したアルファ</li>
+<li><strong>生の一致率</strong> — 両評価者が一致するビンの割合</li>
+<li>ペアワイズ・イベントラスタが行動ごとに 2 段で重ね描きされ、不一致区間
+   が一目でわかる。</li>
+</ol>
+<p>κ は Landis &amp; Koch (1977) のバンドで色分けされる。</p>
+<table>
+<thead>
+<tr>
+<th>κ</th>
+<th>解釈</th>
+<th>色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≥ 0.70</td>
+<td>高い一致</td>
+<td>緑</td>
+</tr>
+<tr>
+<td>0.40 – 0.70</td>
+<td>中程度</td>
+<td>橙</td>
+</tr>
+<tr>
+<td>&lt; 0.40</td>
+<td>不良</td>
+<td>赤</td>
+</tr>
+</tbody>
+</table>
+<p>Krippendorff's α も同じバンドを使う。</p>
+<h3 id="54">5.4 解釈の指針<a class="headerlink" href="#54" title="Permanent link">&para;</a></h3>
+<p>色分けは <strong>スクリーニングの目安</strong> であり、文脈に応じた判断の代替では
+ない。</p>
+<ul>
+<li>Cicchetti の ICC バンド（不良／中／良／優秀の閾値 0.4 / 0.59 / 0.74）は
+  臨床測定の文脈で提案されたものである。行動科学の慣例はおおむね近いが
+  分野ごとに揺れがある。</li>
+<li>Landis &amp; Koch の κ バンドは広く引用されるが <strong>目安</strong> として提案された
+  ものに過ぎない。密で変化の早い行動では、優秀な評価者でも 0.4–0.6 に
+  落ち着くことがよくある。</li>
+</ul>
+<p>期待より低い一致が出たときは、<strong>Detailed モードのラスタオーバーレイ</strong>
+で原因を素早く特定できる。多くは、一方の評価者が常に 1–2 秒遅れて
+開始しているといった一定のオフセット、または一方が細分化している
+カテゴリの混同である。</p>
+<h3 id="55-r">5.5 R での再現性チェック<a class="headerlink" href="#55-r" title="Permanent link">&para;</a></h3>
+<p><code>docs/reliability/compute_agreement.R</code> は Summary モードの統計量
+（<code>ICC(2,1)</code> は <code>psych::ICC</code>、Pearson r は <code>cor</code>、平均絶対差）を再現する
+独立した R スクリプトである。サニティチェックや、RABET の一致度値を R の
+解析パイプラインへ組み込む用途に使える。</p>
+<div class="language-r highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nf">source</span><span class="p">(</span><span class="s">&quot;docs/reliability/compute_agreement.R&quot;</span><span class="p">)</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nf">compute_agreement</span><span class="p">(</span><span class="s">&quot;rater_a_summary.csv&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;rater_b_summary.csv&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<hr />
+<h2 id="6">6. プロジェクトモード<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<p>RABET の <strong>プロジェクト</strong> は、関連するアセットをひとまとめにする
+ディレクトリ + 小さなマニフェストファイルの組み合わせである。</p>
+<ul>
+<li>スコアリング対象の <strong>動画</strong></li>
+<li>スコアリング結果の <strong>アノテーション CSV</strong></li>
+<li>スコアリングに用いた <strong>アクションマップ</strong></li>
+<li>保存した <strong>解析結果</strong>（サマリーテーブル、インターバルテーブル等）</li>
+</ul>
+<p>実験に多数の動画があり、進捗を 1 か所で把握したいときに便利である。</p>
+<h3 id="61">6.1 新規プロジェクトの作成<a class="headerlink" href="#61" title="Permanent link">&para;</a></h3>
+<ol>
+<li><code>View → Project</code> で Project モードに切り替える。</li>
+<li><strong>New Project</strong> をクリックする。</li>
+<li>親ディレクトリ、プロジェクト名、（任意の）説明文を入力する。</li>
+</ol>
+<p>RABET はプロジェクト用サブディレクトリと空のマニフェストファイルを作成
+する。Project ビューには（まだ空の）ツリーが表示される。</p>
+<h3 id="62">6.2 ファイルを追加する<a class="headerlink" href="#62" title="Permanent link">&para;</a></h3>
+<p><strong>Add Video</strong>、<strong>Add Annotation</strong>、<strong>Add Action Map</strong>、<strong>Add Analysis</strong>
+の各ボタンでファイルピッカーが開く。</p>
+<ul>
+<li>確認ダイアログで <strong>プロジェクトディレクトリにコピー</strong> するか
+  （再現性が高くなり、プロジェクトが自己完結する）、<strong>参照のみ</strong>
+  （ファイルは元の場所に残す）を選べる。</li>
+<li>何度でも追加できる。マニフェストは追加のたびに自動保存される。</li>
+</ul>
+<h3 id="63">6.3 プロジェクト内からアノテーションを付ける<a class="headerlink" href="#63" title="Permanent link">&para;</a></h3>
+<p>ツリー内の動画を選んで <strong>Annotate</strong> をクリックする。RABET は次を行う。</p>
+<ol>
+<li>Annotation ビューに切り替え</li>
+<li>選んだ動画を読み込み</li>
+<li>アノテーションをプロジェクトディレクトリ内のファイルに保存</li>
+</ol>
+<p>セッションが終わると Project ビューへ自動で戻り、新しいアノテーションが
+ツリーに表示される。</p>
+<p>アノテーションのファイル名は人間が読める形式（例:
+<code>rat-01_2026-05-21_001.csv</code>）になっている。</p>
+<h3 id="64">6.4 プロジェクトの保存と再オープン<a class="headerlink" href="#64" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>保存</strong> は暗黙的に行われる。Add / Remove / Annotate のたびに
+  マニフェストが書き直される。</li>
+<li><strong>Open Project</strong> でプロジェクトディレクトリを指定する。</li>
+<li><strong>Close Project</strong> はメモリ上のプロジェクト状態をクリアし、Project
+  ビューを開始画面に戻す。</li>
+</ul>
+<p>プロジェクトを開いた状態で、そのプロジェクトのアノテーションパスと
+衝突するような動画を別途読み込もうとすると、RABET は警告を出して
+プロジェクトのアノテーションパスが無断で再利用されることを防ぐ。</p>
+<hr />
+<h2 id="7">7. キーボードショートカット一覧<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<p><strong>Help → Show Shortcuts</strong>（<code>F1</code>）で現在のショートカットダイアログを
+開くと、組み込みショートカットと現在の行動キーマップが表示される。
+参考として、<strong>組み込み</strong> のショートカットは次の通りである。</p>
+<table>
+<thead>
+<tr>
+<th>ショートカット</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Space</code></td>
+<td>動画の再生／一時停止を切替</td>
+</tr>
+<tr>
+<td><code>→</code></td>
+<td>設定したステップ幅だけ前進</td>
+</tr>
+<tr>
+<td><code>←</code></td>
+<td>設定したステップ幅だけ後退</td>
+</tr>
+<tr>
+<td><code>Ctrl + Z</code></td>
+<td>直前に記録したアノテーションを取り消し</td>
+</tr>
+<tr>
+<td><code>Delete</code> または <code>Backspace</code></td>
+<td>選択中のタイムラインイベントを削除</td>
+</tr>
+<tr>
+<td><code>F1</code></td>
+<td>ショートカット一覧ダイアログを開く</td>
+</tr>
+<tr>
+<td>（マップされた任意のキー）</td>
+<td>録画中に対応する行動を記録</td>
+</tr>
+</tbody>
+</table>
+<p>行動キーはアクションマップから取得される。マップ自体はアクション
+マップ・パネルで編集できる（§2.2 参照）。</p>
+<hr />
+<h2 id="8">8. 設定ファイルと永続化される設定<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
+<h3 id="81">8.1 ユーザーデータの保存場所<a class="headerlink" href="#81" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>パス</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows</td>
+<td><code>%APPDATA%\RABET\</code></td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>~/Library/Application Support/RABET/</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>~/.config/RABET/</code></td>
+</tr>
+</tbody>
+</table>
+<p>このルートディレクトリ配下に次のファイルが配置される。</p>
+<ul>
+<li><code>configs/default_action_map.json</code> — 組み込みデフォルト（初回起動後は
+  変更されない）</li>
+<li><code>configs/user_action_map.json</code> — 編集中のアクションマップ。起動時に
+  読み込まれるのはこちら</li>
+<li><code>configs/default_metrics.json</code> — 潜時／合計時間メトリクスの設定</li>
+<li><code>configs/custom_color_map.json</code> — 行動別のラスタープロット用色設定</li>
+<li><code>logs/rabet_&lt;日付&gt;.log</code> — 実行ログ</li>
+</ul>
+<h3 id="82-ui">8.2 永続化される UI 設定<a class="headerlink" href="#82-ui" title="Permanent link">&para;</a></h3>
+<p>ウィンドウの位置とサイズ、最後に開いたビュー、テスト時間、ステップ幅、
+再生レート、Preserve on rewind フラグ、インターバル解析の設定、最近開いた
+ファイル一覧、各ファイルダイアログの直近ディレクトリは、起動間で保持
+される。</p>
+<h3 id="83">8.3 デフォルトに戻す<a class="headerlink" href="#83" title="Permanent link">&para;</a></h3>
+<p>手早くリセットしたい場合:</p>
+<ul>
+<li><strong>アクションマップ</strong>: <code>File → Reset Action Map to Default</code></li>
+<li><strong>カスタム色</strong>: <code>configs/custom_color_map.json</code> を削除</li>
+<li><strong>すべて</strong>: RABET を終了し、上記の RABET アプリケーションデータフォルダ
+  全体を削除</li>
+</ul>
+<hr />
+<h2 id="9-csv">9. CSV ファイル形式<a class="headerlink" href="#9-csv" title="Permanent link">&para;</a></h2>
+<p>RABET は 3 種類の CSV を書き出す。</p>
+<ul>
+<li><strong>アノテーション CSV</strong> — Annotation ビューから <code>File → Export
+  Annotations</code> で出力。メタデータ、イベントログ、行動別サマリーの 3 セクション。</li>
+<li><strong>サマリー CSV</strong>（<code>summary_table.csv</code>）— Analysis ビューから出力。
+  1 行 = 1 動物。カスタムメトリクス列を含む。</li>
+<li><strong>インターバルサマリー CSV</strong>（<code>summary_intervals.csv</code>）— Analysis
+  ビューでインターバル解析が有効なときに出力。1 行 = 1 (動物, インターバル) ペア。</li>
+</ul>
+<p>3 種類とも <code>RABET Version</code> メタデータを含み、下流ツールがどのバージョン
+の RABET が書き出したかを判別できる。時刻は秒単位、小数点以下 4 桁、
+文字コードは UTF-8 である。</p>
+<p>完全な仕様と最小限の pandas パーサーは <a href="../CSV_FORMAT/"><code>CSV_FORMAT.md</code></a>
+を参照のこと。</p>
+<hr />
+<h2 id="10">10. トラブルシューティング<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
+<h3 id="vlc-rabet">「VLC では再生できるのに、RABET では開けない」<a class="headerlink" href="#vlc-rabet" title="Permanent link">&para;</a></h3>
+<p>RABET 1.3.2 は次のいずれかを満たすファイルを受け付ける。</p>
+<ol>
+<li>拡張子がホワイトリストに入っている</li>
+<li>ファイルの先頭バイトが既知の動画コンテナと一致する
+   （<code>filetype</code> ライブラリで判定）</li>
+<li>PyAV が試験的なオープンに成功する</li>
+</ol>
+<p>3 段階すべてに失敗した場合のみエラーを出す。最後の手段として
+FFmpeg で変換してみるとよい。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ffmpeg<span class="w"> </span>-i<span class="w"> </span>input.unknown<span class="w"> </span>-c<span class="w"> </span>copy<span class="w"> </span>output.mp4
+</span></code></pre></div>
+<h3 id="reliability-none">「Reliability タブの数値が空白／None になる」<a class="headerlink" href="#reliability-none" title="Permanent link">&para;</a></h3>
+<p>Reliability タブは <code>pingouin</code>、<code>scipy</code>、<code>statsmodels</code>、<code>krippendorff</code> に
+依存する。配布版バイナリにはこれらが同梱されている。ソースから動かす
+場合は次でインストールする。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>pip<span class="w"> </span>install<span class="w"> </span>pingouin<span class="w"> </span>krippendorff
+</span></code></pre></div>
+<p><code>logs/rabet_&lt;日付&gt;.log</code> にこれらに関する <code>ImportError</code> が出ている場合は
+配布版から欠落している可能性があるので、ログを添付してイシューを
+作成してほしい。</p>
+<h3 id="_2">「巻き戻したらイベントが消えた」<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>デフォルトでは、再生ヘッドが「まだ押されている最中」のイベントの開始
+位置を逆方向に超えると、その途中イベントは破棄される。Recording
+controls パネルの <strong>Preserve on rewind</strong> にチェックを入れると保持
+されるようになる。</p>
+<h3 id="macos_1">「macOS の初回起動時にフォント警告が出る」<a class="headerlink" href="#macos_1" title="Permanent link">&para;</a></h3>
+<p>macOS では起動時のフォントスキャンで一部のシステムフォントが読み込めない
+旨が表示されることがある。実用上は無害である。matplotlib の他のフォント
+データベースは正常に読み込まれ、RABET のウィジェットは Qt のデフォルト
+フォントを使う。</p>
+<h3 id="_3">ログファイルの場所<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p><code>Log → View Logs</code> でログディレクトリが OS のファイルマネージャで開く。
+最新のファイルは <code>rabet_&lt;本日&gt;.log</code> である。30 日より古いログを一括削除
+したい場合は <code>Log → Clean Up Logs</code> を使う。</p>
+<hr />
+<h2 id="11">11. ヘルプと引用<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<h3 id="_4">ヘルプとバグ報告<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Issues</strong>: https://github.com/mi2e-K/RABET/issues</li>
+<li>問題を報告する際は、アプリケーションのバージョン（<code>Help → About</code>）と
+  該当する <code>logs/</code> のログファイルを添付してほしい。</li>
+</ul>
+<h3 id="rabet_1">RABET の引用<a class="headerlink" href="#rabet_1" title="Permanent link">&para;</a></h3>
+<p>機械可読な引用情報は <a href="../CITATION.cff"><code>CITATION.cff</code></a> に格納されている。
+人間が読む形式では次のように引用する。</p>
+<blockquote>
+<p>Mitsui, K. (2026). <em>RABET — Real-time Animal Behavior Event Tagger</em>
+(Version 1.3.2). https://github.com/mi2e-K/RABET
+doi:<a href="https://doi.org/10.5281/zenodo.15313025">10.5281/zenodo.15313025</a></p>
+</blockquote>
+<p>上の DOI は <strong>コンセプト DOI</strong> で、常に Zenodo 上の最新リリースに解決
+される。各個別リリースにはそれぞれ独自のバージョン固有 DOI も付与
+される。</p>
+<p>RABET を解説する tool paper を準備中である。公開後は、Zenodo のデポジット
+に加えて（もしくは代わりに）論文の引用も併用してほしい。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mi2e-K/RABET" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://doi.org/10.5281/zenodo.15313025" target="_blank" rel="noopener" title="Zenodo (concept DOI)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.827 11.163a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-1.207.365 2.3 2.3 0 0 0-.495.454c-.06.075-.125.175-.163.236a2.7 2.7 0 0 0-.205.464c.006-.27.046-.672.205-.898V8.522a.43.43 0 0 0-.137-.322.44.44 0 0 0-.317-.132.44.44 0 0 0-.323.132.44.44 0 0 0-.13.322v1.733a2.4 2.4 0 0 0-.592-.299 2.12 2.12 0 0 0-1.5.06 2.16 2.16 0 0 0-1.153 1.147l-.024.06a2.2 2.2 0 0 0-.49-.747 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-.843.167 2.2 2.2 0 0 0-.687.46 2.1 2.1 0 0 0-.465.687l-.023.056-.023-.056a2.155 2.155 0 0 0-1.99-1.314q-.452 0-.842.167a2.2 2.2 0 0 0-.686.46q-.3.293-.467.687l-.02.053-.022-.053a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.523-.627 2.1 2.1 0 0 0-.842.167 2.2 2.2 0 0 0-.642.418v-.072a.463.463 0 0 0-.462-.463H.534a.463.463 0 0 0 0 .926h2.549L.09 14.85a.46.46 0 0 0-.091.275v.302c0 .256.207.463.463.463h3.45a.46.46 0 0 0 .462-.43 2.17 2.17 0 0 0 1.347.472q.669 0 1.195-.36.425-.287.67-.72v.626q0 .191.13.322a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .138-.322v-1.62h-.002l.002-.003H7.36a.44.44 0 0 0-.418.287l-.074.152a1.23 1.23 0 0 1-.46.532 1.23 1.23 0 0 1-.687.197q-.252 0-.485-.095a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477v-.406h4.028V12a1.24 1.24 0 0 1 .365-.878 1.24 1.24 0 0 1 .89-.365q.251 0 .484.095.233.097.4.27t.269.4.102.478v3.477q0 .192.13.323a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .137-.323v-.623a2.14 2.14 0 0 0 1.867 1.078q.442 0 .837-.168.393-.166.693-.46a2.1 2.1 0 0 0 .484-.733l.018.047q.167.392.466.687.3.292.687.46.388.166.843.167a2.15 2.15 0 0 0 1.523-.627q.293-.294.467-.687l.024-.06.024.06q.172.392.466.687a2.14 2.14 0 0 0 1.524.627q.442 0 .837-.168a2.2 2.2 0 0 0 .693-.46A2.12 2.12 0 0 0 24 13.782V12a2.1 2.1 0 0 0-.173-.837M1.16 14.965l2.42-3.259q-.019.144-.02.294v1.78q0 .443.174.838.081.185.19.347zm5.818-2.5h-2.51V12a1.24 1.24 0 0 1 .765-1.147q.228-.096.49-.096.253 0 .484.095.235.097.4.27.167.173.27.4.101.227.1.478zm8.057 1.316a1.25 1.25 0 0 1-1.254 1.243q-.252 0-.485-.096a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.269-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .482.095.235.097.4.27.167.173.27.4.1.228.101.478zm4.028 0q0 .25-.1.478a1.4 1.4 0 0 1-.27.4 1.2 1.2 0 0 1-.4.27 1.3 1.3 0 0 1-.484.094 1.23 1.23 0 0 1-.89-.364 1.24 1.24 0 0 1-.366-.878V12q0-.25.102-.478a1.4 1.4 0 0 1 .27-.4 1.2 1.2 0 0 1 .4-.27 1.3 1.3 0 0 1 .484-.095 1.25 1.25 0 0 1 .89.365 1.25 1.25 0 0 1 .364.878zm4.028 0a1.22 1.22 0 0 1-.364.878q-.175.173-.4.27a1.3 1.3 0 0 1-.49.094 1.3 1.3 0 0 1-.485-.095 1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .483.095.234.097.4.27.167.173.27.4.1.228.1.478v1.78z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.tooltips"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

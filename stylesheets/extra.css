@@ -1,0 +1,117 @@
+/* RABET brand customisations on top of MkDocs Material.
+   Keep this file lean — Material exposes most knobs through CSS
+   custom properties, so we only override the few that matter for
+   the landing page. */
+
+/* ---------- Hero block ---------- */
+
+.rabet-hero {
+  padding: 3rem 1rem 2.5rem;
+  text-align: center;
+  background:
+    radial-gradient(
+      ellipse at top,
+      rgba(255, 87, 34, 0.10) 0%,
+      transparent 65%
+    );
+}
+
+.rabet-hero h1 {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.25rem;
+  background: linear-gradient(90deg, #ff5722 0%, #ff9800 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.rabet-hero h3 {
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: var(--md-default-fg-color--light);
+  margin: 0 0 1.5rem;
+}
+
+.rabet-hero p {
+  max-width: 38rem;
+  margin: 0 auto 1.5rem;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.rabet-hero .md-button {
+  margin: 0.35rem 0.25rem;
+}
+
+/* ---------- Feature grid cards ---------- */
+
+.md-typeset .grid.cards > :is(ul, ol) > li,
+.md-typeset .grid > .card {
+  border-radius: 0.8rem;
+  border-color: var(--md-default-fg-color--lightest);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.md-typeset .grid.cards > :is(ul, ol) > li:hover,
+.md-typeset .grid > .card:hover {
+  transform: translateY(-2px);
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Card icons — punch up the colour so the grid reads at a glance. */
+.md-typeset .grid.cards .twemoji,
+.md-typeset .grid.cards .md-icon {
+  color: var(--md-primary-fg-color);
+}
+
+/* ---------- Screenshot inside the landing page ---------- */
+
+.md-typeset img[alt="RABET Annotation view"],
+.md-typeset img[alt="RABET Annotation ビュー"] {
+  border-radius: 0.6rem;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 12px 32px rgba(0, 0, 0, 0.12);
+  margin: 1rem auto;
+}
+
+/* ---------- Code blocks ---------- */
+
+.md-typeset pre > code {
+  border-radius: 0.5rem;
+}
+
+/* ---------- Buttons ---------- */
+
+.md-typeset .md-button {
+  border-radius: 999px;
+  padding: 0.55rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-width: 1.5px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.md-typeset .md-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+}
+
+/* ---------- Dark-mode tweaks ---------- */
+
+[data-md-color-scheme="slate"] .rabet-hero {
+  background:
+    radial-gradient(
+      ellipse at top,
+      rgba(255, 152, 0, 0.12) 0%,
+      transparent 65%
+    );
+}
+
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > :is(ul, ol) > li {
+  background: rgba(255, 255, 255, 0.02);
+}
