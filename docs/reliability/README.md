@@ -45,8 +45,17 @@ working directory if no third argument is given).
 
 ## Definitions
 
-ICC(2,1) here is **pingouin's `ICC2`** = `psych::ICC` row labelled
-**`ICC2`** = "two-way mixed, absolute agreement, single rater".
+ICC(2,1) here refers to **Pingouin's `ICC2`** output, corresponding to
+the `ICC2` row returned by `psych::ICC`: a single-rater, absolute-agreement
+ICC.
+
+Terminology differs across ICC conventions and software packages. In the
+Shrout and Fleiss / Pingouin convention, `ICC2` treats raters as random
+and `ICC3` treats raters as fixed. Some McGraw and Wong-style labels can
+map the same numerical form to two-way random or two-way mixed
+absolute-agreement interpretations. Therefore, RABET reports the software
+label (`ICC2`) and the form ICC(2,1), and users should interpret the
+fixed/random rater assumption according to their study design.
 
 Pearson r is the standard product-moment correlation across the matched
 animals.
