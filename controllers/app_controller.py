@@ -115,7 +115,10 @@ class AppController(QObject):
         
         # Initialize visualization controller
         # CRITICAL FIX: Completely decouple visualization from analysis model
-        self.visualization_controller = VisualizationController(self.visualization_view)
+        self.visualization_controller = VisualizationController(
+            self.visualization_view,
+            config_manager=self.config_manager,
+        )
 
         # 1.3.2: Reliability controller. The second positional argument is
         # a QObject parent (this AppController), which Qt uses for normal

@@ -20,7 +20,8 @@ from PySide6.QtWidgets import (
     QGridLayout, QGroupBox, QCheckBox, QColorDialog,
     QListWidget, QListWidgetItem, QMessageBox, QSplitter,
     QSizePolicy, QSpinBox, QStyledItemDelegate, QStyle,
-    QStyleOptionViewItem
+    QStyleOptionViewItem, QDialog, QDialogButtonBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
 )
 from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer, QPoint, QRect, QEvent
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
@@ -249,6 +250,214 @@ class BehaviorItemDelegate(QStyledItemDelegate):
         return True
 
 
+class ColorMapEditorDialog(QDialog):
+    """Dialog for editing and saving Visualization custom color maps."""
+
+    def __init__(
+        self,
+        current_name,
+        color_map,
+        available_names,
+        can_overwrite,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Color Map")
+        self.resize(520, 420)
+        self._current_name = current_name or "custom_color_map"
+        self._available_names = set(available_names or [])
+        self._result_name = ""
+        self._result_map = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        save_row = QHBoxLayout()
+        save_row.addWidget(QLabel("Save:"))
+        self.save_mode_combo = QComboBox()
+        if can_overwrite:
+            self.save_mode_combo.addItem("Overwrite current", "overwrite")
+        self.save_mode_combo.addItem("Save as new", "new")
+        self.save_mode_combo.currentIndexChanged.connect(self._on_save_mode_changed)
+        save_row.addWidget(self.save_mode_combo)
+
+        save_row.addWidget(QLabel("Name:"))
+        self.name_edit = QLineEdit(self._default_name(can_overwrite))
+        save_row.addWidget(self.name_edit, 1)
+        layout.addLayout(save_row)
+
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["Behavior", "Color"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        layout.addWidget(self.table, 1)
+
+        for behavior, color in sorted((color_map or {}).items()):
+            self._add_row(behavior, color)
+
+        button_row = QHBoxLayout()
+        add_button = QPushButton("Add Row")
+        add_button.clicked.connect(lambda: self._add_row("", "#808080"))
+        remove_button = QPushButton("Remove Selected")
+        remove_button.clicked.connect(self._remove_selected_rows)
+        pick_button = QPushButton("Pick Color")
+        pick_button.clicked.connect(self._pick_selected_color)
+        button_row.addWidget(add_button)
+        button_row.addWidget(remove_button)
+        button_row.addWidget(pick_button)
+        button_row.addStretch()
+        layout.addLayout(button_row)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+        self._on_save_mode_changed()
+
+    def _default_name(self, can_overwrite):
+        if can_overwrite:
+            return self._current_name
+        return self._default_new_name()
+
+    def _on_save_mode_changed(self):
+        mode = self.save_mode_combo.currentData()
+        is_new = mode == "new"
+        self.name_edit.setEnabled(is_new)
+        if not is_new:
+            self.name_edit.setText(self._current_name)
+        elif self.name_edit.text().strip() == self._current_name:
+            self.name_edit.setText(self._default_new_name())
+
+    def _default_new_name(self):
+        base = self._current_name or "color_map"
+        candidate = f"{base}_copy"
+        index = 2
+        while self._normalise_name(candidate) in self._available_names:
+            candidate = f"{base}_copy_{index}"
+            index += 1
+        return candidate
+
+    def _add_row(self, behavior, color):
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        behavior_item = QTableWidgetItem(str(behavior))
+        color_item = QTableWidgetItem(self._normalise_color(color) or "#808080")
+        self.table.setItem(row, 0, behavior_item)
+        self.table.setItem(row, 1, color_item)
+        self._style_color_item(color_item)
+
+    def _remove_selected_rows(self):
+        selected_rows = sorted(
+            {index.row() for index in self.table.selectedIndexes()},
+            reverse=True,
+        )
+        for row in selected_rows:
+            self.table.removeRow(row)
+
+    def _on_cell_double_clicked(self, row, column):
+        if column == 1:
+            self._pick_color_for_row(row)
+
+    def _pick_selected_color(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self._pick_color_for_row(row)
+
+    def _pick_color_for_row(self, row):
+        item = self.table.item(row, 1)
+        current = item.text() if item else "#808080"
+        color = QColorDialog.getColor(QColor(current), self, "Select Behavior Color")
+        if not color.isValid():
+            return
+        if item is None:
+            item = QTableWidgetItem()
+            self.table.setItem(row, 1, item)
+        item.setText(color.name().upper())
+        self._style_color_item(item)
+
+    def _style_color_item(self, item):
+        color_text = self._normalise_color(item.text())
+        if not color_text:
+            return
+        color = QColor(color_text)
+        item.setText(color_text)
+        item.setBackground(QBrush(color))
+        luminance = (
+            0.2126 * (color.red() / 255) ** 2.2
+            + 0.7152 * (color.green() / 255) ** 2.2
+            + 0.0722 * (color.blue() / 255) ** 2.2
+        )
+        item.setForeground(QBrush(QColor("#000000" if luminance > 0.35 else "#FFFFFF")))
+
+    def _normalise_color(self, value):
+        color = QColor(str(value).strip())
+        if not color.isValid():
+            return ""
+        return color.name().upper()
+
+    def _normalise_name(self, value):
+        name = os.path.splitext(str(value).strip())[0]
+        name = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+        name = name.strip("._-")
+        if not name:
+            return ""
+        if not name.startswith("custom_"):
+            name = f"custom_{name}"
+        return name
+
+    def _collect_mapping(self):
+        mapping = {}
+        for row in range(self.table.rowCount()):
+            behavior_item = self.table.item(row, 0)
+            color_item = self.table.item(row, 1)
+            behavior = behavior_item.text().strip() if behavior_item else ""
+            color = self._normalise_color(color_item.text() if color_item else "")
+            if not behavior:
+                raise ValueError("Behavior names cannot be empty.")
+            if behavior in mapping:
+                raise ValueError(f"Duplicate behavior: {behavior}")
+            if not color:
+                raise ValueError(f"Invalid color for {behavior}. Use #RRGGBB.")
+            mapping[behavior] = color
+        if not mapping:
+            raise ValueError("Color map must contain at least one behavior.")
+        return mapping
+
+    def accept(self):
+        mode = self.save_mode_combo.currentData()
+        raw_name = self.name_edit.text().strip()
+        normalised_name = self._normalise_name(raw_name)
+        if not normalised_name:
+            QMessageBox.warning(self, "Invalid Name", "Enter a color map name.")
+            return
+        if mode == "new" and normalised_name in self._available_names:
+            QMessageBox.warning(
+                self,
+                "Name Exists",
+                "A color map with this name already exists. Choose a new name or overwrite it.",
+            )
+            return
+        try:
+            mapping = self._collect_mapping()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid Color Map", str(exc))
+            return
+
+        self._result_name = normalised_name
+        self._result_map = mapping
+        super().accept()
+
+    def result(self):
+        return self._result_name, self._result_map.copy()
+
+
 # Custom reorderable list widget
 class ReorderableListWidget(QListWidget):
     """List widget that supports drag and drop reordering."""
@@ -301,12 +510,14 @@ class RasterPlotWidget(QWidget):
     """Widget for displaying raster plots of behavioral events."""
 
     files_selected = Signal(list)
+    selected_colormap_changed = Signal(str)
     # 1.3.3+: emitted from the Clear button so the controller can drop
     # its own cache. Without this, clicking Clear only wipes the in-view
     # state and a subsequent re-drop of the same files restored the
     # previous data straight out of the controller's _visualization_data
     # cache.
     clear_data_requested = Signal()
+    custom_colormap_save_requested = Signal(str, dict)
     
     # Default custom color mapping for common behaviors
     DEFAULT_COLOR_MAP = {
@@ -523,6 +734,11 @@ class RasterPlotWidget(QWidget):
         self.load_action_map_button.setMaximumWidth(150)
         self.load_action_map_button.setMaximumHeight(30)
 
+        self.edit_colormap_button = QPushButton("Edit Color Map")
+        self.edit_colormap_button.clicked.connect(self.edit_current_colormap)
+        self.edit_colormap_button.setMaximumWidth(140)
+        self.edit_colormap_button.setMaximumHeight(30)
+
         self.clear_action_map_button = QPushButton("Use Data Behaviors")
         self.clear_action_map_button.clicked.connect(self.clear_action_map_behavior_source)
         self.clear_action_map_button.setMaximumWidth(160)
@@ -554,6 +770,7 @@ class RasterPlotWidget(QWidget):
         
         button_layout.addWidget(self.load_button)
         button_layout.addWidget(self.load_action_map_button)
+        button_layout.addWidget(self.edit_colormap_button)
         button_layout.addWidget(self.clear_action_map_button)
         button_layout.addWidget(self.action_map_status_label)
         button_layout.addSpacing(15)
@@ -911,6 +1128,43 @@ class RasterPlotWidget(QWidget):
         item.setBackground(QBrush(QColor(*color_rgb)))
         item.setForeground(QBrush(QColor(*text_rgb)))
 
+    def _rgb_to_hex(self, color_rgb):
+        """Convert an RGB tuple to #RRGGBB."""
+        red, green, blue = color_rgb[:3]
+        return f"#{int(red):02X}{int(green):02X}{int(blue):02X}"
+
+    def _current_color_map_for_editor(self):
+        """Return the current effective behavior colors as a saveable map."""
+        list_behaviors = [
+            self.behavior_list.item(row).text()
+            for row in range(self.behavior_list.count())
+        ]
+        if self._custom_color_map:
+            behaviors = list(self._custom_color_map.keys())
+            for behavior in list_behaviors:
+                if behavior not in self._custom_color_map:
+                    behaviors.append(behavior)
+        elif list_behaviors:
+            behaviors = list_behaviors
+        else:
+            behaviors = list(self.DEFAULT_COLOR_MAP.keys())
+
+        if behaviors:
+            self._generate_behavior_colors(behaviors)
+
+        color_map = {}
+        for behavior in behaviors:
+            if behavior in self._custom_color_map:
+                color_map[behavior] = QColor(self._custom_color_map[behavior]).name().upper()
+            elif behavior in self._behavior_colors:
+                color_map[behavior] = self._rgb_to_hex(self._behavior_colors[behavior])
+            elif behavior in self.DEFAULT_COLOR_MAP:
+                color_map[behavior] = QColor(self.DEFAULT_COLOR_MAP[behavior]).name().upper()
+
+        if not color_map:
+            return self.DEFAULT_COLOR_MAP.copy()
+        return color_map
+
     def _apply_grid(self, ax):
         """Apply grid settings to a Matplotlib axes."""
         ax.grid(False, axis='both')
@@ -1010,6 +1264,7 @@ class RasterPlotWidget(QWidget):
         # Update behavior list and plot
         self.update_behavior_list()
         self.update_plot()
+        self.selected_colormap_changed.emit(colormap_name)
     
     def on_time_unit_changed(self, unit):
         """Handle time unit change."""
@@ -1145,7 +1400,32 @@ class RasterPlotWidget(QWidget):
             self._grid_color = color.name()
             self._update_grid_color_button()
             self.update_plot()
-    
+
+    def edit_current_colormap(self):
+        """Open the custom color-map editor and request a save."""
+        current_name = self.colormap_combo.currentText()
+        can_overwrite = current_name in self._available_custom_colormaps
+        editor_map = self._current_color_map_for_editor()
+        dialog = ColorMapEditorDialog(
+            current_name if can_overwrite else "color_map",
+            editor_map,
+            self._available_custom_colormaps.keys(),
+            can_overwrite,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        colormap_name, color_map = dialog.result()
+        if not colormap_name or not color_map:
+            return
+
+        self._custom_color_map = color_map.copy()
+        self._behavior_colors = {}
+        self.custom_colormap_save_requested.emit(colormap_name, color_map)
+        self.update_behavior_list()
+        self.update_plot()
+
     def on_behavior_selection_changed(self, item):
         """Handle behavior checkbox state change."""
         behavior = item.text()
@@ -1399,7 +1679,15 @@ class RasterPlotWidget(QWidget):
             self.colormap_combo.blockSignals(was_blocked)
 
         self.logger.info(f"Successfully added {len(custom_colormaps)} custom colormaps to dropdown")
-    
+
+    def select_custom_colormap(self, colormap_name):
+        """Select a custom color map by dropdown name."""
+        index = self.colormap_combo.findText(colormap_name)
+        if index >= 0:
+            self.colormap_combo.setCurrentIndex(index)
+            return True
+        return False
+
     def clear_data(self):
         """Clear all loaded data and reset the plot."""
         # Clear data
@@ -2259,6 +2547,9 @@ class VisualizationView(QWidget):
     """
     
     files_dropped = Signal(list)
+    clear_data_requested = Signal()
+    custom_colormap_save_requested = Signal(str, dict)
+    selected_colormap_changed = Signal(str)
     
     def __init__(self):
         super().__init__()
@@ -2287,6 +2578,13 @@ class VisualizationView(QWidget):
         # Add raster plot widget
         self.raster_plot = RasterPlotWidget()
         self.raster_plot.files_selected.connect(self._on_files_selected)
+        self.raster_plot.clear_data_requested.connect(self.clear_data_requested.emit)
+        self.raster_plot.custom_colormap_save_requested.connect(
+            self.custom_colormap_save_requested.emit
+        )
+        self.raster_plot.selected_colormap_changed.connect(
+            self.selected_colormap_changed.emit
+        )
         self.layout.addWidget(self.raster_plot, 10)
 
     def set_data(self, data_dict):
@@ -2304,6 +2602,10 @@ class VisualizationView(QWidget):
     def add_custom_colormaps_to_dropdown(self, colormap_dict):
         """Add custom color maps to the main colormap dropdown."""
         self.raster_plot.add_custom_colormaps_to_dropdown(colormap_dict)
+
+    def select_custom_colormap(self, colormap_name):
+        """Select a custom color map by dropdown name."""
+        return self.raster_plot.select_custom_colormap(colormap_name)
     
     def dragEnterEvent(self, event):
         """Handle drag enter events."""
@@ -2312,10 +2614,25 @@ class VisualizationView(QWidget):
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
                 if not file_path.lower().endswith('.csv'):
+                    event.ignore()
                     return
-            
+
             event.acceptProposedAction()
             self.logger.debug("Drag enter event accepted for CSV files")
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Keep CSV drags accepted throughout the Visualization view."""
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                file_path = url.toLocalFile()
+                if not file_path.lower().endswith('.csv'):
+                    event.ignore()
+                    return
+            event.acceptProposedAction()
+            return
+        event.ignore()
     
     def dropEvent(self, event):
         """Handle drop events."""
@@ -2336,6 +2653,7 @@ class VisualizationView(QWidget):
         
         if not is_current:
             self.logger.warning("Drop event ignored - visualization view is not the current view")
+            event.ignore()
             return
         
         # Get file paths from URLs
@@ -2347,6 +2665,9 @@ class VisualizationView(QWidget):
         if file_paths:
             self.logger.info(f"Received dropped files in visualization view: {file_paths}")
             self.files_dropped.emit(file_paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
     
     def showEvent(self, event):
         """Handle show event for the visualization view."""

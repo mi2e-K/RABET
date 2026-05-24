@@ -53,6 +53,11 @@ class ConfigManager:
             "interval_enabled": False,
             "interval_seconds": 60,
         },
+        "visualization": {
+            # Last selected raster colour map. Custom colour maps are stored
+            # by dropdown name, e.g. "custom_my_palette".
+            "last_colormap": "Set1",
+        },
         "ui": {
             "theme": "system",
             "font_size": 12,

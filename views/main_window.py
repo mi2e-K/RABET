@@ -1252,6 +1252,21 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Failed to add view {name}: {str(e)}")
             return False
+
+    def _current_view_name(self):
+        """Return the name of the currently visible top-level view."""
+        current_index = self.stacked_widget.currentIndex()
+        for name, index in self._view_index.items():
+            if index == current_index:
+                return name
+        return ""
+
+    def _view_by_name(self, name):
+        """Return a top-level view widget by registered name."""
+        index = self._view_index.get(name)
+        if index is None:
+            return None
+        return self.stacked_widget.widget(index)
     
     # ------------------------------------------------------------------ #
     # Recent Files menus
@@ -1628,9 +1643,17 @@ class MainWindow(QMainWindow):
 
         # CSV drops are delivered to the analysis view's existing handler so
         # behaviour stays consistent with dropping them directly on that pane.
+        # If Visualization is already visible, keep the drop in Visualization.
+        # This covers edge drops around the Visualization drop label where Qt
+        # can let the global MainWindow fallback see the event first.
         if csvs:
-            self.switch_to_view("Analysis")
-            if hasattr(self, "analysis_view"):
+            if self._current_view_name() == "Visualization":
+                self.switch_to_view("Visualization")
+                visualization_view = self._view_by_name("Visualization")
+                if visualization_view is not None:
+                    visualization_view.files_dropped.emit(csvs)
+            elif hasattr(self, "analysis_view"):
+                self.switch_to_view("Analysis")
                 self.analysis_view.files_dropped.emit(csvs)
 
     def showEvent(self, event):

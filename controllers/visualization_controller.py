@@ -12,18 +12,19 @@ class VisualizationController(QObject):
     Completely independent from the analysis model/controller.
     """
     
-    def __init__(self, visualization_view, config_path_manager=None):
+    def __init__(self, visualization_view, config_path_manager=None, config_manager=None):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing VisualizationController")
-        
+
         # Store references
         self._view = visualization_view
         self._config_path_manager = config_path_manager
-        
+        self._config_manager = config_manager
+
         # Local storage for visualization data
         self._visualization_data = {}
-        
+
         # Custom color map storage
         self._custom_color_map = {}
         self._available_custom_colormaps = {}
@@ -45,6 +46,7 @@ class VisualizationController(QObject):
         
         # Connect signals
         self._connect_signals()
+        self._restore_colormap_selection()
     
     def _initialize_custom_colormaps(self):
         """Initialize custom colormaps from config directory."""
@@ -71,6 +73,32 @@ class VisualizationController(QObject):
                 self._view.clear_data_requested.connect(
                     self.on_clear_data_requested
                 )
+            elif hasattr(self._view, "raster_plot") and hasattr(
+                self._view.raster_plot, "clear_data_requested"
+            ):
+                self._view.raster_plot.clear_data_requested.connect(
+                    self.on_clear_data_requested
+                )
+            if hasattr(self._view, "custom_colormap_save_requested"):
+                self._view.custom_colormap_save_requested.connect(
+                    self.on_custom_colormap_save_requested
+                )
+            elif hasattr(self._view, "raster_plot") and hasattr(
+                self._view.raster_plot, "custom_colormap_save_requested"
+            ):
+                self._view.raster_plot.custom_colormap_save_requested.connect(
+                    self.on_custom_colormap_save_requested
+                )
+            if hasattr(self._view, "selected_colormap_changed"):
+                self._view.selected_colormap_changed.connect(
+                    self.on_selected_colormap_changed
+                )
+            elif hasattr(self._view, "raster_plot") and hasattr(
+                self._view.raster_plot, "selected_colormap_changed"
+            ):
+                self._view.raster_plot.selected_colormap_changed.connect(
+                    self.on_selected_colormap_changed
+                )
 
     @Slot()
     def on_clear_data_requested(self):
@@ -88,6 +116,57 @@ class VisualizationController(QObject):
         self.logger.info(
             f"Cleared {n} cached file(s) from the visualization controller"
         )
+
+    @Slot(str, dict)
+    def on_custom_colormap_save_requested(self, colormap_name, colormap_data):
+        """Persist a user-edited Visualization color map."""
+        saved_name = self.save_custom_colormap(colormap_name, colormap_data)
+        if not saved_name:
+            QMessageBox.critical(
+                self._view,
+                "Color Map Error",
+                "Failed to save the color map.",
+            )
+            return
+
+        if self._view and hasattr(self._view, "select_custom_colormap"):
+            self._view.select_custom_colormap(saved_name)
+        QMessageBox.information(
+            self._view,
+            "Color Map Saved",
+            f"Saved color map: {saved_name}",
+        )
+
+    @Slot(str)
+    def on_selected_colormap_changed(self, colormap_name):
+        """Persist the selected Visualization color map."""
+        if not self._config_manager or not colormap_name:
+            return
+        if self._config_manager.set("visualization", "last_colormap", colormap_name):
+            self._config_manager.save_config()
+
+    def set_config_manager(self, config_manager):
+        """Attach persistent settings and restore the saved colour map."""
+        self._config_manager = config_manager
+        self._restore_colormap_selection()
+
+    def _restore_colormap_selection(self):
+        """Restore the previously selected Visualization color map."""
+        if not self._config_manager or not self._view:
+            return
+
+        saved_colormap = self._config_manager.get("visualization", "last_colormap")
+        if not saved_colormap:
+            saved_colormap = "Set1"
+
+        selected = False
+        if hasattr(self._view, "select_custom_colormap"):
+            selected = bool(self._view.select_custom_colormap(saved_colormap))
+
+        if not selected and saved_colormap != "Set1":
+            if hasattr(self._view, "select_custom_colormap"):
+                self._view.select_custom_colormap("Set1")
+            self.on_selected_colormap_changed("Set1")
     
     def _discover_custom_colormaps(self):
         """
@@ -139,8 +218,9 @@ class VisualizationController(QObject):
             self._available_custom_colormaps = available_colormaps
             self.logger.info(f"Discovered {len(available_colormaps)} custom colormaps")
             
-            # Update view if colormaps were found
-            if available_colormaps and self._view:
+            # Update view even when none are found so the dropdown mirrors
+            # the current config directory exactly after refresh/save.
+            if self._view:
                 self._view.add_custom_colormaps_to_dropdown(available_colormaps)
             
         except Exception as e:
@@ -283,44 +363,59 @@ class VisualizationController(QObject):
         self.logger.info("Refreshing custom colormaps")
         self._discover_custom_colormaps()
     
+    def _normalise_colormap_stem(self, colormap_name):
+        """Return the config-file stem for a user-facing color-map name."""
+        stem = os.path.splitext(str(colormap_name).strip())[0]
+        stem = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in stem)
+        stem = stem.strip("._-")
+        if not stem:
+            stem = "color_map"
+        if not stem.startswith("custom_"):
+            stem = f"custom_{stem}"
+        return stem
+
     def save_custom_colormap(self, colormap_name, colormap_data, file_path=None):
         """
         Save a custom colormap to file.
-        
+
         Args:
             colormap_name (str): Name of the colormap
             colormap_data (dict): Colormap data
             file_path (str, optional): File path to save to
-            
+
         Returns:
-            bool: True if successful
+            str | None: Saved dropdown name if successful
         """
         try:
+            colormap_name = self._normalise_colormap_stem(colormap_name)
+            if not self._validate_colormap_data(colormap_data):
+                self.logger.error("Invalid colormap data requested for save")
+                return None
             if not file_path and self._config_path_manager:
                 config_dir = self._config_path_manager.get_config_directory()
-                file_path = config_dir / f"custom_{colormap_name}.json"
-            
+                file_path = config_dir / f"{colormap_name}.json"
+
             if not file_path:
                 self.logger.error("No file path specified for saving colormap")
-                return False
-            
+                return None
+
             # Ensure directory exists
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            
+
             # Save colormap
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(colormap_data, f, indent=4)
-            
+
             self.logger.info(f"Saved custom colormap to: {file_path}")
-            
+
             # Refresh colormaps
             self._discover_custom_colormaps()
-            
-            return True
-        
+
+            return colormap_name
+
         except Exception as e:
             self.logger.error(f"Error saving custom colormap: {e}")
-            return False
+            return None
     
     def clear_data(self):
         """Clear all visualization data."""
