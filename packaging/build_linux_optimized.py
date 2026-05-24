@@ -249,7 +249,7 @@ Type=Application
 Name={APP_NAME}
 Comment={APP_DESCRIPTION}
 Exec=sh -c 'APP_DIR="$(dirname "$1")"; exec "$APP_DIR/run_rabet.sh"' sh "%k"
-Icon={APP_NAME}
+Icon=resources/RABET.png
 Terminal=false
 Categories=Science;Education;
 StartupWMClass={APP_NAME}
@@ -265,8 +265,9 @@ set -e
 APP_DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 DESKTOP_DIR="${{HOME}}/.local/share/applications"
 ICON_DIR="${{HOME}}/.local/share/icons/hicolor/256x256/apps"
+ICON_PATH="$APP_DIR/resources/RABET.png"
 mkdir -p "$DESKTOP_DIR" "$ICON_DIR"
-cp "$APP_DIR/resources/RABET.png" "$ICON_DIR/{APP_NAME}.png"
+cp "$ICON_PATH" "$ICON_DIR/{APP_NAME}.png"
 cat > "$DESKTOP_DIR/{APP_NAME}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -274,7 +275,7 @@ Name={APP_NAME}
 Comment={APP_DESCRIPTION}
 Exec="$APP_DIR/run_rabet.sh"
 TryExec=$APP_DIR/{APP_NAME}
-Icon={APP_NAME}
+Icon=$ICON_PATH
 Terminal=false
 Categories=Science;Education;
 StartupWMClass={APP_NAME}
