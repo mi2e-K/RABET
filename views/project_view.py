@@ -123,14 +123,12 @@ class ProjectView(QWidget):
         self.annotation_group_layout.addWidget(self.annotation_label)
         
         # Annotate selected video button
-        self.annotate_selected_button = QPushButton("Annotate Selected Video")
-        self.annotate_selected_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.annotate_selected_button = QPushButton("🎬 Annotate Selected Video")
         self.annotate_selected_button.setEnabled(False)  # Disabled until a video is selected
         self.annotation_group_layout.addWidget(self.annotate_selected_button)
         
         # Random video button
-        self.annotate_random_button = QPushButton("Random Unannotated Video")
-        self.annotate_random_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton))
+        self.annotate_random_button = QPushButton("🎲 Random Unannotated Video")
         self.annotation_group_layout.addWidget(self.annotate_random_button)
         
         # Add the group box to the annotation layout
