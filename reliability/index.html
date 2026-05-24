@@ -710,8 +710,16 @@ inside RABET is the authoritative computation in the meantime.</p>
 output CSV (defaults to <code>reliability_summary_R.csv</code> next to the current
 working directory if no third argument is given).</p>
 <h2 id="definitions">Definitions<a class="headerlink" href="#definitions" title="Permanent link">&para;</a></h2>
-<p>ICC(2,1) here is <strong>pingouin's <code>ICC2</code></strong> = <code>psych::ICC</code> row labelled
-<strong><code>ICC2</code></strong> = "two-way mixed, absolute agreement, single rater".</p>
+<p>ICC(2,1) here refers to <strong>Pingouin's <code>ICC2</code></strong> output, corresponding to
+the <code>ICC2</code> row returned by <code>psych::ICC</code>: a single-rater, absolute-agreement
+ICC.</p>
+<p>Terminology differs across ICC conventions and software packages. In the
+Shrout and Fleiss / Pingouin convention, <code>ICC2</code> treats raters as random
+and <code>ICC3</code> treats raters as fixed. Some McGraw and Wong-style labels can
+map the same numerical form to two-way random or two-way mixed
+absolute-agreement interpretations. Therefore, RABET reports the software
+label (<code>ICC2</code>) and the form ICC(2,1), and users should interpret the
+fixed/random rater assumption according to their study design.</p>
 <p>Pearson r is the standard product-moment correlation across the matched
 animals.</p>
 <p>Mean absolute difference is <code>mean(abs(A - B))</code> over animals present in
