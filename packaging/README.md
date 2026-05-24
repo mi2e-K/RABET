@@ -7,8 +7,8 @@ for each supported platform. They are not shipped to end users and are
 | Script | Output |
 | --- | --- |
 | `build_windows_optimized.py` | `dist/RABET/` (folder mode) or `dist/RABET.exe` with `--onefile` |
-| `build_macos_optimized.py` | `dist/RABET.app/` + `dist/RABET-macOS.zip` |
-| `build_linux_optimized.py` | `dist/RABET-linux/` + `dist/RABET-linux-<arch>.tar.gz` |
+| `build_macos_optimized.py` | `dist/RABET.app/` + `dist/RABET-macOS.zip` containing `RABET.app` and `README.txt` |
+| `build_linux_optimized.py` | `dist/RABET-linux/` + `dist/RABET-linux-<arch>.tar.gz` (`--onefile` for release builds) |
 | `build_packaging_common.py` | Shared library imported by the macOS / Linux builders. Not a CLI. |
 
 ## How to run
@@ -22,7 +22,7 @@ but the working directory must still be the repository root.
 # from RABET_1.2.x/ (the project root)
 python packaging/build_windows_optimized.py
 python packaging/build_macos_optimized.py --target-arch arm64
-python packaging/build_linux_optimized.py
+python packaging/build_linux_optimized.py --onefile
 ```
 
 ## Per-platform notes
@@ -52,6 +52,13 @@ Windows archive is built in PyInstaller `--onefile` mode and contains
 `RABET.exe` plus the small runtime folders/files copied alongside it.
 Download it from the GitHub Releases page rather than the Actions artifact
 list; Actions artifacts are zip wrappers around the release zip.
+
+The Linux archive is also built in PyInstaller `--onefile` mode. The tarball
+contains the `RABET` executable, `run_rabet.sh`, `install_desktop_entry.sh`,
+`RABET.desktop`, `configs/`, `resources/`, and `README.txt`; a visible
+`_internal/` folder is not expected in release builds. Linux desktop
+environments do not reliably show a custom icon on the raw executable itself,
+so the desktop launcher is the supported icon-bearing entry point.
 
 The macOS archives are intentionally unsigned and not notarized; end users may
 need to use right-click > Open, or allow the app from macOS Privacy &

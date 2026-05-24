@@ -1,7 +1,6 @@
 # views/main_window.py - Updated with mode switching functions and visualization support
 import logging
 import os
-import sys
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QToolBar, 
     QMessageBox, QSplitter, QApplication, QSizePolicy
@@ -14,6 +13,7 @@ from views.timeline_view import TimelineView
 from views.action_map_view import ActionMapView
 from views.recording_control_view import RecordingControlView
 from views.analysis_view import AnalysisView
+from utils.app_icon import find_app_icon_path
 from utils.video_detection import is_video_file
 
 
@@ -274,27 +274,7 @@ class MainWindow(QMainWindow):
     
     def setup_window_icon(self):
         """Set up the window and taskbar icon."""
-        # Search for the icon in multiple possible locations
-        icon_paths = [
-            os.path.join("resources", "RABET.ico"),
-            os.path.join("resources", "icon.ico"),
-            "RABET.ico",
-            "icon.ico"
-        ]
-        
-        # For packaged app, also check relative to executable
-        if getattr(sys, 'frozen', False):
-            # We're running in a bundle
-            bundle_dir = os.path.dirname(sys.executable)
-            for rel_path in icon_paths.copy():
-                icon_paths.append(os.path.join(bundle_dir, rel_path))
-        
-        # Find the first valid icon path
-        icon_path = None
-        for path in icon_paths:
-            if os.path.exists(path):
-                icon_path = path
-                break
+        icon_path = find_app_icon_path()
         
         if not icon_path:
             self.logger.warning("Window icon not found in any of the expected locations")

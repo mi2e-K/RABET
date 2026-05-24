@@ -33,12 +33,58 @@ from build_packaging_common import (
 # shared objects (``libav*.so``), so the build no longer scans
 # ``/usr/lib*`` for ``libvlc.so``.
 
+LINUX_QT_RUNTIME_PACKAGES = [
+    "libxcb-cursor0",
+    "libxcb-icccm4",
+    "libxcb-image0",
+    "libxcb-keysyms1",
+    "libxcb-render-util0",
+    "libxcb-xkb1",
+    "libxcb-randr0",
+    "libxcb-render0",
+    "libxcb-shape0",
+    "libxcb-shm0",
+    "libxcb-sync1",
+    "libxcb-xfixes0",
+    "libxkbcommon-x11-0",
+    "libxrender1",
+    "libx11-xcb1",
+    "libsm6",
+    "libice6",
+    "libglib2.0-0",
+    "libfontconfig1",
+    "libfreetype6",
+]
+
+LINUX_QT_RUNTIME_LIBS = [
+    "libxcb-cursor.so.0",
+    "libxcb-icccm.so.4",
+    "libxcb-image.so.0",
+    "libxcb-keysyms.so.1",
+    "libxcb-render-util.so.0",
+    "libxcb-xkb.so.1",
+    "libxcb-randr.so.0",
+    "libxcb-render.so.0",
+    "libxcb-shape.so.0",
+    "libxcb-shm.so.0",
+    "libxcb-sync.so.1",
+    "libxcb-xfixes.so.0",
+    "libxkbcommon-x11.so.0",
+    "libXrender.so.1",
+    "libX11-xcb.so.1",
+    "libSM.so.6",
+    "libICE.so.6",
+    "libglib-2.0.so.0",
+    "libfontconfig.so.1",
+    "libfreetype.so.6",
+]
+
 
 def create_spec(args):
     """Generate a PyInstaller spec for Linux."""
     excluded_modules = get_excluded_modules(args.exclude_module, args.include_module)
     binary_excludes = list(dict.fromkeys(COMMON_BINARY_EXCLUDE_PATTERNS + args.exclude_binary))
-    datas = get_data_files(include_icns=False)
+    datas = get_data_files(include_ico=False, include_icns=False, include_png=True)
     spec_path = ROOT_DIR / "RABET_linux.spec"
     strip_binaries = not args.no_strip
 
@@ -140,16 +186,60 @@ coll = COLLECT(
 def create_linux_launchers(target_dir):
     """Create small Linux launcher and desktop entry files."""
     target_dir = Path(target_dir)
+    required_libs = "\n".join(f'  "{lib}"' for lib in LINUX_QT_RUNTIME_LIBS)
+    apt_install_lines = " \\\n  ".join(LINUX_QT_RUNTIME_PACKAGES)
 
     launcher = target_dir / "run_rabet.sh"
-    launcher.write_text(
+    launcher_text = (
         """#!/usr/bin/env bash
 set -e
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$APP_DIR/RABET" "$@"
-""",
-        encoding="utf-8",
+cd "$APP_DIR"
+
+# The bundled PySide6 package includes the xcb platform plugin. Forcing xcb
+# avoids Qt first selecting wayland when the wayland plugin is not bundled.
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
+
+REQUIRED_LIBS=(
+__REQUIRED_LIBS__
+)
+
+MISSING_LIBS=()
+if command -v ldconfig >/dev/null 2>&1; then
+  for lib in "${REQUIRED_LIBS[@]}"; do
+    if ! ldconfig -p | grep -Fq "$lib"; then
+      MISSING_LIBS+=("$lib")
+    fi
+  done
+fi
+
+if [ "${#MISSING_LIBS[@]}" -gt 0 ]; then
+  echo "Missing Linux GUI runtime libraries: ${MISSING_LIBS[*]}" >&2
+  echo "" >&2
+  echo "On Ubuntu/Debian, install them with:" >&2
+  cat >&2 <<'EOF'
+sudo apt update
+sudo apt install \
+  __APT_INSTALL_LINES__
+EOF
+
+  if [ -n "${DISPLAY:-}" ]; then
+    if command -v zenity >/dev/null 2>&1; then
+      zenity --error --title="RABET" --text="Missing Linux GUI runtime libraries.\n\nRun the apt command printed in the terminal, then launch RABET again." || true
+    elif command -v kdialog >/dev/null 2>&1; then
+      kdialog --error "Missing Linux GUI runtime libraries.\n\nRun the apt command printed in the terminal, then launch RABET again." || true
+    fi
+  fi
+  exit 1
+fi
+
+exec "$APP_DIR/__APP_NAME__" "$@"
+"""
+        .replace("__REQUIRED_LIBS__", required_libs)
+        .replace("__APT_INSTALL_LINES__", apt_install_lines)
+        .replace("__APP_NAME__", APP_NAME)
     )
+    launcher.write_text(launcher_text, encoding="utf-8")
     launcher.chmod(0o755)
 
     desktop_file = target_dir / "RABET.desktop"
@@ -158,13 +248,15 @@ exec "$APP_DIR/RABET" "$@"
 Type=Application
 Name={APP_NAME}
 Comment={APP_DESCRIPTION}
-Exec=RABET
-Icon=resources/RABET.png
+Exec=sh -c 'APP_DIR="$(dirname "$1")"; exec "$APP_DIR/run_rabet.sh"' sh "%k"
+Icon={APP_NAME}
 Terminal=false
 Categories=Science;Education;
+StartupWMClass={APP_NAME}
 """,
         encoding="utf-8",
     )
+    desktop_file.chmod(0o755)
 
     installer = target_dir / "install_desktop_entry.sh"
     installer.write_text(
@@ -180,12 +272,20 @@ cat > "$DESKTOP_DIR/{APP_NAME}.desktop" <<EOF
 Type=Application
 Name={APP_NAME}
 Comment={APP_DESCRIPTION}
-Exec=$APP_DIR/{APP_NAME}
+Exec="$APP_DIR/run_rabet.sh"
+TryExec=$APP_DIR/{APP_NAME}
 Icon={APP_NAME}
 Terminal=false
 Categories=Science;Education;
+StartupWMClass={APP_NAME}
 EOF
 chmod +x "$DESKTOP_DIR/{APP_NAME}.desktop"
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q "${{HOME}}/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+fi
 echo "Installed desktop launcher: $DESKTOP_DIR/{APP_NAME}.desktop"
 """,
         encoding="utf-8",
@@ -248,13 +348,16 @@ def main():
             raise FileNotFoundError(f"Expected executable was not created: {target_path}")
         target_dir = dist_dir / f"{APP_NAME}-linux"
         target_dir.mkdir(exist_ok=True)
+        existing_executable = target_dir / APP_NAME
+        if existing_executable.exists():
+            existing_executable.unlink()
         shutil.move(str(target_path), target_dir / APP_NAME)
     else:
         target_dir = dist_dir / f"{APP_NAME}-linux"
         if not target_dir.exists():
             raise FileNotFoundError(f"Expected app folder was not created: {target_dir}")
 
-    copy_runtime_assets(target_dir)
+    copy_runtime_assets(target_dir, include_ico=False, include_icns=False, include_png=True)
     write_readme(target_dir, "Linux")
     create_linux_launchers(target_dir)
 

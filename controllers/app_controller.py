@@ -1,7 +1,5 @@
 # controllers/app_controller.py - Updated with icon management, theme integration, and visualization support
 import logging
-import os
-import sys
 from version import __version__
 from PySide6.QtCore import QObject, Slot, QTimer
 from PySide6.QtGui import QIcon
@@ -30,6 +28,7 @@ from utils.file_manager import FileManager
 from utils.log_manager import LogManager
 from utils.theme_manager import ThemeManager
 from utils.config_manager import ConfigManager
+from utils.app_icon import find_app_icon_path
 
 class AppController(QObject):
     """
@@ -209,27 +208,7 @@ class AppController(QObject):
     
     def set_application_icon(self):
         """Set the application and window icons."""
-        # Search for the icon in multiple possible locations
-        icon_paths = [
-            os.path.join("resources", "RABET.ico"),
-            os.path.join("resources", "icon.ico"),
-            "RABET.ico",
-            "icon.ico"
-        ]
-        
-        # For packaged app, also check relative to executable
-        if getattr(sys, 'frozen', False):
-            # We're running in a bundle
-            bundle_dir = os.path.dirname(sys.executable)
-            for rel_path in icon_paths.copy():
-                icon_paths.append(os.path.join(bundle_dir, rel_path))
-        
-        # Find the first valid icon path
-        icon_path = None
-        for path in icon_paths:
-            if os.path.exists(path):
-                icon_path = path
-                break
+        icon_path = find_app_icon_path()
         
         if not icon_path:
             self.logger.warning("Application icon not found in any of the expected locations")

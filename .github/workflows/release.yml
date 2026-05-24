@@ -211,10 +211,31 @@ jobs:
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
-          # As of 1.3.1 RABET no longer needs libvlc — PyAV's manylinux
-          # wheel bundles FFmpeg. ``libxcb-cursor0`` is still required by
-          # Qt 6's xcb platform plugin on a fresh Ubuntu runner.
-          sudo apt-get install -y --no-install-recommends libxcb-cursor0
+          # As of 1.3.1 RABET no longer needs libvlc; PyAV's manylinux
+          # wheel bundles FFmpeg. Qt's xcb platform plugin still depends
+          # on system GUI libraries on Linux, so install the same runtime
+          # set documented in the release README before packaging.
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-xkb1 \
+            libxcb-randr0 \
+            libxcb-render0 \
+            libxcb-shape0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxkbcommon-x11-0 \
+            libxrender1 \
+            libx11-xcb1 \
+            libsm6 \
+            libice6 \
+            libglib2.0-0 \
+            libfontconfig1 \
+            libfreetype6
 
       - name: Install Python dependencies
         run: |
@@ -235,7 +256,7 @@ jobs:
           echo "BUILD_SCRIPT=${script}" >> "$GITHUB_ENV"
 
       - name: Build Linux package
-        run: python "$BUILD_SCRIPT"
+        run: python "$BUILD_SCRIPT" --onefile
 
       - name: Rename Linux archive
         shell: bash

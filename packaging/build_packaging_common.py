@@ -416,7 +416,7 @@ def get_excluded_modules(extra_excludes=None, explicit_includes=None):
     return excluded
 
 
-def get_data_files(include_icns=True):
+def get_data_files(include_ico=True, include_icns=True, include_png=True):
     """Return minimal PyInstaller data tuples for configs and app icons."""
     datas = []
     configs_dir = ROOT_DIR / "configs"
@@ -424,7 +424,9 @@ def get_data_files(include_icns=True):
         datas.append((str(configs_dir), "configs"))
 
     resources_dir = ROOT_DIR / "resources"
-    icon_names = ["RABET.ico"]
+    icon_names = []
+    if include_ico:
+        icon_names.append("RABET.ico")
     if include_icns:
         icon_names.append("RABET.icns")
 
@@ -433,9 +435,10 @@ def get_data_files(include_icns=True):
         if icon_path.exists():
             datas.append((str(icon_path), "resources"))
 
-    png_icon = ROOT_DIR / "images" / "RABET.png"
-    if png_icon.exists():
-        datas.append((str(png_icon), "resources"))
+    if include_png:
+        png_icon = ROOT_DIR / "images" / "RABET.png"
+        if png_icon.exists():
+            datas.append((str(png_icon), "resources"))
 
     return datas
 
@@ -480,7 +483,7 @@ def write_vlc_runtime_hook(path, platform_key):
     return path
 
 
-def copy_runtime_assets(target_dir):
+def copy_runtime_assets(target_dir, include_ico=True, include_icns=True, include_png=True):
     """Copy tiny runtime assets next to the built app for robust path lookup."""
     target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -496,18 +499,86 @@ def copy_runtime_assets(target_dir):
     if source_resources.exists():
         destination = target_dir / "resources"
         destination.mkdir(exist_ok=True)
-        for icon_name in ("RABET.ico", "RABET.icns"):
+        icon_names = []
+        if include_ico:
+            icon_names.append("RABET.ico")
+        if include_icns:
+            icon_names.append("RABET.icns")
+
+        for icon_name in icon_names:
             source_file = source_resources / icon_name
             if source_file.exists():
                 shutil.copy2(source_file, destination / icon_name)
 
-        png_icon = ROOT_DIR / "images" / "RABET.png"
-        if png_icon.exists():
-            shutil.copy2(png_icon, destination / "RABET.png")
+        if include_png:
+            png_icon = ROOT_DIR / "images" / "RABET.png"
+            if png_icon.exists():
+                shutil.copy2(png_icon, destination / "RABET.png")
 
 
 def write_readme(target_dir, platform_label):
-    """Write concise runtime notes into a distribution folder."""
+    """Write user-facing runtime notes into a distribution folder."""
+    platform_key = platform_label.lower()
+    first_run_note = (
+        "Important: When running for the first time, the application will create necessary\n"
+        "folders and user configuration files in the standard application data directory\n"
+        "for your operating system."
+    )
+
+    if platform_key == "linux":
+        launch_notes = f"""How to launch on Linux:
+- Run ./run_rabet.sh from this folder.
+- To add an application-menu launcher with the RABET icon, run ./install_desktop_entry.sh.
+
+Linux package notes:
+- The release package contains a onefile {APP_NAME} executable plus the small
+  configs/resources/scripts needed beside it. A visible _internal folder is not expected.
+- Linux desktop environments do not reliably display a custom icon on the raw executable
+  file itself. Use the installed desktop launcher for the app icon.
+
+If the application fails with a Qt xcb platform plugin error on Ubuntu/Debian, install
+the GUI runtime libraries below and launch again:
+
+sudo apt update
+sudo apt install \\
+  libxcb-cursor0 \\
+  libxcb-icccm4 \\
+  libxcb-image0 \\
+  libxcb-keysyms1 \\
+  libxcb-render-util0 \\
+  libxcb-xkb1 \\
+  libxcb-randr0 \\
+  libxcb-render0 \\
+  libxcb-shape0 \\
+  libxcb-shm0 \\
+  libxcb-sync1 \\
+  libxcb-xfixes0 \\
+  libxkbcommon-x11-0 \\
+  libxrender1 \\
+  libx11-xcb1 \\
+  libsm6 \\
+  libice6 \\
+  libglib2.0-0 \\
+  libfontconfig1 \\
+  libfreetype6"""
+    elif platform_key in {"macos", "mac"}:
+        launch_notes = f"""How to launch on macOS:
+- Open {APP_NAME}.app.
+- This build is unsigned. On first launch, macOS may require right-click > Open,
+  or allowing the app from Privacy & Security settings.
+
+macOS package notes:
+- The app bundle uses resources/RABET.icns as the Finder/Dock icon.
+- The release zip includes this README next to {APP_NAME}.app."""
+    elif platform_key == "windows":
+        launch_notes = f"""How to launch on Windows:
+- Double-click {APP_NAME}.exe, or use Launch RABET.bat when it is included.
+
+Windows package notes:
+- Keep the configs and resources folders beside the executable."""
+    else:
+        launch_notes = "Launch the application from the executable or app bundle included in this package."
+
     readme = Path(target_dir) / "README.txt"
     readme.write_text(
         f"""{APP_NAME} - {APP_DESCRIPTION}
@@ -516,13 +587,30 @@ def write_readme(target_dir, platform_label):
 Version: {APP_VERSION}
 Platform build: {platform_label}
 
-This package is self-contained. As of {APP_NAME} 1.3.1 the video pipeline is
-powered by PyAV (FFmpeg python bindings) instead of python-vlc; the FFmpeg
-shared libraries are bundled inside the application, so no system-wide
-VLC / FFmpeg install is required.
+Thank you for using {APP_NAME}!
 
-{APP_NAME} stores user configuration and generated files in the
-platform-standard user application data directory.
+This application is designed for behavioral researchers who need to annotate
+animal behaviors in videos with precise timing.
+
+Features:
+- Load and play video files with frame-by-frame navigation
+- Create timed annotations via keyboard shortcuts using configurable key-to-behavior mappings
+- Visualize annotations on an interactive timeline
+- Conduct timed recording sessions with the ability to pause/resume
+- Export annotations to CSV format with summary statistics
+- Analyze multiple annotation files together to aggregate behavioral data
+- Manage projects to organize research assets
+
+Video runtime:
+As of {APP_NAME} 1.3.1 the video pipeline is powered by PyAV (FFmpeg python
+bindings) instead of python-vlc. The FFmpeg shared libraries are bundled inside
+the application, so no system-wide VLC / FFmpeg install is required.
+
+{launch_notes}
+
+{first_run_note}
+
+For more information, see the Help menu in the application.
 """,
         encoding="utf-8",
     )

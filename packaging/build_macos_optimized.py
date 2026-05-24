@@ -39,7 +39,7 @@ def create_spec(args):
     """Generate a PyInstaller spec for a macOS app bundle."""
     excluded_modules = get_excluded_modules(args.exclude_module, args.include_module)
     binary_excludes = list(dict.fromkeys(COMMON_BINARY_EXCLUDE_PATTERNS + args.exclude_binary))
-    datas = get_data_files(include_icns=True)
+    datas = get_data_files(include_ico=False, include_icns=True, include_png=True)
     icon_path = ROOT_DIR / "resources" / "RABET.icns"
     spec_path = ROOT_DIR / "RABET_macos.spec"
 
@@ -137,12 +137,30 @@ app = BUNDLE(
 
 
 def create_macos_zip(app_path, dist_dir):
-    """Create a Finder-friendly zip for a .app bundle."""
-    zip_path = Path(dist_dir) / f"{APP_NAME}-macOS.zip"
+    """Create a Finder-friendly zip containing the .app bundle and README."""
+    dist_dir = Path(dist_dir)
+    app_path = Path(app_path)
+    package_dir = dist_dir / f"{APP_NAME}-macOS"
+    zip_path = dist_dir / f"{APP_NAME}-macOS.zip"
+
+    if package_dir.exists():
+        shutil.rmtree(package_dir)
+    package_dir.mkdir()
+
+    readme_path = dist_dir / "README.txt"
+    if readme_path.exists():
+        shutil.copy2(readme_path, package_dir / "README.txt")
+
+    packaged_app_path = package_dir / app_path.name
+    ditto = shutil.which("ditto")
+    if ditto:
+        subprocess.check_call([ditto, str(app_path), str(packaged_app_path)])
+    else:
+        shutil.copytree(app_path, packaged_app_path, symlinks=True)
+
     if zip_path.exists():
         zip_path.unlink()
 
-    ditto = shutil.which("ditto")
     if ditto:
         subprocess.check_call(
             [
@@ -151,13 +169,13 @@ def create_macos_zip(app_path, dist_dir):
                 "-k",
                 "--sequesterRsrc",
                 "--keepParent",
-                str(app_path),
+                str(package_dir),
                 str(zip_path),
             ]
         )
     else:
         archive_base = zip_path.with_suffix("")
-        shutil.make_archive(str(archive_base), "zip", root_dir=dist_dir, base_dir=app_path.name)
+        shutil.make_archive(str(archive_base), "zip", root_dir=dist_dir, base_dir=package_dir.name)
 
     return zip_path
 
@@ -217,7 +235,7 @@ def main():
         raise FileNotFoundError(f"Expected app bundle was not created: {app_path}")
 
     resources_dir = app_path / "Contents" / "Resources"
-    copy_runtime_assets(resources_dir)
+    copy_runtime_assets(resources_dir, include_ico=False, include_icns=True, include_png=True)
     write_readme(dist_dir, "macOS")
 
     if not args.skip_cleanup:

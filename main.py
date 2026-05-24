@@ -3,7 +3,6 @@
 # Updated with icon fixes and optimized memory handling
 
 import sys
-import os
 import argparse
 import logging
 from PySide6.QtWidgets import (
@@ -17,6 +16,7 @@ from utils.logger import setup_logger
 from utils.theme_manager import ThemeManager
 from utils.config_path_manager import ConfigPathManager
 from utils.directory_init import ensure_app_directories
+from utils.app_icon import find_app_icon_path
 
 def setup_application_icon(app):
     """
@@ -30,27 +30,7 @@ def setup_application_icon(app):
     """
     logger = logging.getLogger(__name__)
     
-    # Search for the icon in multiple possible locations
-    icon_paths = [
-        os.path.join("resources", "RABET.ico"),
-        os.path.join("resources", "icon.ico"),
-        "RABET.ico",
-        "icon.ico"
-    ]
-    
-    # For packaged app, also check relative to executable
-    if getattr(sys, 'frozen', False):
-        # We're running in a bundle
-        bundle_dir = os.path.dirname(sys.executable)
-        for rel_path in icon_paths.copy():
-            icon_paths.append(os.path.join(bundle_dir, rel_path))
-    
-    # Find the first valid icon path
-    icon_path = None
-    for path in icon_paths:
-        if os.path.exists(path):
-            icon_path = path
-            break
+    icon_path = find_app_icon_path()
     
     if not icon_path:
         logger.warning("Application icon not found in any of the expected locations")

@@ -541,8 +541,8 @@ class RasterPlotWidget(QWidget):
         self._behavior_colors = {}  # Dictionary to store behavior colors
         self._behavior_visibility = {}  # Dictionary to store behavior visibility
         self._file_visibility = {}  # Dictionary to store file visibility
-        self._default_colormap = 'Set1'  # Default colormap
-        self._custom_color_map = self.DEFAULT_COLOR_MAP.copy()  # Initialize with default mapping
+        self._default_colormap = 'Set1'  # Default built-in colormap
+        self._custom_color_map = {}
         
         # Available custom color maps (discovered from configs folder)
         self._available_custom_colormaps = {}
@@ -559,6 +559,7 @@ class RasterPlotWidget(QWidget):
         self._show_horizontal_grid = True
         self._grid_color = "#B0B0B0"
         self._border_mode = "All"
+        self._transparent_outside_plot = False
 
         # Track custom ordering
         self._custom_behavior_order = []
@@ -915,6 +916,13 @@ class RasterPlotWidget(QWidget):
         self.grid_color_button.setMaximumWidth(90)
         self.grid_color_button.setMaximumHeight(25)
         self._update_grid_color_button()
+
+        self.transparent_outside_checkbox = QCheckBox("Transparent Outside")
+        self.transparent_outside_checkbox.setChecked(self._transparent_outside_plot)
+        self.transparent_outside_checkbox.setMaximumHeight(25)
+        self.transparent_outside_checkbox.stateChanged.connect(
+            self.on_transparent_outside_changed
+        )
         
         # Individual frames checkbox (only for overlay mode)
         self.individual_frames_checkbox = QCheckBox("Individual frames")
@@ -954,6 +962,7 @@ class RasterPlotWidget(QWidget):
         self.plot_controls_layout.addWidget(self.vertical_grid_checkbox)
         self.plot_controls_layout.addWidget(self.horizontal_grid_checkbox)
         self.plot_controls_layout.addWidget(self.grid_color_button)
+        self.plot_controls_layout.addWidget(self.transparent_outside_checkbox)
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.individual_frames_checkbox)
         self.plot_controls_layout.addSpacing(8)
@@ -1201,7 +1210,18 @@ class RasterPlotWidget(QWidget):
             f"background-color: {self._grid_color}; "
             f"color: rgb({text_rgb[0]}, {text_rgb[1]}, {text_rgb[2]});"
         )
-    
+
+    def _apply_figure_background_style(self):
+        """Apply the export/preview background outside the plot frame."""
+        if not hasattr(self, "canvas"):
+            return
+        if self._transparent_outside_plot:
+            self.canvas.fig.patch.set_facecolor("none")
+            self.canvas.fig.patch.set_alpha(0.0)
+        else:
+            self.canvas.fig.patch.set_facecolor("white")
+            self.canvas.fig.patch.set_alpha(1.0)
+
     def _update_canvas_display(self):
         """Ensure canvas is properly displayed after updates."""
         if self.auto_size_checkbox.isChecked():
@@ -1211,6 +1231,7 @@ class RasterPlotWidget(QWidget):
     
     def _draw_canvas_safe(self):
         """Draw canvas with warning suppression."""
+        self._apply_figure_background_style()
         with self._suppress_matplotlib_warnings():
             warnings.filterwarnings("ignore", message="This figure includes Axes that are not compatible")
             self.canvas.draw()
@@ -1299,6 +1320,11 @@ class RasterPlotWidget(QWidget):
     def on_border_mode_changed(self, mode):
         """Handle plot border visibility changes."""
         self._border_mode = mode
+        self.update_plot()
+
+    def on_transparent_outside_changed(self, state):
+        """Handle outside-plot transparency changes."""
+        self._transparent_outside_plot = (state == Qt.CheckState.Checked.value)
         self.update_plot()
     
     def on_plot_size_changed(self, value):
@@ -1748,8 +1774,12 @@ class RasterPlotWidget(QWidget):
                     "format": file_format,
                     "bbox_inches": "tight",
                 }
+                if self._transparent_outside_plot:
+                    save_kwargs["facecolor"] = "none"
+                    save_kwargs["edgecolor"] = "none"
                 if file_format == "png":
                     save_kwargs["dpi"] = self._png_dpi
+                self._apply_figure_background_style()
                 self.canvas.fig.savefig(file_path, **save_kwargs)
                 self.logger.info(f"Plot saved to: {file_path}")
                 QMessageBox.information(self, "Success", f"Plot saved to:\n{file_path}")

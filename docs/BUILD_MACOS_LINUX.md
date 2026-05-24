@@ -21,7 +21,7 @@ Build on the target OS.
 Recommended for a borrowed Mac:
 
 ```bash
-cd /path/to/RABET_1.3.1
+cd /path/to/RABET_1.3.2
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -31,7 +31,7 @@ python packaging/build_macos_optimized.py
 Outputs:
 
 - `dist/RABET.app`
-- `dist/RABET-macOS.zip`
+- `dist/RABET-macOS.zip` containing `RABET.app` and `README.txt`
 - `dist/README.txt`
 
 Useful options:
@@ -58,14 +58,36 @@ Recommended on Ubuntu:
 ```bash
 sudo apt update
 # Note: ``vlc`` / ``libvlc-bin`` are no longer required as of 1.3.1.
-# ``libxcb-cursor0`` is still needed by Qt 6 on headless / minimal
-# Linux installs (Qt's xcb plugin loads it lazily).
-sudo apt install -y python3 python3-venv python3-pip libxcb-cursor0
-cd /path/to/RABET_1.3.1
+# Qt's xcb platform plugin depends on system GUI runtime libraries.
+sudo apt install -y \
+  python3 \
+  python3-venv \
+  python3-pip \
+  libxcb-cursor0 \
+  libxcb-icccm4 \
+  libxcb-image0 \
+  libxcb-keysyms1 \
+  libxcb-render-util0 \
+  libxcb-xkb1 \
+  libxcb-randr0 \
+  libxcb-render0 \
+  libxcb-shape0 \
+  libxcb-shm0 \
+  libxcb-sync1 \
+  libxcb-xfixes0 \
+  libxkbcommon-x11-0 \
+  libxrender1 \
+  libx11-xcb1 \
+  libsm6 \
+  libice6 \
+  libglib2.0-0 \
+  libfontconfig1 \
+  libfreetype6
+cd /path/to/RABET_1.3.2
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python packaging/build_linux_optimized.py
+python packaging/build_linux_optimized.py --onefile
 ```
 
 Outputs:
@@ -91,14 +113,16 @@ Useful options:
 
 ```bash
 python packaging/build_linux_optimized.py --console --verbose
-python packaging/build_linux_optimized.py --onefile
+python packaging/build_linux_optimized.py
 python packaging/build_linux_optimized.py --upx
 python packaging/build_linux_optimized.py --spec-only
 ```
 
 Notes:
 
-- The folder build is the recommended default for Qt applications.
-- `--onefile` is convenient but often starts slower because it extracts files at launch.
+- Release builds use `--onefile`, so the archive should not contain a visible `_internal/` folder.
+- Running without `--onefile` is still useful for development/debug builds.
+- `--onefile` often starts slower because it extracts files at launch.
+- Raw Linux executables do not reliably show custom icons in file managers. Use `install_desktop_entry.sh` for an icon-bearing application launcher.
 - `--upx` can reduce size if UPX is installed, but test carefully because compressed Qt binaries can be fragile.
 - Build on the oldest Ubuntu version you plan to support when possible. Newer Linux builds can depend on newer system libraries.
