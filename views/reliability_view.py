@@ -354,7 +354,7 @@ class ReliabilityView(QWidget):
         # actual ICC / Pearson / MAD computation is identical for both
         # modes.
         button_row = QHBoxLayout()
-        self.summary_compute_btn = QPushButton("Compute agreement")
+        self.summary_compute_btn = QPushButton("🚀 Compute agreement")
         self.summary_export_btn = QPushButton("Export results...")
         self.summary_export_btn.setEnabled(False)
         button_row.addWidget(self.summary_compute_btn)
