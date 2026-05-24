@@ -489,7 +489,7 @@ class ReliabilityView(QWidget):
         input_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.detailed_compute_btn = QPushButton("Compute agreement")
+        self.detailed_compute_btn = QPushButton("🚀 Compute agreement")
         self.detailed_export_btn = QPushButton("Export results...")
         self.detailed_export_btn.setEnabled(False)
         button_row.addWidget(self.detailed_compute_btn)
