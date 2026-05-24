@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QTabWidget, QLabel, QLineEdit, QTextEdit, QFileDialog,
     QTreeWidget, QTreeWidgetItem, QMessageBox, QMenu, QHeaderView,
-    QDialog, QDialogButtonBox, QFormLayout, QCheckBox, QFrame, QGroupBox, QStyle
+    QDialog, QDialogButtonBox, QFormLayout, QCheckBox, QFrame, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction, QCursor, QDragEnterEvent, QDropEvent
