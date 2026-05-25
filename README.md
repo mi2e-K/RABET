@@ -4,7 +4,7 @@
 
 # RABET
 
-### Real-time Animal Behavior Event Tagger
+# Real-time Animal Behavior Event Tagger
 
 [![Version](https://img.shields.io/badge/version-1.3.2-blue)](https://github.com/mi2e-K/RABET/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
