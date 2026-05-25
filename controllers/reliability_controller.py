@@ -15,14 +15,14 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox, QDialog
 
 from models.reliability_model import (
     ReliabilityModel,
     SummaryAgreementResult,
     DetailedAgreementResult,
 )
-from views.reliability_view import ReliabilityView
+from views.reliability_view import ReliabilityView, SummaryMatchDialog
 
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,31 @@ class ReliabilityController(QObject):
     @Slot(str, str)
     def on_compute_summary(self, path_a: str, path_b: str) -> None:
         logger.info("Computing Summary-mode agreement: %s vs %s", path_a, path_b)
-        self._model.compute_from_summaries(path_a, path_b)
+        match_plan = self._model.build_summary_match_plan(path_a, path_b)
+        if match_plan is None:
+            return
+
+        manual_pairs = []
+        if match_plan.unmatched_a or match_plan.unmatched_b:
+            self._view.summary_status.setText("Review animal_id matching...")
+            dialog = SummaryMatchDialog(
+                match_plan.auto_pairs,
+                match_plan.unmatched_a,
+                match_plan.unmatched_b,
+                self._view,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self._view.reset_summary_compute_state(
+                    "Summary agreement cancelled."
+                )
+                return
+            manual_pairs = dialog.manual_pairs()
+
+        self._model.compute_from_summaries(
+            path_a,
+            path_b,
+            manual_pairs=manual_pairs,
+        )
 
     @Slot(str, str, float)
     def on_compute_detailed(
@@ -223,6 +247,19 @@ class ReliabilityController(QObject):
                 writer.writerow(["Only in scorer A", *result.unmatched_a])
             if result.unmatched_b:
                 writer.writerow(["Only in scorer B", *result.unmatched_b])
+            if result.matched_pairs:
+                writer.writerow([])
+                writer.writerow(["Matched animal pairs"])
+                writer.writerow([
+                    "match_id", "animal_id_a", "animal_id_b", "source",
+                ])
+                for pair in result.matched_pairs:
+                    writer.writerow([
+                        pair.match_id,
+                        pair.animal_id_a,
+                        pair.animal_id_b,
+                        pair.source,
+                    ])
 
     @staticmethod
     def _write_detailed_csv(result: DetailedAgreementResult, path: str) -> None:

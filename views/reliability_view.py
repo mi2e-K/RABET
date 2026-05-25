@@ -18,8 +18,10 @@ Both sub-tabs support exporting the results table as CSV.
 
 from __future__ import annotations
 
+import csv
 import logging
 import os
+import re
 from typing import Optional
 
 import matplotlib
@@ -33,7 +35,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QTabWidget, QGroupBox, QFormLayout, QDoubleSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QSplitter,
     QMessageBox, QSizePolicy, QRadioButton, QButtonGroup, QProgressBar,
-    QApplication,
+    QApplication, QDialog, QDialogButtonBox, QListWidget, QListWidgetItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -275,6 +277,362 @@ class _FilePickerRow(QWidget):
 
     def path(self) -> str:
         return self.path_edit.text().strip()
+
+
+class SummaryMatchDialog(QDialog):
+    """Resolve leftover Summary-mode animal_id matches."""
+
+    def __init__(self, auto_pairs, unmatched_a, unmatched_b, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Match animal IDs")
+        self.resize(860, 560)
+        self._auto_pairs = list(auto_pairs or [])
+        self._manual_pairs: list[tuple[str, str]] = []
+        self._auto_a = {pair.animal_id_a for pair in self._auto_pairs}
+        self._auto_b = {pair.animal_id_b for pair in self._auto_pairs}
+        self._all_a = set(unmatched_a or []) | self._auto_a
+        self._all_b = set(unmatched_b or []) | self._auto_b
+        self._excluded_a: set[str] = set()
+        self._excluded_b: set[str] = set()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        note = QLabel(
+            "Automatic matching left some animal IDs unmatched. Add any "
+            "remaining pairs below, or press OK to continue with unmatched "
+            "IDs excluded."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color: {_STATUS_TEXT_COLOR};")
+        layout.addWidget(note)
+
+        self.auto_table = QTableWidget(0, 4)
+        self.auto_table.setHorizontalHeaderLabels(
+            ["Match ID", "Summary A", "Summary B", "Source"]
+        )
+        self.auto_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.auto_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.auto_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self._populate_auto_table()
+        layout.addWidget(QLabel("Automatic matches"))
+        layout.addWidget(self.auto_table, 1)
+
+        manual_row = QHBoxLayout()
+        left_col = QVBoxLayout()
+        left_col.addWidget(QLabel("Unmatched A"))
+        self.list_a = QListWidget()
+        self.list_a.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self._populate_list(self.list_a, unmatched_a or [])
+        left_col.addWidget(self.list_a)
+        self.exclude_a_button = QPushButton("Exclude Selected")
+        self.exclude_a_button.clicked.connect(lambda: self._exclude_selected(self.list_a, "A"))
+        left_col.addWidget(self.exclude_a_button)
+        manual_row.addLayout(left_col, 1)
+
+        middle_col = QVBoxLayout()
+        middle_col.addStretch()
+        self.add_pair_button = QPushButton("Add Pair")
+        self.add_pair_button.clicked.connect(self._add_selected_pair)
+        middle_col.addWidget(self.add_pair_button)
+        self.pair_sorted_button = QPushButton("Pair Sorted")
+        self.pair_sorted_button.clicked.connect(self._pair_sorted)
+        middle_col.addWidget(self.pair_sorted_button)
+        middle_col.addStretch()
+        manual_row.addLayout(middle_col)
+
+        right_col = QVBoxLayout()
+        right_col.addWidget(QLabel("Unmatched B"))
+        self.list_b = QListWidget()
+        self.list_b.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self._populate_list(self.list_b, unmatched_b or [])
+        right_col.addWidget(self.list_b)
+        self.exclude_b_button = QPushButton("Exclude Selected")
+        self.exclude_b_button.clicked.connect(lambda: self._exclude_selected(self.list_b, "B"))
+        right_col.addWidget(self.exclude_b_button)
+        manual_row.addLayout(right_col, 1)
+        layout.addLayout(manual_row, 2)
+
+        self.manual_table = QTableWidget(0, 2)
+        self.manual_table.setHorizontalHeaderLabels(["Summary A", "Summary B"])
+        self.manual_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.manual_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.manual_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        layout.addWidget(QLabel("Manual matches"))
+        layout.addWidget(self.manual_table, 1)
+
+        action_row = QHBoxLayout()
+        self.remove_pair_button = QPushButton("Remove Selected")
+        self.remove_pair_button.clicked.connect(self._remove_selected_pairs)
+        self.load_button = QPushButton("Load Map...")
+        self.load_button.clicked.connect(self._load_map)
+        self.save_button = QPushButton("Save Map...")
+        self.save_button.clicked.connect(self._save_map)
+        action_row.addWidget(self.remove_pair_button)
+        action_row.addStretch()
+        action_row.addWidget(self.load_button)
+        action_row.addWidget(self.save_button)
+        layout.addLayout(action_row)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+    def manual_pairs(self) -> list[tuple[str, str]]:
+        return list(self._manual_pairs)
+
+    def all_pairs(self) -> list[tuple[str, str]]:
+        pairs = [
+            (pair.animal_id_a, pair.animal_id_b)
+            for pair in self._auto_pairs
+        ]
+        pairs.extend(self._manual_pairs)
+        return pairs
+
+    @staticmethod
+    def _natural_sort_key(value: str) -> tuple:
+        parts: list[tuple[int, object]] = []
+        for part in re.split(r"(\d+)", str(value)):
+            if not part:
+                continue
+            if part.isdigit():
+                parts.append((0, int(part)))
+            else:
+                parts.append((1, part.casefold()))
+        return tuple(parts)
+
+    def _populate_auto_table(self) -> None:
+        self.auto_table.setRowCount(len(self._auto_pairs))
+        for row, pair in enumerate(self._auto_pairs):
+            for col, value in enumerate(
+                [pair.match_id, pair.animal_id_a, pair.animal_id_b, pair.source]
+            ):
+                self.auto_table.setItem(row, col, QTableWidgetItem(str(value)))
+
+    def _populate_list(self, widget: QListWidget, values) -> None:
+        widget.clear()
+        for value in sorted((str(v) for v in values), key=self._natural_sort_key):
+            widget.addItem(QListWidgetItem(value))
+
+    def _list_values(self, widget: QListWidget) -> list[str]:
+        return [widget.item(i).text() for i in range(widget.count())]
+
+    def _selected_list_values(self, widget: QListWidget) -> list[str]:
+        return [item.text() for item in widget.selectedItems()]
+
+    def _take_list_value(self, widget: QListWidget, value: str) -> None:
+        for index in range(widget.count()):
+            if widget.item(index).text() == value:
+                widget.takeItem(index)
+                return
+
+    def _add_list_value(self, widget: QListWidget, value: str) -> None:
+        values = set(self._list_values(widget))
+        values.add(value)
+        self._populate_list(widget, values)
+
+    def _exclude_selected(self, widget: QListWidget, side: str) -> None:
+        values = self._selected_list_values(widget)
+        if not values:
+            QMessageBox.information(
+                self, "Reliability",
+                f"Select one or more unmatched {side} item(s) first.",
+            )
+            return
+        excluded = self._excluded_a if side == "A" else self._excluded_b
+        for value in values:
+            excluded.add(value)
+            self._take_list_value(widget, value)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            focused = self.focusWidget()
+            if focused is self.list_a:
+                self._exclude_selected(self.list_a, "A")
+                return
+            if focused is self.list_b:
+                self._exclude_selected(self.list_b, "B")
+                return
+        super().keyPressEvent(event)
+
+    def _add_selected_pair(self) -> None:
+        item_a = self.list_a.currentItem()
+        item_b = self.list_b.currentItem()
+        if item_a is None or item_b is None:
+            QMessageBox.information(
+                self, "Reliability",
+                "Select one animal_id from each unmatched list first.",
+            )
+            return
+        self._add_manual_pair(item_a.text(), item_b.text(), show_errors=True)
+
+    def _pair_sorted(self) -> None:
+        values_a = sorted(self._list_values(self.list_a), key=self._natural_sort_key)
+        values_b = sorted(self._list_values(self.list_b), key=self._natural_sort_key)
+        if not values_a or not values_b:
+            QMessageBox.information(
+                self, "Reliability",
+                "There are no remaining unmatched IDs to pair.",
+            )
+            return
+        if len(values_a) != len(values_b):
+            QMessageBox.warning(
+                self, "Reliability",
+                "The unmatched A/B counts are different. Exclude extra IDs "
+                "first, then run Pair Sorted again.",
+            )
+            return
+
+        added = 0
+        for animal_id_a, animal_id_b in zip(values_a, values_b, strict=False):
+            if self._add_manual_pair(animal_id_a, animal_id_b, show_errors=False):
+                added += 1
+        QMessageBox.information(
+            self, "Reliability",
+            f"Added {added} sorted match pair(s).",
+        )
+
+    def _add_manual_pair(
+        self, animal_id_a: str, animal_id_b: str, show_errors: bool
+    ) -> bool:
+        try:
+            self._validate_new_pair(animal_id_a, animal_id_b)
+        except ValueError as exc:
+            if show_errors:
+                QMessageBox.warning(self, "Reliability", str(exc))
+            return False
+
+        self._manual_pairs.append((animal_id_a, animal_id_b))
+        self._take_list_value(self.list_a, animal_id_a)
+        self._take_list_value(self.list_b, animal_id_b)
+        self._refresh_manual_table()
+        return True
+
+    def _validate_new_pair(self, animal_id_a: str, animal_id_b: str) -> None:
+        if not animal_id_a or not animal_id_b:
+            raise ValueError("animal_id values cannot be empty.")
+        if animal_id_a not in self._all_a:
+            raise ValueError(f"'{animal_id_a}' is not in summary A.")
+        if animal_id_b not in self._all_b:
+            raise ValueError(f"'{animal_id_b}' is not in summary B.")
+        if animal_id_a in self._excluded_a:
+            raise ValueError(f"'{animal_id_a}' is excluded from matching.")
+        if animal_id_b in self._excluded_b:
+            raise ValueError(f"'{animal_id_b}' is excluded from matching.")
+        existing = dict(self.all_pairs())
+        reverse = {b: a for a, b in self.all_pairs()}
+        if animal_id_a in existing:
+            if existing[animal_id_a] == animal_id_b:
+                raise ValueError(
+                    f"'{animal_id_a}' and '{animal_id_b}' are already matched."
+                )
+            raise ValueError(f"'{animal_id_a}' is already matched.")
+        if animal_id_b in reverse:
+            raise ValueError(f"'{animal_id_b}' is already matched.")
+
+    def _refresh_manual_table(self) -> None:
+        self.manual_table.setRowCount(len(self._manual_pairs))
+        for row, (animal_id_a, animal_id_b) in enumerate(self._manual_pairs):
+            self.manual_table.setItem(row, 0, QTableWidgetItem(animal_id_a))
+            self.manual_table.setItem(row, 1, QTableWidgetItem(animal_id_b))
+
+    def _remove_selected_pairs(self) -> None:
+        selected_rows = sorted(
+            {index.row() for index in self.manual_table.selectedIndexes()},
+            reverse=True,
+        )
+        for row in selected_rows:
+            animal_id_a, animal_id_b = self._manual_pairs.pop(row)
+            self._add_list_value(self.list_a, animal_id_a)
+            self._add_list_value(self.list_b, animal_id_b)
+        self._refresh_manual_table()
+
+    @staticmethod
+    def _read_map_csv(path: str) -> list[tuple[str, str]]:
+        pairs: list[tuple[str, str]] = []
+        with open(path, newline="", encoding="utf-8-sig") as fh:
+            reader = csv.reader(fh)
+            first_data_seen = False
+            for row_num, row in enumerate(reader, start=1):
+                cells = [cell.strip() for cell in row]
+                if not any(cells):
+                    continue
+                if len(cells) < 2:
+                    raise ValueError(
+                        f"Row {row_num} must have animal_id_a and animal_id_b."
+                    )
+                animal_id_a, animal_id_b = cells[0], cells[1]
+                if not first_data_seen:
+                    first_data_seen = True
+                    if (
+                        animal_id_a.casefold() == "animal_id_a"
+                        and animal_id_b.casefold() == "animal_id_b"
+                    ):
+                        continue
+                if not animal_id_a or not animal_id_b:
+                    raise ValueError(f"Row {row_num} has an empty animal_id.")
+                pairs.append((animal_id_a, animal_id_b))
+        return pairs
+
+    def _load_map(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load animal_id match map",
+            "",
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            pairs = self._read_map_csv(path)
+            added = 0
+            for animal_id_a, animal_id_b in pairs:
+                if (animal_id_a, animal_id_b) in self.all_pairs():
+                    continue
+                self._validate_new_pair(animal_id_a, animal_id_b)
+                if self._add_manual_pair(animal_id_a, animal_id_b, show_errors=False):
+                    added += 1
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Reliability", f"Could not load map:\n{exc}")
+            return
+        QMessageBox.information(
+            self, "Reliability",
+            f"Loaded {added} manual match pair(s).",
+        )
+
+    def _save_map(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save animal_id match map",
+            "animal_id_match_map.csv",
+            "CSV files (*.csv)",
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["animal_id_a", "animal_id_b"])
+                writer.writerows(self.all_pairs())
+        except OSError as exc:
+            QMessageBox.warning(self, "Reliability", f"Could not save map:\n{exc}")
+            return
+        QMessageBox.information(
+            self, "Reliability",
+            f"Match map saved to:\n{path}",
+        )
 
 
 # -------------------------------------------------------------------- #
@@ -725,9 +1083,30 @@ class ReliabilityView(QWidget):
             self.summary_canvas.draw_idle()
             return
 
+        source_counts = {"exact": 0, "flexible": 0, "manual": 0}
+        for pair in getattr(result, "matched_pairs", []):
+            if pair.source in source_counts:
+                source_counts[pair.source] += 1
         status_lines = [
-            f"Matched animals: {len(result.matched_animals)}",
+            (
+                f"Matched animals: {len(result.matched_animals)} "
+                f"(exact {source_counts['exact']} / "
+                f"flexible {source_counts['flexible']} / "
+                f"manual {source_counts['manual']})"
+            ),
         ]
+        changed_pairs = [
+            pair for pair in getattr(result, "matched_pairs", [])
+            if pair.animal_id_a != pair.animal_id_b
+        ]
+        if changed_pairs:
+            preview = [
+                f"{pair.animal_id_a} <-> {pair.animal_id_b}"
+                for pair in changed_pairs[:5]
+            ]
+            if len(changed_pairs) > 5:
+                preview.append(f"... +{len(changed_pairs) - 5} more")
+            status_lines.append("Matched pairs: " + "; ".join(preview))
         if result.unmatched_a:
             status_lines.append(
                 f"Only in scorer A ({len(result.unmatched_a)}): "
@@ -957,6 +1336,13 @@ class ReliabilityView(QWidget):
             self.summary_status.setText(f"Error: {snippet}")
         else:
             self.detailed_status.setText(f"Error: {snippet}")
+
+    def reset_summary_compute_state(self, message: str = "") -> None:
+        self.summary_compute_btn.setEnabled(True)
+        self.summary_progress.setVisible(False)
+        self.summary_progress_label.setVisible(False)
+        if message:
+            self.summary_status.setText(message)
 
     # ---------------- Result accessors (for export) ---------------- #
 

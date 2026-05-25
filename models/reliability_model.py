@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -58,6 +58,23 @@ class SummaryAgreementRow:
     mean_b: Optional[float]
 
 
+@dataclass(frozen=True)
+class SummaryMatchedPair:
+    """One animal pairing used by Summary-mode reliability."""
+    match_id: str
+    animal_id_a: str
+    animal_id_b: str
+    source: str  # exact, flexible, or manual
+
+
+@dataclass
+class SummaryMatchPlan:
+    """Animal matching preview for Summary-mode reliability."""
+    auto_pairs: List[SummaryMatchedPair] = field(default_factory=list)
+    unmatched_a: List[str] = field(default_factory=list)
+    unmatched_b: List[str] = field(default_factory=list)
+
+
 @dataclass
 class SummaryAgreementResult:
     """Full result of a Summary-mode computation."""
@@ -65,6 +82,7 @@ class SummaryAgreementResult:
     matched_animals: List[str] = field(default_factory=list)
     unmatched_a: List[str] = field(default_factory=list)
     unmatched_b: List[str] = field(default_factory=list)
+    matched_pairs: List[SummaryMatchedPair] = field(default_factory=list)
     # Per-metric scatter data: metric -> (animals, values_a, values_b)
     scatter_data: Dict[str, Tuple[List[str], List[float], List[float]]] = (
         field(default_factory=dict)
@@ -203,6 +221,232 @@ def _parse_summary_table(path: str) -> pd.DataFrame:
         ).reset_index(drop=True)
 
     return data
+
+
+_ANNOTATION_EXPORT_SUFFIX_RE = re.compile(
+    r"^(?P<base>.+?)_annotations(?:_\d{8}_\d{6})?$",
+    re.IGNORECASE,
+)
+
+_SESSION_SUFFIX_PATTERNS = (
+    re.compile(
+        r"^(?P<base>.+?)[ _-]+(?:s(?:ession)?|sess|scorer)[ _-]*(?P<num>\d+)$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^(?P<base>.+?)[ _-]+s(?P<num>\d+)$", re.IGNORECASE),
+    re.compile(r"^(?P<base>.+?)[ _-]+(?P<num>\d{1,3})$", re.IGNORECASE),
+)
+
+
+def _animal_sort_key(animal_id: str) -> tuple:
+    """Sort animal IDs naturally while preserving deterministic output."""
+    parts: list[tuple[int, object]] = []
+    for part in re.split(r"(\d+)", str(animal_id)):
+        if not part:
+            continue
+        if part.isdigit():
+            parts.append((0, int(part)))
+        else:
+            parts.append((1, part.casefold()))
+    return tuple(parts)
+
+
+def _casefold_lookup(ids: Iterable[str], side_label: str) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    duplicates: Dict[str, list[str]] = {}
+    for animal_id in ids:
+        key = str(animal_id).casefold()
+        if key in lookup:
+            duplicates.setdefault(key, [lookup[key]]).append(str(animal_id))
+        else:
+            lookup[key] = str(animal_id)
+    if duplicates:
+        readable = [
+            ", ".join(values)
+            for values in duplicates.values()
+        ]
+        raise ValueError(
+            f"Duplicate case-insensitive animal_id values in {side_label}: "
+            + "; ".join(readable)
+        )
+    return lookup
+
+
+def _strip_session_suffix(animal_id: str) -> Optional[str]:
+    """Return a safe flexible match key, or None if unchanged.
+
+    We require a separator or an explicit session/scorer marker so IDs
+    such as R01 or Mouse1 are never shortened just because they end in a
+    number. RABET annotation-export suffixes are also stripped.
+    """
+    text = str(animal_id).strip()
+    match = _ANNOTATION_EXPORT_SUFFIX_RE.match(text)
+    if match:
+        base = match.group("base").strip(" _-")
+        if base:
+            return base
+
+    for pattern in _SESSION_SUFFIX_PATTERNS:
+        match = pattern.match(text)
+        if match:
+            base = match.group("base").strip(" _-")
+            if base:
+                return base
+    return None
+
+
+def _pair_match_id(animal_id_a: str, animal_id_b: str) -> str:
+    if animal_id_a.casefold() == animal_id_b.casefold():
+        return animal_id_a
+    base_a = _strip_session_suffix(animal_id_a)
+    base_b = _strip_session_suffix(animal_id_b)
+    if base_a and base_b and base_a.casefold() == base_b.casefold():
+        return base_a
+    return f"{animal_id_a} / {animal_id_b}"
+
+
+def _coerce_manual_pair(item) -> Tuple[str, str]:
+    if isinstance(item, SummaryMatchedPair):
+        return item.animal_id_a, item.animal_id_b
+    if isinstance(item, dict):
+        return str(item.get("animal_id_a", "")), str(item.get("animal_id_b", ""))
+    try:
+        animal_id_a, animal_id_b = item
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Manual match pairs must have two animal_id values.") from exc
+    return str(animal_id_a), str(animal_id_b)
+
+
+def _validate_manual_pairs(
+    manual_pairs,
+    ids_a: Iterable[str],
+    ids_b: Iterable[str],
+) -> List[SummaryMatchedPair]:
+    lookup_a = _casefold_lookup(ids_a, "summary A")
+    lookup_b = _casefold_lookup(ids_b, "summary B")
+    used_a: set[str] = set()
+    used_b: set[str] = set()
+    pairs: List[SummaryMatchedPair] = []
+
+    for row_num, item in enumerate(manual_pairs or [], start=1):
+        raw_a, raw_b = (value.strip() for value in _coerce_manual_pair(item))
+        if not raw_a or not raw_b:
+            raise ValueError(
+                f"Manual match row {row_num} has an empty animal_id."
+            )
+
+        key_a = raw_a.casefold()
+        key_b = raw_b.casefold()
+        if key_a not in lookup_a:
+            raise ValueError(
+                f"Manual match row {row_num}: '{raw_a}' is not in summary A."
+            )
+        if key_b not in lookup_b:
+            raise ValueError(
+                f"Manual match row {row_num}: '{raw_b}' is not in summary B."
+            )
+
+        animal_id_a = lookup_a[key_a]
+        animal_id_b = lookup_b[key_b]
+        if animal_id_a in used_a:
+            raise ValueError(
+                f"Manual match row {row_num}: duplicate summary A id "
+                f"'{animal_id_a}'."
+            )
+        if animal_id_b in used_b:
+            raise ValueError(
+                f"Manual match row {row_num}: duplicate summary B id "
+                f"'{animal_id_b}'."
+            )
+
+        used_a.add(animal_id_a)
+        used_b.add(animal_id_b)
+        pairs.append(SummaryMatchedPair(
+            match_id=_pair_match_id(animal_id_a, animal_id_b),
+            animal_id_a=animal_id_a,
+            animal_id_b=animal_id_b,
+            source="manual",
+        ))
+
+    return pairs
+
+
+def _flexible_groups(ids: Iterable[str]) -> Dict[str, List[Tuple[str, str]]]:
+    groups: Dict[str, List[Tuple[str, str]]] = {}
+    for animal_id in ids:
+        base = _strip_session_suffix(animal_id) or str(animal_id)
+        groups.setdefault(base.casefold(), []).append((animal_id, base))
+    return groups
+
+
+def _match_summary_animals(
+    ids_a: Iterable[str],
+    ids_b: Iterable[str],
+    manual_pairs=None,
+) -> tuple[List[SummaryMatchedPair], List[str], List[str]]:
+    ids_a = [str(animal_id) for animal_id in ids_a]
+    ids_b = [str(animal_id) for animal_id in ids_b]
+    _casefold_lookup(ids_a, "summary A")
+    _casefold_lookup(ids_b, "summary B")
+
+    pairs = _validate_manual_pairs(manual_pairs or [], ids_a, ids_b)
+
+    used_a = {pair.animal_id_a for pair in pairs}
+    used_b = {pair.animal_id_b for pair in pairs}
+    remaining_a = [animal_id for animal_id in ids_a if animal_id not in used_a]
+    remaining_b = [animal_id for animal_id in ids_b if animal_id not in used_b]
+
+    lookup_a = _casefold_lookup(remaining_a, "summary A")
+    lookup_b = _casefold_lookup(remaining_b, "summary B")
+
+    for key in sorted(set(lookup_a) & set(lookup_b), key=_animal_sort_key):
+        animal_id_a = lookup_a[key]
+        animal_id_b = lookup_b[key]
+        pairs.append(SummaryMatchedPair(
+            match_id=animal_id_a,
+            animal_id_a=animal_id_a,
+            animal_id_b=animal_id_b,
+            source="exact",
+        ))
+        used_a.add(animal_id_a)
+        used_b.add(animal_id_b)
+
+    remaining_a = [animal_id for animal_id in ids_a if animal_id not in used_a]
+    remaining_b = [animal_id for animal_id in ids_b if animal_id not in used_b]
+    groups_a = _flexible_groups(remaining_a)
+    groups_b = _flexible_groups(remaining_b)
+
+    for key in sorted(set(groups_a) & set(groups_b), key=_animal_sort_key):
+        group_a = groups_a[key]
+        group_b = groups_b[key]
+        if len(group_a) != 1 or len(group_b) != 1:
+            logger.warning(
+                "Ambiguous flexible animal_id match for key '%s': %s vs %s",
+                key,
+                [item[0] for item in group_a],
+                [item[0] for item in group_b],
+            )
+            continue
+        animal_id_a, match_id = group_a[0]
+        animal_id_b, _match_id_b = group_b[0]
+        pairs.append(SummaryMatchedPair(
+            match_id=match_id,
+            animal_id_a=animal_id_a,
+            animal_id_b=animal_id_b,
+            source="flexible",
+        ))
+        used_a.add(animal_id_a)
+        used_b.add(animal_id_b)
+
+    unmatched_a = sorted(
+        (animal_id for animal_id in ids_a if animal_id not in used_a),
+        key=_animal_sort_key,
+    )
+    unmatched_b = sorted(
+        (animal_id for animal_id in ids_b if animal_id not in used_b),
+        key=_animal_sort_key,
+    )
+    return pairs, unmatched_a, unmatched_b
 
 
 # -------------------------------------------------------------------- #
@@ -461,55 +705,91 @@ class ReliabilityModel(QObject):
 
     # ---------------------- Mode 1: Summary ---------------------- #
 
+    def build_summary_match_plan(
+        self,
+        summary_path_a: str,
+        summary_path_b: str,
+    ) -> Optional[SummaryMatchPlan]:
+        """Preview automatic Summary-mode animal matching."""
+        try:
+            df_a = _parse_summary_table(summary_path_a)
+            df_b = _parse_summary_table(summary_path_b)
+            auto_pairs, unmatched_a, unmatched_b = _match_summary_animals(
+                df_a["animal_id"],
+                df_b["animal_id"],
+            )
+        except Exception as exc:
+            msg = f"Could not prepare summary matching: {exc}"
+            self.logger.error(msg)
+            self.error_occurred.emit(msg)
+            return None
+        return SummaryMatchPlan(
+            auto_pairs=auto_pairs,
+            unmatched_a=unmatched_a,
+            unmatched_b=unmatched_b,
+        )
+
     def compute_from_summaries(
         self,
         summary_path_a: str,
         summary_path_b: str,
+        manual_pairs=None,
     ) -> Optional[SummaryAgreementResult]:
-        """Match two summary_table.csv files by ``animal_id`` and compute
-        per-metric ICC(2,1), Pearson r, and mean absolute difference."""
+        """Match two summary_table.csv files and compute agreement metrics."""
         try:
             df_a = _parse_summary_table(summary_path_a)
             df_b = _parse_summary_table(summary_path_b)
+            matched_pairs, unmatched_a, unmatched_b = _match_summary_animals(
+                df_a["animal_id"],
+                df_b["animal_id"],
+                manual_pairs=manual_pairs,
+            )
         except Exception as exc:
-            msg = f"Could not parse summary CSV: {exc}"
+            msg = f"Could not prepare summary comparison: {exc}"
             self.logger.error(msg)
             self.error_occurred.emit(msg)
             return None
 
-        animals_a = set(df_a["animal_id"])
-        animals_b = set(df_b["animal_id"])
-        matched = sorted(animals_a & animals_b)
-        unmatched_a = sorted(animals_a - animals_b)
-        unmatched_b = sorted(animals_b - animals_a)
-
-        if not matched:
+        if not matched_pairs:
             msg = (
-                "No animal_id values are shared between the two summary "
-                "tables; cannot compute agreement."
+                "No animal_id values could be matched between the two "
+                "summary tables; cannot compute agreement."
             )
             self.error_occurred.emit(msg)
             return None
 
-        # Restrict and align on animal_id.
-        df_a_m = df_a.set_index("animal_id").loc[matched]
-        df_b_m = df_b.set_index("animal_id").loc[matched]
+        index_a = df_a.set_index("animal_id")
+        index_b = df_b.set_index("animal_id")
 
         # Use the intersection of metric columns. Custom metrics that
         # only appear in one file are reported as unmatched but skipped.
         common_metrics = [
-            c for c in df_a_m.columns if c in df_b_m.columns
+            c for c in index_a.columns if c in index_b.columns
         ]
+        matched = [pair.match_id for pair in matched_pairs]
 
         result = SummaryAgreementResult(
             matched_animals=matched,
             unmatched_a=unmatched_a,
             unmatched_b=unmatched_b,
+            matched_pairs=matched_pairs,
         )
 
         for metric in common_metrics:
-            values_a = df_a_m[metric].to_numpy(dtype=float)
-            values_b = df_b_m[metric].to_numpy(dtype=float)
+            values_a = np.array(
+                [
+                    index_a.at[pair.animal_id_a, metric]
+                    for pair in matched_pairs
+                ],
+                dtype=float,
+            )
+            values_b = np.array(
+                [
+                    index_b.at[pair.animal_id_b, metric]
+                    for pair in matched_pairs
+                ],
+                dtype=float,
+            )
 
             mask = np.isfinite(values_a) & np.isfinite(values_b)
             n = int(mask.sum())
