@@ -90,7 +90,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Download RABET-Windows-1.3.2.zip from Zenodo
+    1. Download RABET-Windows-1.3.3.zip from Zenodo
     2. Unzip anywhere (Desktop / Tools folder)
     3. Double-click RABET.exe
     ```
@@ -98,7 +98,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Download RABET-macOS-arm64-1.3.2.zip from Zenodo
+    1. Download RABET-macOS-arm64-1.3.3.zip from Zenodo
     2. Unzip and drag RABET.app into Applications
     3. First launch: right-click → Open
     ```
@@ -106,7 +106,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Download RABET-macOS-x86_64-1.3.2.zip from Zenodo
+    1. Download RABET-macOS-x86_64-1.3.3.zip from Zenodo
     2. Unzip and drag RABET.app into Applications
     3. First launch: right-click → Open
     ```
@@ -114,7 +114,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-linux: Linux"
 
     ```bash
-    tar -xzf RABET-Linux-x86_64-1.3.2.tar.gz
+    tar -xzf RABET-Linux-x86_64-1.3.3.tar.gz
     cd RABET-linux
     ./run_rabet.sh
     ```
@@ -134,7 +134,7 @@ If RABET supports your research, please cite it.  Machine-readable
 metadata lives in [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff); a human-readable form is:
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.2). https://github.com/mi2e-K/RABET
+> (Version 1.3.3). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
 The DOI above is the **concept DOI** that always resolves to the
