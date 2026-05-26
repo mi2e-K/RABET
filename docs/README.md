@@ -1,6 +1,6 @@
 # RABET documentation
 
-User-facing and developer-facing documentation for RABET 1.3.2.
+User-facing and developer-facing documentation for RABET 1.3.3.
 
 | Document | Audience | Description |
 | --- | --- | --- |
