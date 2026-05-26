@@ -93,10 +93,10 @@ platform:
 
 | Platform | Asset |
 | --- | --- |
-| Windows | `RABET-Windows-1.3.2.zip` |
-| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.2.zip` |
-| macOS (Intel) | `RABET-macOS-x86_64-1.3.2.zip` |
-| Linux | `RABET-Linux-x86_64-1.3.2.tar.gz` |
+| Windows | `RABET-Windows-1.3.3.zip` |
+| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.3.zip` |
+| macOS (Intel) | `RABET-macOS-x86_64-1.3.3.zip` |
+| Linux | `RABET-Linux-x86_64-1.3.3.tar.gz` |
 
 The downloads are self-contained — no additional installation step is
 required. See the [User Guide](docs/USER_GUIDE.md#12-launching-rabet)
@@ -167,7 +167,7 @@ Annotation exports use the layout below; full documentation lives in
 
 ```
 Metadata
-RABET Version,1.3.2
+RABET Version,1.3.3
 Test Duration (seconds),300
 
 Event,Onset,Offset
