@@ -234,7 +234,6 @@ def main():
         # Create Qt application
         app = QApplication(sys.argv)
         app.setApplicationName("RABET")
-        app.setApplicationDisplayName("RABET")
 
         # Set application icon (crucial for taskbar and window icon)
         setup_application_icon(app)
