@@ -234,7 +234,7 @@ def main():
         # Create Qt application
         app = QApplication(sys.argv)
         app.setApplicationName("RABET")
-        app.setApplicationDisplayName("Real-time Animal Behavior Event Tagger")
+        app.setApplicationDisplayName("RABET")
 
         # Set application icon (crucial for taskbar and window icon)
         setup_application_icon(app)

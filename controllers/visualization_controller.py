@@ -47,6 +47,7 @@ class VisualizationController(QObject):
         # Connect signals
         self._connect_signals()
         self._restore_colormap_selection()
+        self._restore_plot_save_directory()
     
     def _initialize_custom_colormaps(self):
         """Initialize custom colormaps from config directory."""
@@ -99,6 +100,16 @@ class VisualizationController(QObject):
                 self._view.raster_plot.selected_colormap_changed.connect(
                     self.on_selected_colormap_changed
                 )
+            if hasattr(self._view, "plot_save_directory_changed"):
+                self._view.plot_save_directory_changed.connect(
+                    self.on_plot_save_directory_changed
+                )
+            elif hasattr(self._view, "raster_plot") and hasattr(
+                self._view.raster_plot, "plot_save_directory_changed"
+            ):
+                self._view.raster_plot.plot_save_directory_changed.connect(
+                    self.on_plot_save_directory_changed
+                )
 
     @Slot()
     def on_clear_data_requested(self):
@@ -149,6 +160,7 @@ class VisualizationController(QObject):
         """Attach persistent settings and restore the saved colour map."""
         self._config_manager = config_manager
         self._restore_colormap_selection()
+        self._restore_plot_save_directory()
 
     def _restore_colormap_selection(self):
         """Restore the previously selected Visualization color map."""
@@ -167,6 +179,36 @@ class VisualizationController(QObject):
             if hasattr(self._view, "select_custom_colormap"):
                 self._view.select_custom_colormap("Set1")
             self.on_selected_colormap_changed("Set1")
+
+    @Slot(str)
+    def on_plot_save_directory_changed(self, directory):
+        """Persist the last directory used for Visualization plot exports."""
+        if not self._config_manager or not directory:
+            return
+        if not os.path.isdir(directory):
+            return
+        if self._config_manager.update_last_directory(
+            "visualization_plot",
+            directory,
+        ):
+            self._config_manager.save_config()
+
+    def _restore_plot_save_directory(self):
+        """Restore the last used Visualization plot export directory."""
+        if not self._config_manager or not self._view:
+            return
+
+        directory = self._config_manager.get_last_directory("visualization_plot")
+        if not directory:
+            return
+
+        if hasattr(self._view, "set_last_plot_save_directory"):
+            self._view.set_last_plot_save_directory(directory)
+        elif hasattr(self._view, "raster_plot") and hasattr(
+            self._view.raster_plot,
+            "set_last_plot_save_directory",
+        ):
+            self._view.raster_plot.set_last_plot_save_directory(directory)
     
     def _discover_custom_colormaps(self):
         """

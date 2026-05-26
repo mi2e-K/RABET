@@ -2,6 +2,7 @@
 import logging
 import os
 import json
+import re
 import colorsys
 import warnings
 import numpy as np
@@ -458,6 +459,630 @@ class ColorMapEditorDialog(QDialog):
         return self._result_name, self._result_map.copy()
 
 
+class GridStyleDialog(QDialog):
+    """Dialog for editing raster plot grid color and line style."""
+
+    DEFAULT_GRID_COLOR = "#B0B0B0"
+    LINE_STYLES = [
+        ("Solid", "-"),
+        ("Dashed", "--"),
+        ("Dotted", ":"),
+        ("Dash-dot", "-."),
+    ]
+
+    def __init__(self, color, linestyle, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Grid Style")
+        self._register_default_custom_color()
+        self._color = QColor(color)
+        if not self._color.isValid():
+            self._color = QColor(self.DEFAULT_GRID_COLOR)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        color_row = QHBoxLayout()
+        color_row.addWidget(QLabel("Color:"))
+        self.color_button = QPushButton(self._color.name().upper())
+        self.color_button.clicked.connect(self._choose_color)
+        color_row.addWidget(self.color_button, 1)
+
+        reset_color_button = QPushButton("Reset")
+        reset_color_button.clicked.connect(self._reset_color)
+        color_row.addWidget(reset_color_button)
+        layout.addLayout(color_row)
+
+        style_row = QHBoxLayout()
+        style_row.addWidget(QLabel("Line type:"))
+        self.line_style_combo = QComboBox()
+        for label, value in self.LINE_STYLES:
+            self.line_style_combo.addItem(label, value)
+        current_index = self.line_style_combo.findData(linestyle)
+        if current_index >= 0:
+            self.line_style_combo.setCurrentIndex(current_index)
+        style_row.addWidget(self.line_style_combo, 1)
+        layout.addLayout(style_row)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+        self._update_color_button()
+
+    def _register_default_custom_color(self):
+        """Put the default grid color in Qt's custom color swatches."""
+        QColorDialog.setCustomColor(0, QColor(self.DEFAULT_GRID_COLOR))
+
+    def _choose_color(self):
+        self._register_default_custom_color()
+        color = QColorDialog.getColor(self._color, self, "Select Grid Color")
+        if color.isValid():
+            self._color = color
+            self._update_color_button()
+
+    def _reset_color(self):
+        self._color = QColor(self.DEFAULT_GRID_COLOR)
+        self._update_color_button()
+
+    def _update_color_button(self):
+        self.color_button.setText(self._color.name().upper())
+        red, green, blue = self._color.red(), self._color.green(), self._color.blue()
+        luminance = (
+            0.2126 * (red / 255) ** 2.2
+            + 0.7152 * (green / 255) ** 2.2
+            + 0.0722 * (blue / 255) ** 2.2
+        )
+        text_color = "#000000" if luminance > 0.35 else "#FFFFFF"
+        self.color_button.setStyleSheet(
+            f"background-color: {self._color.name()}; color: {text_color};"
+        )
+
+    def result(self):
+        return self._color.name(), self.line_style_combo.currentData()
+
+
+class CheckableBehaviorTable(QTableWidget):
+    """Behavior table whose first-column checkbox toggles from the whole cell."""
+
+    def mousePressEvent(self, event):
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        index = self.indexAt(pos)
+        if index.isValid() and index.column() == 0:
+            item = self.item(index.row(), 0)
+            if item and item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                if not item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                    return
+                new_state = (
+                    Qt.CheckState.Unchecked
+                    if item.checkState() == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                item.setCheckState(new_state)
+                self.setCurrentCell(index.row(), 0)
+                self.selectRow(index.row())
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Space:
+            row = self.currentRow()
+            item = self.item(row, 0) if row >= 0 else None
+            if item and item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                if not item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                    return
+                new_state = (
+                    Qt.CheckState.Unchecked
+                    if item.checkState() == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                item.setCheckState(new_state)
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+
+class OverlayGroupEditDialog(QDialog):
+    """Dialog for creating or editing one behavior overlay group."""
+
+    def __init__(
+        self,
+        behaviors,
+        group_name="",
+        selected_behaviors=None,
+        reserved_behaviors=None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Overlay Group")
+        self.resize(520, 520)
+        self._behaviors = list(behaviors or [])
+        self._reserved_behaviors = reserved_behaviors or {}
+        self._result_name = ""
+        self._result_behaviors = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Group name:"))
+        self.name_edit = QLineEdit(group_name)
+        name_row.addWidget(self.name_edit, 1)
+        layout.addLayout(name_row)
+
+        self.behavior_table = CheckableBehaviorTable(0, 1)
+        self.behavior_table.setHorizontalHeaderLabels(["Behaviors"])
+        self.behavior_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.behavior_table.verticalHeader().setVisible(False)
+        self.behavior_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.behavior_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        layout.addWidget(self.behavior_table, 1)
+
+        self._populate_behavior_table(selected_behaviors or [])
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+    def _populate_behavior_table(self, selected_behaviors):
+        selected = set(selected_behaviors)
+        self.behavior_table.setRowCount(0)
+        for row, behavior in enumerate(self._behaviors):
+            self.behavior_table.insertRow(row)
+            label = behavior
+            reserved_group = self._reserved_behaviors.get(behavior)
+            if reserved_group:
+                label = f"{behavior}  ({reserved_group})"
+            item = QTableWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, behavior)
+            item.setFlags(
+                item.flags()
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+            )
+            if reserved_group:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if behavior in selected
+                else Qt.CheckState.Unchecked
+            )
+            self.behavior_table.setItem(row, 0, item)
+
+    def _checked_behaviors(self):
+        checked = []
+        for row in range(self.behavior_table.rowCount()):
+            item = self.behavior_table.item(row, 0)
+            if (
+                item
+                and item.flags() & Qt.ItemFlag.ItemIsEnabled
+                and item.checkState() == Qt.CheckState.Checked
+            ):
+                checked.append(item.data(Qt.ItemDataRole.UserRole))
+        return checked
+
+    def accept(self):
+        name = self.name_edit.text().strip()
+        behaviors = self._checked_behaviors()
+        if not name:
+            QMessageBox.warning(self, "Invalid Group", "Enter a group name.")
+            return
+        if len(behaviors) < 2:
+            QMessageBox.warning(
+                self,
+                "Invalid Group",
+                "Select at least two behaviors for an overlay group.",
+            )
+            return
+        self._result_name = name
+        self._result_behaviors = behaviors
+        super().accept()
+
+    def result(self):
+        return self._result_name, list(self._result_behaviors)
+
+
+class OverlayGroupsDialog(QDialog):
+    """Dialog for editing behavior overlay groups and per-behavior opacity."""
+
+    SCHEMA = "rabet_visualization_overlay_groups_v1"
+
+    def __init__(self, behaviors, groups, behavior_opacity, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Overlay Groups")
+        self.resize(780, 560)
+        self._behaviors = self._unique_behaviors(behaviors)
+        self._groups = self._normalise_groups(groups or [], show_warnings=False)
+        self._behavior_opacity = {
+            behavior: self._clamp_opacity(
+                (behavior_opacity or {}).get(behavior, 1.0)
+            )
+            for behavior in self._behaviors
+        }
+        self._opacity_spinboxes = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        table_row = QHBoxLayout()
+        self.group_table = QTableWidget(0, 2)
+        self.group_table.setHorizontalHeaderLabels(["Group", "Behaviors"])
+        self.group_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.group_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.group_table.verticalHeader().setVisible(False)
+        self.group_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.group_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.group_table.itemDoubleClicked.connect(self._edit_selected_group)
+        table_row.addWidget(self.group_table, 1)
+
+        self.behavior_table = QTableWidget(0, 2)
+        self.behavior_table.setHorizontalHeaderLabels(["Behavior", "Opacity"])
+        self.behavior_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.behavior_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.behavior_table.verticalHeader().setVisible(False)
+        table_row.addWidget(self.behavior_table, 1)
+        layout.addLayout(table_row, 1)
+
+        button_row = QHBoxLayout()
+        new_button = QPushButton("New Group")
+        new_button.clicked.connect(self._new_group)
+        edit_button = QPushButton("Edit Selected")
+        edit_button.clicked.connect(self._edit_selected_group)
+        remove_button = QPushButton("Remove Selected")
+        remove_button.clicked.connect(self._remove_selected_group)
+        load_button = QPushButton("Load...")
+        load_button.clicked.connect(self._load_groups)
+        save_button = QPushButton("Save...")
+        save_button.clicked.connect(self._save_groups)
+        button_row.addWidget(new_button)
+        button_row.addWidget(edit_button)
+        button_row.addWidget(remove_button)
+        button_row.addStretch()
+        button_row.addWidget(load_button)
+        button_row.addWidget(save_button)
+        layout.addLayout(button_row)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+
+        self._populate_behavior_table()
+        self._refresh_group_table()
+
+    def _unique_behaviors(self, behaviors):
+        result = []
+        seen = set()
+        for behavior in behaviors or []:
+            behavior = str(behavior).strip()
+            if behavior and behavior not in seen:
+                result.append(behavior)
+                seen.add(behavior)
+        return result
+
+    def _clamp_opacity(self, value):
+        try:
+            opacity = float(value)
+        except (TypeError, ValueError):
+            opacity = 1.0
+        return max(0.0, min(1.0, opacity))
+
+    def _populate_behavior_table(self):
+        self.behavior_table.setRowCount(0)
+        self._opacity_spinboxes = {}
+        for row, behavior in enumerate(self._behaviors):
+            self.behavior_table.insertRow(row)
+            behavior_item = QTableWidgetItem(behavior)
+            behavior_item.setFlags(behavior_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            behavior_item.setData(Qt.ItemDataRole.UserRole, behavior)
+            self.behavior_table.setItem(row, 0, behavior_item)
+
+            opacity_spinbox = QSpinBox()
+            opacity_spinbox.setMinimum(0)
+            opacity_spinbox.setMaximum(100)
+            opacity_spinbox.setSuffix("%")
+            opacity_spinbox.setValue(int(round(self._behavior_opacity[behavior] * 100)))
+            self._opacity_spinboxes[behavior] = opacity_spinbox
+            self.behavior_table.setCellWidget(row, 1, opacity_spinbox)
+
+    def _refresh_group_table(self):
+        was_blocked = self.group_table.blockSignals(True)
+        try:
+            self.group_table.setRowCount(0)
+            for row, group in enumerate(self._groups):
+                self.group_table.insertRow(row)
+                name_item = QTableWidgetItem(group["name"])
+                members_item = QTableWidgetItem(", ".join(group["behaviors"]))
+                self.group_table.setItem(row, 0, name_item)
+                self.group_table.setItem(row, 1, members_item)
+        finally:
+            self.group_table.blockSignals(was_blocked)
+
+    def _selected_group_index(self):
+        row = self.group_table.currentRow()
+        if 0 <= row < len(self._groups):
+            return row
+        return None
+
+    def _next_group_name(self):
+        existing_names = {group["name"] for group in self._groups}
+        base = "New Group"
+        if base not in existing_names:
+            return base
+        index = 2
+        while f"{base} {index}" in existing_names:
+            index += 1
+        return f"{base} {index}"
+
+    def _reserved_behaviors(self, selected_index=None):
+        reserved = {}
+        for index, group in enumerate(self._groups):
+            if index == selected_index:
+                continue
+            for behavior in group["behaviors"]:
+                reserved[behavior] = group["name"]
+        return reserved
+
+    def _validate_group(self, name, behaviors, selected_index=None):
+        for index, group in enumerate(self._groups):
+            if index != selected_index and group["name"] == name:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Group",
+                    f"A group named '{name}' already exists.",
+                )
+                return False
+
+        assigned_elsewhere = self._reserved_behaviors(selected_index)
+        conflicts = [
+            f"{behavior} ({assigned_elsewhere[behavior]})"
+            for behavior in behaviors
+            if behavior in assigned_elsewhere
+        ]
+        if conflicts:
+            QMessageBox.warning(
+                self,
+                "Invalid Group",
+                "Each behavior can belong to only one group:\n"
+                + "\n".join(conflicts),
+            )
+            return False
+        return True
+
+    def _open_group_editor(self, selected_index=None):
+        if selected_index is None:
+            group_name = self._next_group_name()
+            selected_behaviors = []
+        else:
+            group = self._groups[selected_index]
+            group_name = group["name"]
+            selected_behaviors = group["behaviors"]
+
+        dialog = OverlayGroupEditDialog(
+            self._behaviors,
+            group_name,
+            selected_behaviors,
+            self._reserved_behaviors(selected_index),
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        name, behaviors = dialog.result()
+        if not self._validate_group(name, behaviors, selected_index):
+            return False
+
+        new_group = {"name": name, "behaviors": behaviors}
+        if selected_index is None:
+            self._groups.append(new_group)
+            selected_index = len(self._groups) - 1
+        else:
+            self._groups[selected_index] = new_group
+
+        self._refresh_group_table()
+        self.group_table.selectRow(selected_index)
+        return True
+
+    def _new_group(self):
+        self._open_group_editor(None)
+
+    def _edit_selected_group(self):
+        selected_index = self._selected_group_index()
+        if selected_index is None:
+            QMessageBox.information(
+                self,
+                "Overlay Groups",
+                "Select a group to edit.",
+            )
+            return
+        self._open_group_editor(selected_index)
+
+    def _remove_selected_group(self):
+        selected_index = self._selected_group_index()
+        if selected_index is None:
+            return
+        del self._groups[selected_index]
+        self._refresh_group_table()
+
+    def _current_opacity(self):
+        opacity = {}
+        for behavior in self._behaviors:
+            spinbox = self._opacity_spinboxes.get(behavior)
+            if spinbox:
+                opacity[behavior] = spinbox.value() / 100
+        return opacity
+
+    def _config_dict(self):
+        return {
+            "schema": self.SCHEMA,
+            "groups": [
+                {
+                    "name": group["name"],
+                    "behaviors": list(group["behaviors"]),
+                }
+                for group in self._groups
+            ],
+            "behavior_opacity": self._current_opacity(),
+        }
+
+    def _normalise_groups(self, groups, show_warnings=True):
+        behavior_set = set(self._behaviors)
+        normalised = []
+        assigned = set()
+        group_names = set()
+        warnings_list = []
+
+        if not isinstance(groups, list):
+            if show_warnings:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Overlay Groups",
+                    "The groups field must be a list.",
+                )
+            return []
+
+        for group in groups:
+            if not isinstance(group, dict):
+                warnings_list.append("Skipped a non-object group entry.")
+                continue
+            name = str(group.get("name", "")).strip()
+            if not name:
+                warnings_list.append("Skipped a group without a name.")
+                continue
+            if name in group_names:
+                warnings_list.append(f"Skipped duplicate group name: {name}")
+                continue
+
+            members = []
+            for raw_behavior in group.get("behaviors", []):
+                behavior = str(raw_behavior).strip()
+                if not behavior:
+                    continue
+                if behavior not in behavior_set:
+                    warnings_list.append(
+                        f"Ignored missing behavior in '{name}': {behavior}"
+                    )
+                    continue
+                if behavior in assigned:
+                    warnings_list.append(
+                        f"Ignored duplicate behavior membership: {behavior}"
+                    )
+                    continue
+                if behavior not in members:
+                    members.append(behavior)
+
+            if len(members) < 2:
+                warnings_list.append(
+                    f"Skipped '{name}' because it has fewer than two valid behaviors."
+                )
+                continue
+
+            normalised.append({"name": name, "behaviors": members})
+            group_names.add(name)
+            assigned.update(members)
+
+        if show_warnings and warnings_list:
+            QMessageBox.warning(
+                self,
+                "Overlay Groups Loaded",
+                "\n".join(warnings_list[:12]),
+            )
+        return normalised
+
+    def _load_groups(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Overlay Groups",
+            "",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError("Overlay group file must be a JSON object.")
+            if data.get("schema") != self.SCHEMA:
+                raise ValueError(f"Unsupported overlay group schema: {data.get('schema')!r}")
+
+            groups = self._normalise_groups(data.get("groups", []), show_warnings=True)
+            opacity_data = data.get("behavior_opacity", {})
+            if not isinstance(opacity_data, dict):
+                opacity_data = {}
+
+            self._groups = groups
+            self._behavior_opacity = {
+                behavior: self._clamp_opacity(opacity_data.get(behavior, 1.0))
+                for behavior in self._behaviors
+            }
+            for behavior, spinbox in self._opacity_spinboxes.items():
+                spinbox.setValue(int(round(self._behavior_opacity[behavior] * 100)))
+            self._refresh_group_table()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Overlay Groups Error",
+                f"Failed to load overlay groups:\n{exc}",
+            )
+
+    def _save_groups(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Overlay Groups",
+            "overlay_groups.json",
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+        if not os.path.splitext(file_path)[1]:
+            file_path = f"{file_path}.json"
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(self._config_dict(), f, indent=2)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Overlay Groups Error",
+                f"Failed to save overlay groups:\n{exc}",
+            )
+
+    def result(self):
+        return (
+            [
+                {
+                    "name": group["name"],
+                    "behaviors": list(group["behaviors"]),
+                }
+                for group in self._groups
+            ],
+            self._current_opacity(),
+        )
+
+
 # Custom reorderable list widget
 class ReorderableListWidget(QListWidget):
     """List widget that supports drag and drop reordering."""
@@ -511,6 +1136,7 @@ class RasterPlotWidget(QWidget):
 
     files_selected = Signal(list)
     selected_colormap_changed = Signal(str)
+    plot_save_directory_changed = Signal(str)
     # 1.3.3+: emitted from the Clear button so the controller can drop
     # its own cache. Without this, clicking Clear only wipes the in-view
     # state and a subsequent re-drop of the same files restored the
@@ -543,6 +1169,8 @@ class RasterPlotWidget(QWidget):
         self._file_visibility = {}  # Dictionary to store file visibility
         self._default_colormap = 'Set1'  # Default built-in colormap
         self._custom_color_map = {}
+        self._overlay_groups = []
+        self._behavior_opacity = {}
         
         # Available custom color maps (discovered from configs folder)
         self._available_custom_colormaps = {}
@@ -558,8 +1186,12 @@ class RasterPlotWidget(QWidget):
         self._show_vertical_grid = True
         self._show_horizontal_grid = True
         self._grid_color = "#B0B0B0"
+        self._grid_linestyle = "--"
         self._border_mode = "All"
         self._transparent_outside_plot = False
+        self._last_plot_save_directory = ""
+        self._show_file_label_numbers = True
+        self._show_file_separators = True
 
         # Track custom ordering
         self._custom_behavior_order = []
@@ -818,6 +1450,11 @@ class RasterPlotWidget(QWidget):
         self.behavior_list.itemChanged.connect(self.on_behavior_selection_changed)
         self.behavior_list.model().rowsMoved.connect(self.on_behaviors_reordered)
         self.behavior_layout.addWidget(self.behavior_list)
+
+        self.overlay_groups_button = QPushButton("Overlay Groups...")
+        self.overlay_groups_button.clicked.connect(self.edit_overlay_groups)
+        self.overlay_groups_button.setMaximumHeight(30)
+        self.behavior_layout.addWidget(self.overlay_groups_button)
         
         self.left_layout.addWidget(self.behavior_group, 1)
         
@@ -832,6 +1469,38 @@ class RasterPlotWidget(QWidget):
         self.file_list.itemChanged.connect(self.on_file_selection_changed)
         self.file_list.model().rowsMoved.connect(self.on_files_reordered)
         self.file_layout.addWidget(self.file_list)
+
+        self.export_individual_plots_button = QPushButton("Export Individual Plots...")
+        self.export_individual_plots_button.clicked.connect(self.export_individual_plots)
+        self.export_individual_plots_button.setMaximumHeight(30)
+        self.file_layout.addWidget(self.export_individual_plots_button)
+
+        self.file_options_layout = QHBoxLayout()
+        self.file_options_layout.setContentsMargins(0, 0, 0, 0)
+        self.file_options_layout.setSpacing(8)
+
+        self.file_label_numbers_checkbox = QCheckBox("Number labels")
+        self.file_label_numbers_checkbox.setChecked(self._show_file_label_numbers)
+        self.file_label_numbers_checkbox.setToolTip(
+            "Prefix behavior labels with the file number when multiple files are plotted."
+        )
+        self.file_label_numbers_checkbox.stateChanged.connect(
+            self.on_file_label_numbers_changed
+        )
+
+        self.file_separators_checkbox = QCheckBox("File separators")
+        self.file_separators_checkbox.setChecked(self._show_file_separators)
+        self.file_separators_checkbox.setToolTip(
+            "Draw separator lines between individual file blocks."
+        )
+        self.file_separators_checkbox.stateChanged.connect(
+            self.on_file_separators_changed
+        )
+
+        self.file_options_layout.addWidget(self.file_label_numbers_checkbox)
+        self.file_options_layout.addWidget(self.file_separators_checkbox)
+        self.file_options_layout.addStretch()
+        self.file_layout.addLayout(self.file_options_layout)
         
         self.file_group.setVisible(False)
         self.left_layout.addWidget(self.file_group, 1)
@@ -911,11 +1580,12 @@ class RasterPlotWidget(QWidget):
         self.horizontal_grid_checkbox.setChecked(self._show_horizontal_grid)
         self.horizontal_grid_checkbox.stateChanged.connect(self.on_horizontal_grid_changed)
 
-        self.grid_color_button = QPushButton("Grid Color")
-        self.grid_color_button.clicked.connect(self.on_grid_color_clicked)
-        self.grid_color_button.setMaximumWidth(90)
-        self.grid_color_button.setMaximumHeight(25)
-        self._update_grid_color_button()
+        self.grid_style_button = QPushButton("Grid Style")
+        self.grid_style_button.clicked.connect(self.on_grid_style_clicked)
+        self.grid_style_button.setMaximumWidth(95)
+        self.grid_style_button.setMaximumHeight(25)
+        self.grid_style_button.setToolTip("Set grid color and line type.")
+        self._update_grid_style_button()
 
         self.transparent_outside_checkbox = QCheckBox("Transparent Outside")
         self.transparent_outside_checkbox.setChecked(self._transparent_outside_plot)
@@ -961,7 +1631,7 @@ class RasterPlotWidget(QWidget):
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.vertical_grid_checkbox)
         self.plot_controls_layout.addWidget(self.horizontal_grid_checkbox)
-        self.plot_controls_layout.addWidget(self.grid_color_button)
+        self.plot_controls_layout.addWidget(self.grid_style_button)
         self.plot_controls_layout.addWidget(self.transparent_outside_checkbox)
         self.plot_controls_layout.addSpacing(15)
         self.plot_controls_layout.addWidget(self.individual_frames_checkbox)
@@ -1099,6 +1769,179 @@ class RasterPlotWidget(QWidget):
         selected_extension = selected_filter_to_extension.get(selected_filter, ".svg")
         return f"{file_path}{selected_extension}", extension_to_format[selected_extension]
 
+    def _plot_export_default_path(self, default_name):
+        """Return a default export path rooted at the last plot save folder."""
+        if self._last_plot_save_directory and os.path.isdir(self._last_plot_save_directory):
+            return os.path.join(self._last_plot_save_directory, default_name)
+        return default_name
+
+    def _remember_plot_save_path(self, file_path):
+        """Persist the directory used by a successful plot export."""
+        directory = os.path.dirname(os.path.abspath(file_path))
+        if not directory:
+            return
+        self._last_plot_save_directory = directory
+        self.plot_save_directory_changed.emit(directory)
+
+    def set_last_plot_save_directory(self, directory):
+        """Restore the last directory used for plot exports."""
+        if directory and os.path.isdir(directory):
+            self._last_plot_save_directory = directory
+
+    def _plot_save_kwargs(self, file_format):
+        """Build Matplotlib savefig keyword arguments from current settings."""
+        save_kwargs = {
+            "format": file_format,
+            "bbox_inches": "tight",
+        }
+        if self._transparent_outside_plot:
+            save_kwargs["facecolor"] = "none"
+            save_kwargs["edgecolor"] = "none"
+        if file_format == "png":
+            save_kwargs["dpi"] = self._png_dpi
+        return save_kwargs
+
+    def _save_current_figure_to_path(self, file_path, file_format):
+        """Save the currently rendered figure using current export options."""
+        self._apply_figure_background_style()
+        self.canvas.fig.savefig(
+            file_path,
+            **self._plot_save_kwargs(file_format),
+        )
+
+    def _show_timed_information(self, title, message, timeout_ms=1500):
+        """Show an information dialog that closes automatically."""
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setWindowTitle(title)
+        dialog.setText(message)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        QTimer.singleShot(timeout_ms, dialog.accept)
+        dialog.exec()
+
+    def _file_paths_from_list(self):
+        """Return file paths in the exact order shown in the Files list."""
+        file_paths = []
+        for row in range(self.file_list.count()):
+            item = self.file_list.item(row)
+            file_path = item.data(Qt.ItemDataRole.UserRole)
+            if file_path in self._data:
+                file_paths.append(file_path)
+        return file_paths or self._ordered_file_paths()
+
+    def _safe_export_stem(self, file_path, index):
+        """Return a filesystem-safe stem for an individual export."""
+        stem = os.path.splitext(os.path.basename(file_path))[0]
+        stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", stem)
+        stem = stem.strip(" ._")
+        return stem or f"individual_{index:02d}"
+
+    def _behavior_order_from_list(self):
+        """Return behavior names in the current user-defined list order."""
+        return [
+            self.behavior_list.item(row).text()
+            for row in range(self.behavior_list.count())
+        ]
+
+    def _visible_behaviors_from_list(self):
+        """Return visible behavior names in the current list order."""
+        return [
+            behavior
+            for behavior in self._behavior_order_from_list()
+            if self._behavior_visibility.get(behavior, True)
+        ]
+
+    def _valid_overlay_groups(self, behavior_order=None):
+        """Return overlay groups filtered to behaviors currently available."""
+        behavior_order = behavior_order or self._behavior_order_from_list()
+        behavior_set = set(behavior_order)
+        assigned = set()
+        valid_groups = []
+        for group in self._overlay_groups:
+            name = str(group.get("name", "")).strip()
+            if not name:
+                continue
+            members = []
+            for behavior in group.get("behaviors", []):
+                if (
+                    behavior in behavior_set
+                    and behavior not in assigned
+                    and behavior not in members
+                ):
+                    members.append(behavior)
+            if len(members) < 2:
+                continue
+            assigned.update(members)
+            valid_groups.append({"name": name, "behaviors": members})
+        return valid_groups
+
+    def _has_active_overlay_groups(self, behavior_order=None):
+        """Return whether at least one valid overlay group is configured."""
+        return bool(self._valid_overlay_groups(behavior_order))
+
+    def _behavior_rows(self, behavior_order=None):
+        """Build display rows from behaviors plus configured overlay groups."""
+        behavior_order = behavior_order or self._behavior_order_from_list()
+        visible_set = {
+            behavior
+            for behavior in behavior_order
+            if self._behavior_visibility.get(behavior, True)
+        }
+        valid_groups = self._valid_overlay_groups(behavior_order)
+        group_by_behavior = {}
+        for index, group in enumerate(valid_groups):
+            for behavior in group["behaviors"]:
+                group_by_behavior[behavior] = index
+
+        rows = []
+        emitted_groups = set()
+        for behavior in behavior_order:
+            if behavior not in visible_set:
+                continue
+            group_index = group_by_behavior.get(behavior)
+            if group_index is None:
+                rows.append({
+                    "label": behavior,
+                    "behaviors": [behavior],
+                    "is_group": False,
+                })
+                continue
+            if group_index in emitted_groups:
+                continue
+            group = valid_groups[group_index]
+            members = [
+                member
+                for member in group["behaviors"]
+                if member in visible_set
+            ]
+            if not members:
+                continue
+            rows.append({
+                "label": group["name"],
+                "behaviors": members,
+                "is_group": True,
+            })
+            emitted_groups.add(group_index)
+        return rows
+
+    def _behavior_zorders(self, behavior_order):
+        """Return z-order values where visually higher behaviors draw on top."""
+        total = len(behavior_order)
+        return {
+            behavior: 10 + total - index
+            for index, behavior in enumerate(behavior_order)
+        }
+
+    def _behavior_alpha(self, behavior, base_alpha):
+        """Apply per-behavior opacity as a multiplier to the base alpha."""
+        opacity = self._behavior_opacity.get(behavior, 1.0)
+        try:
+            opacity = float(opacity)
+        except (TypeError, ValueError):
+            opacity = 1.0
+        opacity = max(0.0, min(1.0, opacity))
+        return max(0.0, min(1.0, base_alpha * opacity))
+
     def _initial_file_visibility(self, data_dict, previous_file_visibility):
         """Default multi-file loads to the first file only."""
         ordered_paths = list(data_dict.keys())
@@ -1180,12 +2023,12 @@ class RasterPlotWidget(QWidget):
         ax.set_axisbelow(True)
         if self._show_vertical_grid:
             ax.grid(
-                True, axis='x', linestyle='--', color=self._grid_color,
+                True, axis='x', linestyle=self._grid_linestyle, color=self._grid_color,
                 alpha=0.55, linewidth=1.6, zorder=0
             )
         if self._show_horizontal_grid:
             ax.grid(
-                True, axis='y', linestyle='--', color=self._grid_color,
+                True, axis='y', linestyle=self._grid_linestyle, color=self._grid_color,
                 alpha=0.45, linewidth=1.1, zorder=0
             )
 
@@ -1202,11 +2045,11 @@ class RasterPlotWidget(QWidget):
             spine.set_linewidth(2.5)
             spine.set_zorder(100)
 
-    def _update_grid_color_button(self):
-        """Style the grid color button with the current color."""
+    def _update_grid_style_button(self):
+        """Style the grid settings button with the current grid color."""
         color = QColor(self._grid_color)
         text_rgb = self._contrasting_text_color((color.red(), color.green(), color.blue()))
-        self.grid_color_button.setStyleSheet(
+        self.grid_style_button.setStyleSheet(
             f"background-color: {self._grid_color}; "
             f"color: rgb({text_rgb[0]}, {text_rgb[1]}, {text_rgb[2]});"
         )
@@ -1419,13 +2262,46 @@ class RasterPlotWidget(QWidget):
         self._show_horizontal_grid = (state == Qt.CheckState.Checked.value)
         self.update_plot()
 
-    def on_grid_color_clicked(self):
-        """Handle grid color changes."""
-        color = QColorDialog.getColor(QColor(self._grid_color), self, "Select Grid Color")
-        if color.isValid():
-            self._grid_color = color.name()
-            self._update_grid_color_button()
+    def on_grid_style_clicked(self):
+        """Handle grid color and line-style changes."""
+        dialog = GridStyleDialog(self._grid_color, self._grid_linestyle, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._grid_color, self._grid_linestyle = dialog.result()
+            self._update_grid_style_button()
             self.update_plot()
+
+    def on_file_label_numbers_changed(self, state):
+        """Handle behavior-label file number visibility changes."""
+        self._show_file_label_numbers = (state == Qt.CheckState.Checked.value)
+        self.update_plot()
+
+    def on_file_separators_changed(self, state):
+        """Handle individual file separator visibility changes."""
+        self._show_file_separators = (state == Qt.CheckState.Checked.value)
+        self.update_plot()
+
+    def edit_overlay_groups(self):
+        """Open the overlay group editor for the current behavior list."""
+        behaviors = self._behavior_order_from_list()
+        if not behaviors:
+            QMessageBox.warning(
+                self,
+                "Overlay Groups",
+                "Load annotation data or an action map before creating overlay groups.",
+            )
+            return
+
+        dialog = OverlayGroupsDialog(
+            behaviors,
+            self._overlay_groups,
+            self._behavior_opacity,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._overlay_groups, self._behavior_opacity = dialog.result()
+        self.update_plot()
 
     def edit_current_colormap(self):
         """Open the custom color-map editor and request a save."""
@@ -1723,6 +2599,8 @@ class RasterPlotWidget(QWidget):
         self._file_visibility = {}
         self._custom_behavior_order = []
         self._custom_file_order = []
+        self._overlay_groups = []
+        self._behavior_opacity = {}
         self.file_group.setVisible(False)
 
         # Clear lists
@@ -1760,7 +2638,7 @@ class RasterPlotWidget(QWidget):
         file_path, selected_filter = file_dialog.getSaveFileName(
             self,
             "Save Plot",
-            "behavioral_raster_plot.svg",
+            self._plot_export_default_path("behavioral_raster_plot.svg"),
             "SVG Files (*.svg);;PNG Files (*.png);;PDF Files (*.pdf);;All Files (*)"
         )
 
@@ -1769,23 +2647,111 @@ class RasterPlotWidget(QWidget):
                 file_path, file_format = self._normalise_plot_export_path(
                     file_path, selected_filter
                 )
-                # Save the figure
-                save_kwargs = {
-                    "format": file_format,
-                    "bbox_inches": "tight",
-                }
-                if self._transparent_outside_plot:
-                    save_kwargs["facecolor"] = "none"
-                    save_kwargs["edgecolor"] = "none"
-                if file_format == "png":
-                    save_kwargs["dpi"] = self._png_dpi
-                self._apply_figure_background_style()
-                self.canvas.fig.savefig(file_path, **save_kwargs)
+                self._save_current_figure_to_path(file_path, file_format)
+                self._remember_plot_save_path(file_path)
                 self.logger.info(f"Plot saved to: {file_path}")
-                QMessageBox.information(self, "Success", f"Plot saved to:\n{file_path}")
+                self._show_timed_information("Success", f"Plot saved to:\n{file_path}")
             except Exception as e:
                 self.logger.error(f"Error saving plot: {str(e)}")
                 QMessageBox.critical(self, "Error", f"Failed to save plot:\n{str(e)}")
+
+    def export_individual_plots(self):
+        """Export one plot per file/individual using the current plot settings."""
+        if not hasattr(self, 'canvas') or not self._data:
+            QMessageBox.warning(self, "Warning", "No plot to export.")
+            return
+
+        file_paths = self._file_paths_from_list()
+        if not file_paths:
+            QMessageBox.warning(self, "Warning", "No files are available to export.")
+            return
+
+        file_path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Individual Plots",
+            self._plot_export_default_path("individual_plots.svg"),
+            "SVG Files (*.svg);;PNG Files (*.png);;PDF Files (*.pdf);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        try:
+            file_path, file_format = self._normalise_plot_export_path(
+                file_path,
+                selected_filter,
+            )
+            output_dir = os.path.dirname(os.path.abspath(file_path))
+            base_stem = os.path.splitext(os.path.basename(file_path))[0]
+            extension = f".{file_format}"
+
+            original_visibility = self._file_visibility.copy()
+            exported_paths = []
+            failures = []
+
+            try:
+                for index, individual_path in enumerate(file_paths, start=1):
+                    try:
+                        self._file_visibility = {
+                            path: (path == individual_path)
+                            for path in self._data
+                        }
+                        self.update_file_list()
+                        self.update_plot()
+
+                        individual_stem = self._safe_export_stem(individual_path, index)
+                        output_name = (
+                            f"{base_stem}_{index:02d}_{individual_stem}{extension}"
+                        )
+                        output_path = os.path.join(output_dir, output_name)
+                        self._save_current_figure_to_path(output_path, file_format)
+                        exported_paths.append(output_path)
+                    except Exception as exc:
+                        failures.append((individual_path, str(exc)))
+                        self.logger.error(
+                            "Failed to export individual plot for %s: %s",
+                            individual_path,
+                            exc,
+                        )
+            finally:
+                self._file_visibility = original_visibility
+                self.update_file_list()
+                self.update_plot()
+
+            if exported_paths:
+                self._remember_plot_save_path(exported_paths[-1])
+
+            if failures:
+                failed_names = "\n".join(
+                    f"- {os.path.basename(path)}: {error}"
+                    for path, error in failures[:5]
+                )
+                remaining = len(failures) - 5
+                if remaining > 0:
+                    failed_names += f"\n...and {remaining} more"
+                QMessageBox.warning(
+                    self,
+                    "Export Incomplete",
+                    f"Exported {len(exported_paths)} plot(s), "
+                    f"but {len(failures)} failed:\n{failed_names}",
+                )
+                return
+
+            self.logger.info(
+                "Exported %d individual plot(s) to %s",
+                len(exported_paths),
+                output_dir,
+            )
+            self._show_timed_information(
+                "Success",
+                f"Exported {len(exported_paths)} individual plot(s) to:\n{output_dir}",
+            )
+        except Exception as e:
+            self.logger.error(f"Error exporting individual plots: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to export individual plots:\n{str(e)}",
+            )
     
     # List update methods
     def update_behavior_list(self):
@@ -2005,7 +2971,157 @@ class RasterPlotWidget(QWidget):
             viewport = self.canvas_scroll.viewport()
             if viewport and viewport.width() > 0 and viewport.height() > 0:
                 self.canvas.resize(viewport.size())
-    
+
+    def _file_recording_starts_and_max_time(self, selected_files):
+        """Return recording starts and maximum finite displayed offset."""
+        file_recording_starts = {}
+        max_time = 0
+        for file_path in selected_files:
+            df = self._data[file_path]
+            recording_start = self._get_recording_start(df, os.path.basename(file_path))
+            file_recording_starts[file_path] = recording_start
+
+            if 'Offset' in df.columns:
+                try:
+                    file_max_time = float(df['Offset'].max()) - recording_start
+                    if np.isfinite(file_max_time):
+                        max_time = max(max_time, file_max_time)
+                except (TypeError, ValueError):
+                    self.logger.warning(
+                        "Could not calculate max Offset for %s",
+                        os.path.basename(file_path),
+                    )
+        return file_recording_starts, max_time
+
+    def _plot_behavior_events_on_axis(
+        self,
+        ax,
+        df,
+        recording_start,
+        behavior,
+        y_pos,
+        base_alpha,
+        zorder,
+    ):
+        """Plot all events for one behavior on one y position."""
+        if 'Event' not in df.columns:
+            return 0
+
+        behavior_events = df[df['Event'].astype(str) == behavior]
+        if behavior_events.empty:
+            return 0
+
+        color_rgb = self._behavior_colors.get(behavior, (0, 0, 0))
+        color = [c / 255 for c in color_rgb]
+        alpha = self._behavior_alpha(behavior, base_alpha)
+        event_count = 0
+        for _, event in behavior_events.iterrows():
+            if 'Onset' not in event or 'Offset' not in event:
+                continue
+            try:
+                onset = float(event['Onset']) - recording_start
+                offset = float(event['Offset']) - recording_start
+                if onset >= 0:
+                    ax.plot(
+                        [onset, offset],
+                        [y_pos, y_pos],
+                        linewidth=self._bar_height,
+                        solid_capstyle='butt',
+                        color=color,
+                        alpha=alpha,
+                        zorder=zorder,
+                    )
+                    event_count += 1
+            except (ValueError, TypeError) as e:
+                self.logger.warning(
+                    f"Invalid timestamp in event: {event}, error: {str(e)}"
+                )
+        return event_count
+
+    def _plot_grouped_rows_single_axes(
+        self,
+        selected_files,
+        behavior_rows,
+        behavior_order,
+        base_alpha,
+        status_prefix,
+    ):
+        """Plot grouped behavior rows into the main single axes."""
+        if not behavior_rows:
+            self.status_label.setText("No behaviors selected")
+            self._draw_canvas_safe()
+            return
+
+        display_rows = [
+            (file_path, row_index, row)
+            for file_path in selected_files
+            for row_index, row in enumerate(behavior_rows)
+        ]
+        row_positions = {
+            display_index: len(display_rows) - display_index - 1
+            for display_index in range(len(display_rows))
+        }
+        file_numbers = {
+            file_path: file_index + 1
+            for file_index, file_path in enumerate(selected_files)
+        }
+        zorders = self._behavior_zorders(behavior_order)
+        file_recording_starts, max_time = self._file_recording_starts_and_max_time(
+            selected_files
+        )
+
+        event_count = 0
+        for display_index, (file_path, _row_index, row) in enumerate(display_rows):
+            df = self._data[file_path]
+            y_pos = row_positions[display_index]
+            for behavior in row["behaviors"]:
+                event_count += self._plot_behavior_events_on_axis(
+                    self.canvas.axes,
+                    df,
+                    file_recording_starts[file_path],
+                    behavior,
+                    y_pos,
+                    base_alpha,
+                    zorders.get(behavior, 10),
+                )
+
+        rows_per_file = len(behavior_rows)
+        if self._show_file_separators and len(selected_files) > 1:
+            for file_index in range(1, len(selected_files)):
+                boundary_index = file_index * rows_per_file
+                boundary_y = (
+                    row_positions[boundary_index]
+                    + row_positions[boundary_index - 1]
+                ) / 2
+                self.canvas.axes.axhline(
+                    boundary_y,
+                    color=self._grid_color,
+                    linestyle="-",
+                    linewidth=1.0,
+                    alpha=0.7,
+                    zorder=1,
+                )
+
+        y_ticks = [row_positions[index] for index in range(len(display_rows))]
+        y_labels = []
+        for file_path, _row_index, row in display_rows:
+            if len(selected_files) > 1 and self._show_file_label_numbers:
+                y_labels.append(f"{file_numbers[file_path]}: {row['label']}")
+            else:
+                y_labels.append(row["label"])
+        self.canvas.axes.set_yticks(y_ticks)
+        self.canvas.axes.set_yticklabels(y_labels, fontsize=self._text_font_size)
+
+        self._configure_plot_axes(max_time, len(display_rows))
+
+        group_count = sum(1 for row in behavior_rows if row["is_group"])
+        self.status_label.setText(
+            f"{status_prefix}: {event_count} events across {len(selected_files)} file(s), "
+            f"{len(behavior_rows)} row(s), {group_count} overlay group(s)"
+        )
+
+        self._draw_canvas_safe()
+
     def update_plot_separate_mode(self):
         """Update the plot in separate behaviors mode."""
         # 1.3.3+: visibility is now owned by on_behavior_selection_changed.
@@ -2014,12 +3130,8 @@ class RasterPlotWidget(QWidget):
         # just-toggled True back to False if the checkState was read while
         # Qt was still mid-update (the reproducible "uncheck works, but
         # re-check does not bring the behaviour back" bug).
-        visible_behaviors = []
-        for i in range(self.behavior_list.count()):
-            item = self.behavior_list.item(i)
-            behavior = item.text()
-            if self._behavior_visibility.get(behavior, True):
-                visible_behaviors.append(behavior)
+        behavior_order = self._behavior_order_from_list()
+        visible_behaviors = self._visible_behaviors_from_list()
         
         if not visible_behaviors:
             self.status_label.setText("No behaviors selected")
@@ -2030,6 +3142,16 @@ class RasterPlotWidget(QWidget):
         if not selected_files:
             self.status_label.setText("No files selected")
             self._draw_canvas_safe()
+            return
+
+        if self._has_active_overlay_groups(behavior_order):
+            self._plot_grouped_rows_single_axes(
+                selected_files,
+                self._behavior_rows(behavior_order),
+                behavior_order,
+                0.8,
+                "Separate mode overlay groups",
+            )
             return
 
         if len(selected_files) > 1:
@@ -2182,21 +3304,29 @@ class RasterPlotWidget(QWidget):
 
         # Add subtle separators between files/individuals.
         rows_per_file = len(visible_behaviors)
-        if self._show_horizontal_grid:
+        if self._show_file_separators:
             for file_index in range(1, len(selected_files)):
                 boundary_row = display_rows[file_index * rows_per_file]
                 previous_row = display_rows[file_index * rows_per_file - 1]
                 boundary_y = (row_positions[boundary_row] + row_positions[previous_row]) / 2
                 self.canvas.axes.axhline(
-                    boundary_y, color=self._grid_color, linewidth=1.0, alpha=0.7, zorder=1
+                    boundary_y,
+                    color=self._grid_color,
+                    linestyle="-",
+                    linewidth=1.0,
+                    alpha=0.7,
+                    zorder=1,
                 )
 
         # Set y-axis labels. The file list shows which filename belongs to each number.
         y_ticks = [row_positions[row] for row in display_rows]
-        y_labels = [
-            f"{file_numbers[file_path]}: {behavior}"
-            for file_path, behavior in display_rows
-        ]
+        if self._show_file_label_numbers:
+            y_labels = [
+                f"{file_numbers[file_path]}: {behavior}"
+                for file_path, behavior in display_rows
+            ]
+        else:
+            y_labels = [behavior for _file_path, behavior in display_rows]
         self.canvas.axes.set_yticks(y_ticks)
         self.canvas.axes.set_yticklabels(y_labels, fontsize=self._text_font_size)
 
@@ -2214,12 +3344,8 @@ class RasterPlotWidget(QWidget):
         # 1.3.3+: visibility is owned by on_behavior_selection_changed
         # (see note in update_plot_separate_mode). Read from the
         # authoritative ``_behavior_visibility`` dict directly.
-        visible_behaviors = []
-        for i in range(self.behavior_list.count()):
-            item = self.behavior_list.item(i)
-            behavior = item.text()
-            if self._behavior_visibility.get(behavior, True):
-                visible_behaviors.append(behavior)
+        behavior_order = self._behavior_order_from_list()
+        visible_behaviors = self._visible_behaviors_from_list()
         
         # Get selected files
         selected_files = self._visible_file_paths()
@@ -2236,6 +3362,25 @@ class RasterPlotWidget(QWidget):
         
         # Clear the figure
         self.canvas.fig.clear()
+
+        if self._has_active_overlay_groups(behavior_order):
+            behavior_rows = self._behavior_rows(behavior_order)
+            if self._individual_frames:
+                self._plot_overlay_grouped_individual_frames(
+                    selected_files,
+                    behavior_rows,
+                    behavior_order,
+                )
+            else:
+                self.canvas.axes = self.canvas.fig.add_subplot(111)
+                self._plot_grouped_rows_single_axes(
+                    selected_files,
+                    behavior_rows,
+                    behavior_order,
+                    0.9,
+                    "Overlay mode groups",
+                )
+            return
         
         if self._individual_frames:
             self._plot_overlay_individual_frames(selected_files, visible_behaviors)
@@ -2315,6 +3460,111 @@ class RasterPlotWidget(QWidget):
         
         # Draw the canvas
         self._draw_canvas_safe()
+
+    def _plot_overlay_grouped_individual_frames(
+        self,
+        selected_files,
+        behavior_rows,
+        behavior_order,
+    ):
+        """Plot overlay groups inside one subplot per file/individual."""
+        if not behavior_rows:
+            self.status_label.setText("No behaviors selected")
+            self._draw_canvas_safe()
+            return
+
+        num_files = len(selected_files)
+        rows_per_file = len(behavior_rows)
+        row_height_pixels = self.frame_height_spinbox.value()
+
+        top_margin_pixels = 20
+        bottom_margin_pixels = 50
+        between_plots_pixels = 40
+        frame_height_pixels = max(row_height_pixels * rows_per_file, row_height_pixels)
+        total_height_pixels = (
+            top_margin_pixels
+            + (frame_height_pixels * num_files)
+            + (between_plots_pixels * (num_files - 1))
+            + bottom_margin_pixels
+        )
+
+        current_width_inches = self.canvas.fig.get_figwidth()
+        current_dpi = self.canvas.fig.dpi if self.canvas.fig.dpi else 100
+        total_height_inches = total_height_pixels / current_dpi
+        frame_height_inches = frame_height_pixels / current_dpi
+        top_margin_inches = top_margin_pixels / current_dpi
+        between_plots_inches = between_plots_pixels / current_dpi
+
+        if self.auto_size_checkbox.isChecked():
+            self.canvas.fig.set_size_inches(current_width_inches, total_height_inches)
+            fig_height_inches = total_height_inches
+        else:
+            fig_height_inches = self.canvas.fig.get_figheight()
+
+        self.canvas.fig.clear()
+        axes_list = []
+        for index in range(num_files):
+            top_position = top_margin_inches + index * (
+                frame_height_inches + between_plots_inches
+            )
+            bottom_position = fig_height_inches - top_position - frame_height_inches
+            bottom_norm = max(0, bottom_position / fig_height_inches)
+            height_norm = min(1, frame_height_inches / fig_height_inches)
+            if bottom_norm + height_norm > 1.01 or bottom_norm < -0.01:
+                continue
+            axes_list.append(self.canvas.fig.add_axes([0.12, bottom_norm, 0.86, height_norm]))
+
+        file_recording_starts, max_time = self._file_recording_starts_and_max_time(
+            selected_files
+        )
+        zorders = self._behavior_zorders(behavior_order)
+        row_positions = {
+            row_index: rows_per_file - row_index - 1
+            for row_index in range(rows_per_file)
+        }
+        y_ticks = [row_positions[row_index] for row_index in range(rows_per_file)]
+        y_labels = [row["label"] for row in behavior_rows]
+        total_event_count = 0
+
+        for file_idx, (file_path, ax) in enumerate(zip(selected_files, axes_list, strict=False)):
+            df = self._data[file_path]
+            for row_index, row in enumerate(behavior_rows):
+                y_pos = row_positions[row_index]
+                for behavior in row["behaviors"]:
+                    total_event_count += self._plot_behavior_events_on_axis(
+                        ax,
+                        df,
+                        file_recording_starts[file_path],
+                        behavior,
+                        y_pos,
+                        0.9,
+                        zorders.get(behavior, 10),
+                    )
+
+            self._configure_grouped_individual_frame(
+                ax,
+                file_idx,
+                num_files,
+                max_time,
+                rows_per_file,
+                y_ticks,
+                y_labels,
+            )
+            ax.set_ylabel(
+                str(file_idx + 1),
+                fontweight='bold',
+                fontsize=self._text_font_size,
+                rotation=0,
+                ha='right',
+                va='center',
+            )
+
+        self._draw_canvas_safe()
+        group_count = sum(1 for row in behavior_rows if row["is_group"])
+        self.status_label.setText(
+            f"Overlay mode (individual frames): {total_event_count} events across "
+            f"{num_files} file(s), {rows_per_file} row(s), {group_count} overlay group(s)"
+        )
     
     def _plot_overlay_individual_frames(self, selected_files, visible_behaviors):
         """Plot overlay mode with individual frames for each file."""
@@ -2450,6 +3700,59 @@ class RasterPlotWidget(QWidget):
         self.status_label.setText(
             f"Overlay mode (individual frames): {total_event_count} events across {num_files} file(s) with {len(visible_behaviors)} behavior(s)"
         )
+
+    def _configure_grouped_individual_frame(
+        self,
+        ax,
+        file_idx,
+        num_files,
+        max_time,
+        num_rows,
+        y_ticks,
+        y_labels,
+    ):
+        """Configure an individual overlay-group subplot."""
+        display_max_time = self._display_time_limit()
+        display_ticks = self._display_ticks(display_max_time)
+        ax.set_xlim(0, display_max_time)
+        ax.set_xticks(display_ticks)
+
+        if file_idx == num_files - 1:
+            x_label = 'Time (minutes)' if self._time_unit == "Minutes" else 'Time (seconds)'
+            ax.set_xlabel(
+                x_label,
+                fontweight='bold',
+                fontsize=self._text_font_size,
+            )
+            ax.set_xticklabels(
+                self._format_time_tick_labels(display_ticks),
+                fontsize=self._text_font_size,
+            )
+            for label in ax.get_xticklabels():
+                label.set_fontweight('bold')
+                label.set_fontsize(self._text_font_size)
+        else:
+            ax.set_xticklabels([])
+            ax.set_xlabel('')
+
+        ax.set_ylim(-0.5, num_rows - 0.5)
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_labels, fontsize=self._text_font_size)
+        for label in ax.get_yticklabels():
+            label.set_fontweight('bold')
+            label.set_fontsize(self._text_font_size)
+
+        self._apply_border_style(ax)
+        ax.tick_params(
+            axis='both',
+            which='major',
+            length=6,
+            width=2.5,
+            labelsize=self._text_font_size,
+            zorder=100,
+        )
+        self._apply_grid(ax)
+        ax.patch.set_alpha(0)
     
     def _configure_individual_frame(self, ax, file_idx, num_files, max_time):
         """Configure an individual subplot frame."""
@@ -2580,6 +3883,7 @@ class VisualizationView(QWidget):
     clear_data_requested = Signal()
     custom_colormap_save_requested = Signal(str, dict)
     selected_colormap_changed = Signal(str)
+    plot_save_directory_changed = Signal(str)
     
     def __init__(self):
         super().__init__()
@@ -2615,6 +3919,9 @@ class VisualizationView(QWidget):
         self.raster_plot.selected_colormap_changed.connect(
             self.selected_colormap_changed.emit
         )
+        self.raster_plot.plot_save_directory_changed.connect(
+            self.plot_save_directory_changed.emit
+        )
         self.layout.addWidget(self.raster_plot, 10)
 
     def set_data(self, data_dict):
@@ -2636,6 +3943,10 @@ class VisualizationView(QWidget):
     def select_custom_colormap(self, colormap_name):
         """Select a custom color map by dropdown name."""
         return self.raster_plot.select_custom_colormap(colormap_name)
+
+    def set_last_plot_save_directory(self, directory):
+        """Restore the last directory used for plot exports."""
+        self.raster_plot.set_last_plot_save_directory(directory)
     
     def dragEnterEvent(self, event):
         """Handle drag enter events."""

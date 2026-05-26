@@ -80,6 +80,7 @@ class ConfigManager:
             # annotation CSVs usually live in different subdirectories.
             "last_reliability_summary_directory": "",
             "last_reliability_annotation_directory": "",
+            "last_visualization_plot_directory": "",
         },
         "recent_files": {
             "videos": [],
