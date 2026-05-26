@@ -87,7 +87,7 @@ hide:
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Zenodo から RABET-Windows-1.3.2.zip をダウンロード
+    1. Zenodo から RABET-Windows-1.3.3.zip をダウンロード
     2. 任意の場所に展開（デスクトップ / Tools フォルダなど）
     3. RABET.exe をダブルクリック
     ```
@@ -95,7 +95,7 @@ hide:
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Zenodo から RABET-macOS-arm64-1.3.2.zip をダウンロード
+    1. Zenodo から RABET-macOS-arm64-1.3.3.zip をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. 初回起動: 右クリック → 開く
     ```
@@ -103,7 +103,7 @@ hide:
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Zenodo から RABET-macOS-x86_64-1.3.2.zip をダウンロード
+    1. Zenodo から RABET-macOS-x86_64-1.3.3.zip をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. 初回起動: 右クリック → 開く
     ```
@@ -111,7 +111,7 @@ hide:
 === ":material-linux: Linux"
 
     ```bash
-    tar -xzf RABET-Linux-x86_64-1.3.2.tar.gz
+    tar -xzf RABET-Linux-x86_64-1.3.3.tar.gz
     cd RABET-linux
     ./run_rabet.sh
     ```
@@ -131,7 +131,7 @@ hide:
 に記載されています。人間が読みやすい形式の引用例は以下のとおりです。
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.2). https://github.com/mi2e-K/RABET
+> (Version 1.3.3). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
 上記の DOI は **コンセプト DOI** であり、Zenodo 上の最新リリースに常に紐づきます。新しいバージョンが公開された後も、引用先を変更する必要はありません。
