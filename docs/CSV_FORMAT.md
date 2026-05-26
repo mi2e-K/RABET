@@ -74,7 +74,7 @@ and converted to seconds at export time.
 
 ```csv
 Metadata
-RABET Version,1.3.2
+RABET Version,1.3.3
 Test Duration (seconds),60
 
 Event,Onset,Offset
