@@ -196,7 +196,7 @@ metadata lives in [`CITATION.cff`](CITATION.cff); a human-readable form
 is:
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.2) [Computer software].
+> (Version 1.3.3) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
