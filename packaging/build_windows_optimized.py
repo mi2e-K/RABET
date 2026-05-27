@@ -823,8 +823,10 @@ coll = COLLECT(
 )
 """
     
-    # Write spec file
-    with open("RABET.spec", "w") as f:
+    # Write spec file. Force UTF-8 so non-ASCII characters from
+    # docstrings / comments (e.g. em-dashes) don't crash on cp932-default
+    # Windows locales — PyInstaller reads spec files as text-encoded.
+    with open("RABET.spec", "w", encoding="utf-8") as f:
         f.write(spec_content)
     
     # If spec-only mode, exit here
