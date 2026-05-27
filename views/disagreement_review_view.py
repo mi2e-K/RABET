@@ -856,14 +856,6 @@ class DisagreementReviewDialog(QDialog):
         outer.setContentsMargins(10, 10, 10, 10)
         outer.setSpacing(8)
 
-        intro = QLabel(
-            "Reference = first annotation CSV from Detailed mode. "
-            "Trainee = second annotation CSV from Detailed mode."
-        )
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color: #8a8a8a;")
-        outer.addWidget(intro)
-
         # Top control band: Review controls (left) and Plot controls
         # (right) side by side, each laid out in a single horizontal
         # row to keep the dialog header compact.
@@ -876,9 +868,11 @@ class DisagreementReviewDialog(QDialog):
 
         self.load_video_btn = QPushButton("Load video...")
         controls.addWidget(self.load_video_btn)
-        self.video_name_label = QLabel("(no video)")
+        # Filename appears here after Load video is used; starts blank
+        # so the row doesn't carry a placeholder before any video is
+        # selected.
+        self.video_name_label = QLabel("")
         self.video_name_label.setStyleSheet("color: #8a8a8a;")
-        self.video_name_label.setMinimumWidth(80)
         controls.addWidget(self.video_name_label)
 
         controls.addSpacing(8)
