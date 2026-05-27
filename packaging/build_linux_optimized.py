@@ -125,7 +125,9 @@ a = Analysis(
     hooksconfig={{'matplotlib': {{'backends': ['QtAgg', 'svg', 'pdf']}}}},
     runtime_hooks=[],
     excludes=excluded_modules,
-    noarchive=False,
+    # 1.3.3 fix: see comment in build_windows_optimized.py — same
+    # zlib PYZ decompression bug applies cross-platform.
+    noarchive=True,
 )
 
 a.binaries = TOC([item for item in a.binaries if _keep_binary(item)])

@@ -617,7 +617,13 @@ a = Analysis(
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
-    noarchive=False,
+    # 1.3.3 fix: ``noarchive=True`` keeps bytecode as loose .pyc files
+    # instead of packing them into a zlib-compressed PYZ archive.
+    # PyInstaller 6.x with our scipy / pingouin set hits a known
+    # "Error -3 while decompressing data: incorrect header check"
+    # at runtime when the PYZ is read back. Storing modules unpacked
+    # avoids the decompression path entirely.
+    noarchive=True,
 )
 
 # Filter out excluded binaries
@@ -785,7 +791,13 @@ a = Analysis(
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
-    noarchive=False,
+    # 1.3.3 fix: ``noarchive=True`` keeps bytecode as loose .pyc files
+    # instead of packing them into a zlib-compressed PYZ archive.
+    # PyInstaller 6.x with our scipy / pingouin set hits a known
+    # "Error -3 while decompressing data: incorrect header check"
+    # at runtime when the PYZ is read back. Storing modules unpacked
+    # avoids the decompression path entirely.
+    noarchive=True,
 )
 
 # Filter out excluded binaries
