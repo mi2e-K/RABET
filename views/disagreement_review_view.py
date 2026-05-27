@@ -27,8 +27,8 @@ from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QBrush, QColor, QFont, QFontMetrics, QKeyEvent, QKeySequence, QPainter,
-    QPen, QShortcut,
+    QBrush, QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPen,
+    QShortcut,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QColorDialog, QDialog, QDialogButtonBox,
