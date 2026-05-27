@@ -25,8 +25,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QBrush, QColor, QFont, QFontMetrics, QKeyEvent, QKeySequence, QPainter,
+    QPen, QShortcut,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QColorDialog, QDialog, QDialogButtonBox,
     QDoubleSpinBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel,
@@ -370,12 +373,20 @@ class RasterPainterWidget(QWidget):
     _MIN_ROW_HEIGHT = 22
     _SUBLANE_GAP = 4  # vertical gap between R and T sub-lanes
 
+    # Emitted when the user clicks an event ribbon. Payload is
+    # (source, behavior, onset, offset) so the parent dialog can match
+    # it against its review_items list and navigate to that item.
+    event_clicked = Signal(str, str, float, float)
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding,
         )
         self.setMinimumHeight(180)
+        # Crosshair cursor over the plot area so users know they can
+        # click events. Updated on mouseMove.
+        self.setMouseTracking(True)
 
         self._events_a: List[Tuple[str, float, float]] = []
         self._events_b: List[Tuple[str, float, float]] = []
@@ -384,7 +395,14 @@ class RasterPainterWidget(QWidget):
         self._duration: float = 1.0
         self._playhead_seconds: float = 0.0
         self._show_legend: bool = False
+        self._white_bg: bool = False
         self._selected: Optional[EventMatch] = None
+
+        # Hit-test rectangles built each paintEvent. Each entry maps a
+        # QRect on screen to the (source, behavior, onset, offset)
+        # tuple it represents. Updated in paintEvent so the geometry
+        # always matches what the user sees.
+        self._event_rects: List[Tuple[QRect, str, str, float, float]] = []
 
     # ----- setters: each one triggers a repaint via update() ----- #
 
@@ -404,10 +422,12 @@ class RasterPainterWidget(QWidget):
         behaviors: List[str],
         colors: Dict[str, str],
         show_legend: bool,
+        white_bg: bool = False,
     ) -> None:
         self._behaviors = list(behaviors)
         self._colors = dict(colors)
         self._show_legend = bool(show_legend)
+        self._white_bg = bool(white_bg)
         self.update()
 
     def set_selected(self, item: Optional[EventMatch]) -> None:
@@ -466,8 +486,13 @@ class RasterPainterWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
+        # Hit-test rects must be rebuilt on every paint so clicks
+        # match the visible geometry after a resize / filter change.
+        self._event_rects = []
+
         # Background.
-        painter.fillRect(self.rect(), QColor("#1e1e1e"))
+        bg = QColor("#ffffff") if self._white_bg else QColor("#1e1e1e")
+        painter.fillRect(self.rect(), bg)
 
         plot = self._plot_rect()
         if not self._behaviors:
@@ -488,7 +513,8 @@ class RasterPainterWidget(QWidget):
             self._draw_event(
                 painter, plot, onset, offset,
                 y_center - self._SUBLANE_GAP // 2 - sublane_h, sublane_h,
-                self._colors.get(behavior, "#888888"), alpha=220,
+                self._colors.get(behavior, "#888888"),
+                alpha=220, source="reference", behavior=behavior,
             )
         for behavior, onset, offset in self._events_b:
             if behavior not in y_centers:
@@ -497,7 +523,8 @@ class RasterPainterWidget(QWidget):
             self._draw_event(
                 painter, plot, onset, offset,
                 y_center + self._SUBLANE_GAP // 2, sublane_h,
-                self._colors.get(behavior, "#888888"), alpha=160,
+                self._colors.get(behavior, "#888888"),
+                alpha=160, source="trainee", behavior=behavior,
             )
 
         # Selected-event outline (no yellow band).
@@ -529,8 +556,19 @@ class RasterPainterWidget(QWidget):
         row_height: int,
         y_centers: Dict[str, int],
     ) -> None:
+        # White-bg variant uses darker grid lines and black text so
+        # everything stays legible against the lighter surface.
+        if self._white_bg:
+            grid_color = QColor(200, 200, 200)
+            text_color = QColor("#222222")
+            tick_color = QColor("#444444")
+        else:
+            grid_color = QColor(60, 60, 60)
+            text_color = QColor("#dddddd")
+            tick_color = QColor("#9a9a9a")
+
         # Grid lines (one per second up to a sensible cap).
-        painter.setPen(QPen(QColor(60, 60, 60), 1, Qt.PenStyle.DotLine))
+        painter.setPen(QPen(grid_color, 1, Qt.PenStyle.DotLine))
         step = max(1.0, self._duration / 12.0)
         # Snap to a nicer interval.
         for nice in (1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0):
@@ -544,7 +582,7 @@ class RasterPainterWidget(QWidget):
             t += step
 
         # Behaviour labels along the y-axis.
-        painter.setPen(QPen(QColor("#dddddd")))
+        painter.setPen(QPen(text_color))
         font = painter.font()
         font.setPointSize(max(8, font.pointSize() - 1))
         painter.setFont(font)
@@ -564,8 +602,7 @@ class RasterPainterWidget(QWidget):
             )
 
         # Bottom axis ticks (time labels).
-        tick_pen = QPen(QColor("#9a9a9a"))
-        painter.setPen(tick_pen)
+        painter.setPen(QPen(tick_color))
         t = 0.0
         while t <= self._duration + 1e-6:
             x = self._x_for_time(t, plot)
@@ -587,13 +624,31 @@ class RasterPainterWidget(QWidget):
         height: int,
         hex_color: str,
         alpha: int = 220,
+        source: str = "",
+        behavior: str = "",
     ) -> None:
         x1 = self._x_for_time(onset, plot)
         x2 = self._x_for_time(max(offset, onset), plot)
-        width = max(2, x2 - x1)
+        # 1-pixel minimum so very short events (e.g. button presses
+        # under 50 ms) remain visible without inflating their apparent
+        # duration the way a 2-3 px minimum did.
+        width = max(1, x2 - x1)
         color = QColor(hex_color)
         color.setAlpha(alpha)
-        painter.fillRect(QRect(x1, y, width, height), QBrush(color))
+        rect = QRect(x1, y, width, height)
+        painter.fillRect(rect, QBrush(color))
+        if source and behavior:
+            # Cache a slightly enlarged hit rect so a 1-pixel ribbon
+            # is still easy to click. Padding is added vertically to
+            # cover the entire sub-lane height.
+            hit = QRect(
+                rect.x(), rect.y(),
+                max(4, rect.width() + 2),
+                rect.height(),
+            )
+            self._event_rects.append(
+                (hit, source, behavior, float(onset), float(offset))
+            )
 
     def _draw_selected_outline(
         self,
@@ -603,7 +658,8 @@ class RasterPainterWidget(QWidget):
         sublane_h: int,
     ) -> None:
         assert self._selected is not None
-        pen = QPen(QColor("#ffffff"))
+        outline_color = QColor("#000000") if self._white_bg else QColor("#ffffff")
+        pen = QPen(outline_color)
         pen.setWidth(2)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -644,7 +700,8 @@ class RasterPainterWidget(QWidget):
         y_centers: Dict[str, int],
         sublane_h: int,
     ) -> None:
-        painter.setPen(QPen(QColor("#888888")))
+        label_color = QColor("#444444") if self._white_bg else QColor("#888888")
+        painter.setPen(QPen(label_color))
         font = QFont(painter.font())
         font.setPointSize(max(7, font.pointSize() - 1))
         painter.setFont(font)
@@ -671,7 +728,8 @@ class RasterPainterWidget(QWidget):
         fm = QFontMetrics(font)
         line_h = fm.height() + 2
         swatch_size = max(8, fm.height() - 4)
-        painter.setPen(QPen(QColor("#dddddd")))
+        legend_text_color = QColor("#222222") if self._white_bg else QColor("#dddddd")
+        painter.setPen(QPen(legend_text_color))
         for index, behavior in enumerate(self._behaviors):
             y = legend_y + index * line_h
             color = QColor(self._colors.get(behavior, "#888888"))
@@ -683,6 +741,32 @@ class RasterPainterWidget(QWidget):
                 QPoint(legend_x + swatch_size + 6, y + fm.ascent()),
                 behavior,
             )
+
+    # ----- input ----- #
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        # Walk hit rects in reverse (last drawn wins; matches the
+        # visual stacking order if any events overlap).
+        for hit, source, behavior, onset, offset in reversed(self._event_rects):
+            if hit.contains(pos):
+                self.event_clicked.emit(source, behavior, onset, offset)
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        hovering = any(
+            hit.contains(pos) for hit, *_ in self._event_rects
+        )
+        if hovering:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
 
 
 class DisagreementReviewDialog(QDialog):
@@ -847,6 +931,14 @@ class DisagreementReviewDialog(QDialog):
         self.show_legend_check.setChecked(False)
         plot_layout.addWidget(self.show_legend_check)
 
+        self.white_bg_check = QCheckBox("White background")
+        self.white_bg_check.setToolTip(
+            "Switch the raster background to white (useful for "
+            "presentations / printed exports). Text and grid colours "
+            "adapt automatically."
+        )
+        plot_layout.addWidget(self.white_bg_check)
+
         self.display_settings_btn = QPushButton("Behavior display settings...")
         self.display_settings_btn.setToolTip(
             "Choose which behaviours appear on the raster, their order, "
@@ -896,6 +988,16 @@ class DisagreementReviewDialog(QDialog):
         self.status_label.setMinimumHeight(60)
         self.status_label.setStyleSheet("color: #eeeeee;")
         raster_layout.addWidget(self.status_label)
+
+        # Live readout of Reference events active at the current
+        # playhead. Updated whenever the playhead moves so reviewers
+        # can see what the expert called at this exact moment.
+        self.live_ref_label = QLabel("Reference now: —")
+        self.live_ref_label.setWordWrap(True)
+        self.live_ref_label.setStyleSheet(
+            "color: #ffd680; font-weight: bold; padding: 4px;"
+        )
+        raster_layout.addWidget(self.live_ref_label)
 
         splitter.addWidget(raster_panel)
         splitter.setSizes([520, 660])
@@ -949,9 +1051,12 @@ class DisagreementReviewDialog(QDialog):
             self._on_filter_changed
         )
         self.show_legend_check.toggled.connect(self._on_show_legend_toggled)
+        self.white_bg_check.toggled.connect(self._on_white_bg_toggled)
         self.display_settings_btn.clicked.connect(
             self._on_display_settings_clicked
         )
+        # Raster click → navigate to that event (if it's a review item).
+        self.raster_widget.event_clicked.connect(self._on_raster_event_clicked)
         self.first_btn.clicked.connect(self._on_first_clicked)
         self.prev_btn.clicked.connect(self._on_prev_clicked)
         self.next_btn.clicked.connect(self._on_next_clicked)
@@ -966,6 +1071,13 @@ class DisagreementReviewDialog(QDialog):
             self._video_model.position_changed.connect(
                 self._on_video_position_changed
             )
+
+        # Spacebar toggles play/pause window-wide. QShortcut with
+        # WindowShortcut context intercepts Space before focused
+        # buttons / checkboxes can swallow it.
+        self._space_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self._space_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._space_shortcut.activated.connect(self._on_spacebar)
 
     # ------------------------------------------------------------------ #
     # Review-result management
@@ -1106,6 +1218,42 @@ class DisagreementReviewDialog(QDialog):
     def _on_show_legend_toggled(self, _checked: bool) -> None:
         self._draw_review_raster()
 
+    def _on_white_bg_toggled(self, _checked: bool) -> None:
+        self._draw_review_raster()
+
+    def _on_raster_event_clicked(
+        self, source: str, behavior: str, onset: float, offset: float,
+    ) -> None:
+        """User clicked an event ribbon on the raster.
+
+        We search ``review_items_filtered`` for an EventMatch whose
+        Reference or Trainee side matches (behavior + onset + offset).
+        If found, navigate to that item. Time-matched events are not in
+        ``review_items``; for those we just seek the video instead of
+        changing the selection — they're not navigable but the user
+        still gets to peek at them.
+        """
+        # First try to match a filtered review item.
+        target_index = -1
+        for idx, item in enumerate(self._review_items_filtered):
+            side = item.reference if source == "reference" else item.trainee
+            if side is None or side.behavior != behavior:
+                continue
+            if (abs(side.onset - onset) < 1e-6
+                    and abs(side.offset - offset) < 1e-6):
+                target_index = idx
+                break
+        if target_index >= 0:
+            self._jump_to_review_index(target_index)
+            return
+
+        # Fall back: seek the video to the click location even if it's
+        # not in the current filter set (e.g. a time_matched event).
+        if self._video_model is not None and self._video_model.get_duration() > 0:
+            pre_roll = float(self.pre_roll_spin.value())
+            seek_ms = int(max(0.0, onset - pre_roll) * 1000)
+            self._video_model.seek(seek_ms)
+
     def _on_display_settings_clicked(self) -> None:
         dialog = BehaviorDisplaySettingsDialog(self._display_settings, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -1145,6 +1293,26 @@ class DisagreementReviewDialog(QDialog):
         self._pending_playhead_seconds = None
         self._current_video_seconds = seconds
         self.raster_widget.set_playhead(seconds)
+        self._update_live_ref_label(seconds)
+
+    def _update_live_ref_label(self, seconds: float) -> None:
+        """Show which Reference events are active at ``seconds``.
+
+        Cheap O(N) sweep over events_a — annotation studies usually
+        have hundreds to low thousands of events, which is well below
+        the 20 Hz repaint budget.
+        """
+        active = [
+            behavior
+            for behavior, onset, offset in self._detailed_result.events_a
+            if onset <= seconds <= offset
+        ]
+        if not active:
+            self.live_ref_label.setText("Reference now: —")
+        else:
+            self.live_ref_label.setText(
+                "Reference now: " + ", ".join(active)
+            )
 
     # ------------------------------------------------------------------ #
     # Navigation core
@@ -1250,6 +1418,7 @@ class DisagreementReviewDialog(QDialog):
             visible_behaviors,
             self._display_settings.colors,
             self.show_legend_check.isChecked(),
+            white_bg=self.white_bg_check.isChecked(),
         )
         selected: Optional[EventMatch] = None
         if 0 <= self._current_review_index < len(self._review_items_filtered):
@@ -1349,6 +1518,17 @@ class DisagreementReviewDialog(QDialog):
     # ------------------------------------------------------------------ #
     # Cleanup
     # ------------------------------------------------------------------ #
+
+    def _on_spacebar(self) -> None:
+        """Toggle video play/pause. Bound to Space via QShortcut so it
+        fires regardless of which child widget has focus (a plain
+        keyPressEvent would otherwise lose Space to focused buttons /
+        checkboxes)."""
+        if (
+            self._video_model is not None
+            and self._video_model.get_duration() > 0
+        ):
+            self._video_model.toggle_play()
 
     def closeEvent(self, event):
         # Release the dedicated PyAV container so we don't hold a file
