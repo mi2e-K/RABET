@@ -328,23 +328,26 @@ class ThemeManager:
             width: 10px;
         }
         
-        /* QSpinBox styling */
-        QSpinBox {
-            background-color: #252525;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            padding: 2px;
-        }
-        
-        QSpinBox::up-button, QSpinBox::down-button {
-            background-color: #353535;
-            width: 16px;
-            border: 1px solid #555555;
-        }
-        
-        QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-            background-color: #454545;
-        }
+        /* QSpinBox / QDoubleSpinBox styling
+         *
+         * IMPORTANT: do NOT add any QSpinBox / QDoubleSpinBox rules
+         * (not even body background/border/padding). Once a spinbox
+         * matches any QSS rule, Qt's stylesheet engine takes over the
+         * compound-widget rendering. Without explicit
+         * ``QSpinBox::up-arrow { image: url(...) }`` icons, the
+         * up/down arrows disappear and only empty buttons remain —
+         * which was exactly the symptom users hit in the
+         * Annotation / Analysis / Visualization views.
+         *
+         * Leaving QSpinBox and QDoubleSpinBox unstyled here lets Qt's
+         * Fusion style draw the entire control natively against the
+         * dark QPalette set above, so the arrows are visible. The
+         * QWidget base rule (above) still tints the body dark.
+         *
+         * This matches the old Bin width spinbox behaviour: that one
+         * happened to be QDoubleSpinBox which the previous QSpinBox-only
+         * rule didn't match, so Fusion painted its arrows correctly.
+         */
         
         /* Video frame styling */
         QFrame#video_frame {

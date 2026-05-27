@@ -115,6 +115,70 @@ class DetailedAgreementResult:
 
 
 # -------------------------------------------------------------------- #
+# Disagreement review (event-level, built on top of Detailed mode)
+# -------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class ReliabilityEvent:
+    """A single annotation event, normalized for disagreement review."""
+    event_id: str
+    behavior: str
+    onset: float
+    offset: float
+    source: str  # "reference" or "trainee"
+
+
+@dataclass(frozen=True)
+class EventMatch:
+    """Pair (or singleton) describing one row in the review list."""
+    behavior: str
+    reference: Optional[ReliabilityEvent]
+    trainee: Optional[ReliabilityEvent]
+
+    # "time_matched", "timing_offset", "reference_only", "trainee_only"
+    status: str
+
+    onset_delta: Optional[float]
+    offset_delta: Optional[float]
+    overlap_seconds: float
+    iou: Optional[float]
+
+    jump_time: float
+    review_start: float
+    review_end: float
+
+
+@dataclass
+class DisagreementReviewResult:
+    """Final review-time result built from a DetailedAgreementResult."""
+    matching_window_seconds: float = 2.0
+    pre_roll_seconds: float = 1.0
+
+    # All final matches, including time_matched
+    matches: List[EventMatch] = field(default_factory=list)
+
+    # Only reference_only, trainee_only, timing_offset (review targets)
+    review_items: List[EventMatch] = field(default_factory=list)
+
+    counts_by_type: Dict[str, int] = field(default_factory=dict)
+    counts_by_behavior: Dict[str, Dict[str, int]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _CandidatePair:
+    """Internal candidate pair scored for one-to-one matching."""
+    reference: ReliabilityEvent
+    trainee: ReliabilityEvent
+    onset_delta: float
+    offset_delta: float
+    overlap_seconds: float
+    iou: float
+    gap: float
+    midpoint_delta: float
+
+
+# -------------------------------------------------------------------- #
 # Helpers for the somewhat unusual summary_table.csv layout
 # -------------------------------------------------------------------- #
 
@@ -684,6 +748,311 @@ def _bin_events(
             end_idx = start_idx
         bins[behavior][start_idx : end_idx + 1] = 1
     return bins
+
+
+# -------------------------------------------------------------------- #
+# Disagreement review: pure event-level matching
+# -------------------------------------------------------------------- #
+
+
+_STATUSES = (
+    "time_matched",
+    "timing_offset",
+    "reference_only",
+    "trainee_only",
+)
+
+
+def _normalize_review_events(
+    raw_events: Iterable[Tuple[str, float, float]],
+    source: str,
+) -> List[ReliabilityEvent]:
+    """Convert raw (behavior, onset, offset) tuples into ReliabilityEvent.
+
+    Empty behaviour names and non-finite timestamps are skipped. If
+    ``offset < onset`` the two values are swapped, matching the binning
+    helper's existing convention. Stable IDs (``ref_000001`` /
+    ``trainee_000001``) preserve input order so review export is stable
+    across reruns.
+    """
+    if source not in ("reference", "trainee"):
+        raise ValueError(
+            f"_normalize_review_events: source must be 'reference' or "
+            f"'trainee', got {source!r}"
+        )
+    prefix = "ref" if source == "reference" else "trainee"
+    normalized: List[ReliabilityEvent] = []
+    next_index = 1
+    for behavior, onset, offset in raw_events:
+        try:
+            behavior_clean = str(behavior).strip()
+        except Exception:
+            continue
+        if not behavior_clean:
+            continue
+        try:
+            onset_f = float(onset)
+            offset_f = float(offset)
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(onset_f) or not np.isfinite(offset_f):
+            continue
+        if offset_f < onset_f:
+            onset_f, offset_f = offset_f, onset_f
+        normalized.append(ReliabilityEvent(
+            event_id=f"{prefix}_{next_index:06d}",
+            behavior=behavior_clean,
+            onset=onset_f,
+            offset=offset_f,
+            source=source,
+        ))
+        next_index += 1
+    return normalized
+
+
+def _build_candidate_pair(
+    reference: ReliabilityEvent,
+    trainee: ReliabilityEvent,
+) -> _CandidatePair:
+    overlap = max(
+        0.0, min(reference.offset, trainee.offset)
+        - max(reference.onset, trainee.onset)
+    )
+    union = (
+        max(reference.offset, trainee.offset)
+        - min(reference.onset, trainee.onset)
+    )
+    iou = overlap / union if union > 0 else 0.0
+
+    onset_delta = abs(reference.onset - trainee.onset)
+    offset_delta = abs(reference.offset - trainee.offset)
+
+    gap = max(
+        0.0,
+        max(reference.onset, trainee.onset)
+        - min(reference.offset, trainee.offset),
+    )
+
+    midpoint_r = (reference.onset + reference.offset) / 2.0
+    midpoint_t = (trainee.onset + trainee.offset) / 2.0
+    midpoint_delta = abs(midpoint_r - midpoint_t)
+
+    return _CandidatePair(
+        reference=reference,
+        trainee=trainee,
+        onset_delta=onset_delta,
+        offset_delta=offset_delta,
+        overlap_seconds=overlap,
+        iou=iou,
+        gap=gap,
+        midpoint_delta=midpoint_delta,
+    )
+
+
+def _candidate_pairs_for_behavior(
+    references: List[ReliabilityEvent],
+    trainees: List[ReliabilityEvent],
+    matching_window_seconds: float,
+) -> List[_CandidatePair]:
+    """Score every behavior-matched (ref, trainee) cross product.
+
+    A pair is kept only if it could plausibly describe the same event:
+    they overlap, they are within the matching window of each other, or
+    their onsets are close enough.
+    """
+    candidates: List[_CandidatePair] = []
+    for ref in references:
+        for trn in trainees:
+            pair = _build_candidate_pair(ref, trn)
+            if (
+                pair.overlap_seconds > 0
+                or pair.gap <= matching_window_seconds
+                or pair.onset_delta <= matching_window_seconds
+            ):
+                candidates.append(pair)
+    return candidates
+
+
+def _classify_status(
+    onset_delta: float,
+    offset_delta: float,
+    matching_window_seconds: float,
+) -> str:
+    if (
+        onset_delta <= matching_window_seconds
+        and offset_delta <= matching_window_seconds
+    ):
+        return "time_matched"
+    return "timing_offset"
+
+
+def _event_match_from_pair(
+    pair: _CandidatePair,
+    matching_window_seconds: float,
+) -> EventMatch:
+    status = _classify_status(
+        pair.onset_delta, pair.offset_delta, matching_window_seconds,
+    )
+    jump_time = min(pair.reference.onset, pair.trainee.onset)
+    review_start = min(pair.reference.onset, pair.trainee.onset)
+    review_end = max(pair.reference.offset, pair.trainee.offset)
+    return EventMatch(
+        behavior=pair.reference.behavior,
+        reference=pair.reference,
+        trainee=pair.trainee,
+        status=status,
+        onset_delta=pair.onset_delta,
+        offset_delta=pair.offset_delta,
+        overlap_seconds=pair.overlap_seconds,
+        iou=pair.iou,
+        jump_time=jump_time,
+        review_start=review_start,
+        review_end=review_end,
+    )
+
+
+def _event_match_from_unmatched(
+    event: ReliabilityEvent,
+) -> EventMatch:
+    if event.source == "reference":
+        return EventMatch(
+            behavior=event.behavior,
+            reference=event,
+            trainee=None,
+            status="reference_only",
+            onset_delta=None,
+            offset_delta=None,
+            overlap_seconds=0.0,
+            iou=None,
+            jump_time=event.onset,
+            review_start=event.onset,
+            review_end=event.offset,
+        )
+    return EventMatch(
+        behavior=event.behavior,
+        reference=None,
+        trainee=event,
+        status="trainee_only",
+        onset_delta=None,
+        offset_delta=None,
+        overlap_seconds=0.0,
+        iou=None,
+        jump_time=event.onset,
+        review_start=event.onset,
+        review_end=event.offset,
+    )
+
+
+def build_disagreement_review(
+    events_reference: Iterable[Tuple[str, float, float]],
+    events_trainee: Iterable[Tuple[str, float, float]],
+    matching_window_seconds: float = 2.0,
+    pre_roll_seconds: float = 1.0,
+) -> DisagreementReviewResult:
+    """Match Reference and Trainee annotation events for review.
+
+    The function is pure and Qt-free so it can be unit-tested without a
+    QApplication. It does not modify the existing kappa / alpha
+    calculations: the inputs are the raw event tuples already produced
+    by Detailed mode (``DetailedAgreementResult.events_a`` and
+    ``events_b``).
+
+    Matching is one-to-one within a behaviour. For each behaviour we
+    generate every plausible (reference, trainee) candidate pair, sort
+    them so the strongest overlaps win, then greedily accept pairs that
+    don't reuse an already-matched event. Accepted pairs whose onset
+    *and* offset are within ``matching_window_seconds`` of each other
+    are tagged ``time_matched``; the rest are ``timing_offset``.
+    Unmatched events become ``reference_only`` / ``trainee_only``.
+
+    The review-target subset (everything except ``time_matched``) is
+    sorted by ``jump_time`` so the dialog's First/Prev/Next/Last
+    navigation walks the video timeline in order.
+    """
+    if matching_window_seconds < 0:
+        matching_window_seconds = 0.0
+    if pre_roll_seconds < 0:
+        pre_roll_seconds = 0.0
+
+    references = _normalize_review_events(events_reference, "reference")
+    trainees = _normalize_review_events(events_trainee, "trainee")
+
+    refs_by_behavior: Dict[str, List[ReliabilityEvent]] = {}
+    for ref in references:
+        refs_by_behavior.setdefault(ref.behavior, []).append(ref)
+    trainees_by_behavior: Dict[str, List[ReliabilityEvent]] = {}
+    for trn in trainees:
+        trainees_by_behavior.setdefault(trn.behavior, []).append(trn)
+
+    matches: List[EventMatch] = []
+    used_reference: set[str] = set()
+    used_trainee: set[str] = set()
+
+    behaviors = set(refs_by_behavior) | set(trainees_by_behavior)
+    for behavior in behaviors:
+        behavior_refs = refs_by_behavior.get(behavior, [])
+        behavior_trainees = trainees_by_behavior.get(behavior, [])
+        candidates = _candidate_pairs_for_behavior(
+            behavior_refs, behavior_trainees, matching_window_seconds,
+        )
+        # Stronger candidates first. Greedy one-to-one selection within
+        # this behaviour means the strongest IoU wins, ties broken by
+        # tighter midpoints and smaller onset/offset deltas.
+        candidates.sort(
+            key=lambda c: (
+                c.overlap_seconds > 0,
+                c.iou,
+                -c.midpoint_delta,
+                -(c.onset_delta + c.offset_delta),
+            ),
+            reverse=True,
+        )
+        for candidate in candidates:
+            if candidate.reference.event_id in used_reference:
+                continue
+            if candidate.trainee.event_id in used_trainee:
+                continue
+            matches.append(_event_match_from_pair(candidate, matching_window_seconds))
+            used_reference.add(candidate.reference.event_id)
+            used_trainee.add(candidate.trainee.event_id)
+
+    for ref in references:
+        if ref.event_id not in used_reference:
+            matches.append(_event_match_from_unmatched(ref))
+    for trn in trainees:
+        if trn.event_id not in used_trainee:
+            matches.append(_event_match_from_unmatched(trn))
+
+    matches.sort(
+        key=lambda item: (item.jump_time, item.behavior.casefold(), item.status)
+    )
+
+    review_items = [
+        item for item in matches if item.status != "time_matched"
+    ]
+    # Already sorted via ``matches``; explicit sort kept for clarity in
+    # case the filter rule above changes.
+    review_items.sort(
+        key=lambda item: (item.jump_time, item.behavior.casefold(), item.status)
+    )
+
+    counts_by_type: Dict[str, int] = {status: 0 for status in _STATUSES}
+    counts_by_behavior: Dict[str, Dict[str, int]] = {}
+    for item in matches:
+        counts_by_type[item.status] = counts_by_type.get(item.status, 0) + 1
+        behavior_counts = counts_by_behavior.setdefault(
+            item.behavior, {status: 0 for status in _STATUSES}
+        )
+        behavior_counts[item.status] = behavior_counts.get(item.status, 0) + 1
+
+    return DisagreementReviewResult(
+        matching_window_seconds=float(matching_window_seconds),
+        pre_roll_seconds=float(pre_roll_seconds),
+        matches=matches,
+        review_items=review_items,
+        counts_by_type=counts_by_type,
+        counts_by_behavior=counts_by_behavior,
+    )
 
 
 # -------------------------------------------------------------------- #

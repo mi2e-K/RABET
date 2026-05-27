@@ -22,6 +22,7 @@ from models.reliability_model import (
     SummaryAgreementResult,
     DetailedAgreementResult,
 )
+from views.disagreement_review_view import DisagreementReviewDialog
 from views.reliability_view import ReliabilityView, SummaryMatchDialog
 
 
@@ -44,6 +45,9 @@ class ReliabilityController(QObject):
         self._view.compute_detailed_requested.connect(self.on_compute_detailed)
         self._view.export_summary_requested.connect(self.on_export_summary)
         self._view.export_detailed_requested.connect(self.on_export_detailed)
+        self._view.review_disagreements_requested.connect(
+            self.on_review_disagreements
+        )
 
         # Each file picker emits path_changed when the user finishes the
         # Browse dialog. We listen so the chosen directory can be saved
@@ -150,6 +154,28 @@ class ReliabilityController(QObject):
         self._model.compute_from_annotations(
             path_a, path_b, bin_seconds=bin_seconds
         )
+
+    @Slot()
+    def on_review_disagreements(self) -> None:
+        """Open the Disagreement Review dialog for the current Detailed
+        result. The dialog is modeless so users can flip between the
+        review window and the main app while comparing notes."""
+        result = self._view.current_detailed_result()
+        if result is None:
+            QMessageBox.information(
+                self._view, "Reliability",
+                "Run Detailed mode first to produce events to review.",
+            )
+            return
+        if not result.events_a and not result.events_b:
+            QMessageBox.information(
+                self._view, "Reliability",
+                "The current Detailed result has no events to review.",
+            )
+            return
+
+        dialog = DisagreementReviewDialog(result, self._view)
+        dialog.exec()
 
     # ---------------------------------------------------------------- #
     # Export slots

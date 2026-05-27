@@ -81,6 +81,11 @@ HIDDEN_DEPENDENCIES = [
     # 1.3.2: filetype is used by utils.video_detection for magic-number
     # sniffing of dropped video files whose extension is unusual.
     "filetype",
+    # 1.3.3: scipy 1.13+ pulls in array_api_compat which iterates
+    # ``dir(numpy)`` and triggers numpy's lazy loader for ``f2py``.
+    # Even though RABET never calls f2py, the submodule must be in
+    # the bundle or ``import pingouin`` fails at the Reliability tab.
+    "numpy.f2py",
     # 1.3.2: pingouin's top-level ``__init__.py`` does
     # ``from .plotting import *`` (which loads seaborn) and several
     # helpers rely on pandas_flavor's @register_* decorators. Both are
@@ -223,10 +228,14 @@ COMMON_EXCLUDED_MODULES = [
     "xlrd",
     "openpyxl",
     "xlsxwriter",
-    # numpy's f2py / array_api / distutils helpers are build-time only.
-    "numpy.f2py",
+    # ``numpy.distutils`` is build-time only and safe to exclude.
+    # NOTE (1.3.3 fix): do NOT exclude ``numpy.f2py``. scipy 1.13+ uses
+    # ``array_api_compat``, which iterates ``dir(numpy)`` at import time
+    # and triggers numpy's lazy loader for every attribute. Excluding
+    # ``numpy.f2py`` makes that getattr raise ModuleNotFoundError, which
+    # crashes the whole ``import pingouin`` chain when the user opens
+    # the Reliability tab in the bundled exe.
     "numpy.distutils",
-    "numpy.array_api",
 ]
 
 PYSIDE_EXCLUDED_MODULES = [

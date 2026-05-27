@@ -32,7 +32,7 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QFileDialog, QTabWidget, QGroupBox, QFormLayout, QDoubleSpinBox,
+    QFileDialog, QTabWidget, QGroupBox, QDoubleSpinBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox, QSplitter,
     QMessageBox, QSizePolicy, QRadioButton, QButtonGroup, QProgressBar,
     QApplication, QDialog, QDialogButtonBox, QListWidget, QListWidgetItem,
@@ -650,6 +650,8 @@ class ReliabilityView(QWidget):
     # Mode 2
     compute_detailed_requested = Signal(str, str, float)  # path_a, path_b, bin
     export_detailed_requested = Signal()
+    # Mode 2 event-level review (opens DisagreementReviewDialog).
+    review_disagreements_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -836,22 +838,35 @@ class ReliabilityView(QWidget):
         input_layout.addWidget(self.detailed_picker_a)
         input_layout.addWidget(self.detailed_picker_b)
 
-        form = QFormLayout()
+        # Bin width row: keep the spinbox narrow so it doesn't stretch
+        # to the full row width. The form layout would otherwise force
+        # the field to fill all remaining horizontal space.
+        bin_row = QHBoxLayout()
+        bin_row.addWidget(QLabel("Bin width:"))
         self.detailed_bin_spin = QDoubleSpinBox()
         self.detailed_bin_spin.setRange(0.05, 60.0)
         self.detailed_bin_spin.setSingleStep(0.5)
         self.detailed_bin_spin.setValue(1.0)
         self.detailed_bin_spin.setSuffix(" s")
         self.detailed_bin_spin.setDecimals(2)
-        form.addRow("Bin width:", self.detailed_bin_spin)
-        input_layout.addLayout(form)
+        self.detailed_bin_spin.setFixedWidth(110)
+        bin_row.addWidget(self.detailed_bin_spin)
+        bin_row.addStretch()
+        input_layout.addLayout(bin_row)
 
         button_row = QHBoxLayout()
         self.detailed_compute_btn = QPushButton("🚀 Compute agreement")
         self.detailed_export_btn = QPushButton("Export results...")
         self.detailed_export_btn.setEnabled(False)
+        self.detailed_review_btn = QPushButton("Review disagreements...")
+        self.detailed_review_btn.setEnabled(False)
+        self.detailed_review_btn.setToolTip(
+            "Open a dedicated event-level review dialog. Reference = first "
+            "annotation CSV, Trainee = second annotation CSV."
+        )
         button_row.addWidget(self.detailed_compute_btn)
         button_row.addWidget(self.detailed_export_btn)
+        button_row.addWidget(self.detailed_review_btn)
         button_row.addSpacing(20)
         button_row.addWidget(QLabel("Mode:"))
         self.detailed_inter_radio = QRadioButton("Inter-rater")
@@ -939,6 +954,9 @@ class ReliabilityView(QWidget):
         )
         self.detailed_compute_btn.clicked.connect(self._on_compute_detailed_clicked)
         self.detailed_export_btn.clicked.connect(self.export_detailed_requested.emit)
+        self.detailed_review_btn.clicked.connect(
+            self.review_disagreements_requested.emit
+        )
 
         # Inter/Intra-rater mode toggles only swap picker labels - the
         # computation itself is identical for both modes.
@@ -1174,6 +1192,13 @@ class ReliabilityView(QWidget):
         self.detailed_progress.setVisible(False)
         self.detailed_progress_label.setVisible(False)
         self.detailed_export_btn.setEnabled(bool(result and result.rows))
+        # Event-level review needs at least one parsed event on either
+        # side, even if the per-behaviour kappa table is empty.
+        has_events = (
+            result is not None
+            and (bool(result.events_a) or bool(result.events_b))
+        )
+        self.detailed_review_btn.setEnabled(has_events)
 
         if result is None or not result.rows:
             self.detailed_status.setText(
@@ -1284,8 +1309,12 @@ class ReliabilityView(QWidget):
                     alpha=0.85,
                 )
 
-        _add_events(result.events_a, a_colour, +0.2)
-        _add_events(result.events_b, b_colour, -0.2)
+        # ``invert_yaxis`` is applied below, so smaller y renders
+        # higher on screen. Scorer A / Session 1 goes on top, B / 2
+        # below — matching the file-picker reading order in the input
+        # panel.
+        _add_events(result.events_a, a_colour, -0.2)
+        _add_events(result.events_b, b_colour, +0.2)
 
         ax.set_yticks(list(y_positions.values()))
         ax.set_yticklabels(behaviors)
