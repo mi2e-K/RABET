@@ -229,11 +229,18 @@ class _FilePickerRow(QWidget):
         self.path_edit = QLineEdit()
         self.path_edit.setReadOnly(True)
         self.path_edit.setPlaceholderText("Click Browse to select a file...")
+        # Cap the picker width so the input row doesn't stretch to fill
+        # the whole tab. Minimum is generous enough to read most paths;
+        # the trailing addStretch() below absorbs any extra horizontal
+        # space the layout would otherwise hand to ``path_edit``.
+        self.path_edit.setMinimumWidth(260)
+        self.path_edit.setMaximumWidth(520)
         self.browse_button = QPushButton("Browse...")
 
         layout.addWidget(self.label)
-        layout.addWidget(self.path_edit, 1)
+        layout.addWidget(self.path_edit)
         layout.addWidget(self.browse_button)
+        layout.addStretch()
 
         self.browse_button.clicked.connect(self._on_browse_clicked)
 
@@ -717,8 +724,13 @@ class ReliabilityView(QWidget):
         self.summary_compute_btn = QPushButton("🚀 Compute agreement")
         self.summary_export_btn = QPushButton("Export results...")
         self.summary_export_btn.setEnabled(False)
+        self.summary_clear_btn = QPushButton("Clear")
+        self.summary_clear_btn.setToolTip(
+            "Clear loaded files, results table, and scatter plot."
+        )
         button_row.addWidget(self.summary_compute_btn)
         button_row.addWidget(self.summary_export_btn)
+        button_row.addWidget(self.summary_clear_btn)
         # Mode picker sits immediately to the right of the buttons.
         button_row.addSpacing(20)
         button_row.addWidget(QLabel("Mode:"))
@@ -767,8 +779,11 @@ class ReliabilityView(QWidget):
         left_layout.addWidget(self.summary_status)
 
         self.summary_table = QTableWidget(0, 6)
+        # Header: "Means A, B" instead of "Mean A / B" so the column
+        # doesn't read like an A÷B division. The cell separator is
+        # also a comma to match.
         self.summary_table.setHorizontalHeaderLabels(
-            ["Metric", "n", "ICC(2,1)", "Pearson r", "Mean|A−B|", "Mean A / B"]
+            ["Metric", "n", "ICC(2,1)", "Pearson r", "Mean|A−B|", "Means A, B"]
         )
         header = self.summary_table.horizontalHeader()
         # Metric column is wide and user-resizable, the rest stretch to
@@ -864,9 +879,14 @@ class ReliabilityView(QWidget):
             "Open a dedicated event-level review dialog. Reference = first "
             "annotation CSV, Trainee = second annotation CSV."
         )
+        self.detailed_clear_btn = QPushButton("Clear")
+        self.detailed_clear_btn.setToolTip(
+            "Clear loaded files, results table, and raster plot."
+        )
         button_row.addWidget(self.detailed_compute_btn)
         button_row.addWidget(self.detailed_export_btn)
         button_row.addWidget(self.detailed_review_btn)
+        button_row.addWidget(self.detailed_clear_btn)
         button_row.addSpacing(20)
         button_row.addWidget(QLabel("Mode:"))
         self.detailed_inter_radio = QRadioButton("Inter-rater")
@@ -957,6 +977,9 @@ class ReliabilityView(QWidget):
         self.detailed_review_btn.clicked.connect(
             self.review_disagreements_requested.emit
         )
+        # Clear buttons wipe all transient state for that sub-tab.
+        self.summary_clear_btn.clicked.connect(self._on_summary_clear_clicked)
+        self.detailed_clear_btn.clicked.connect(self._on_detailed_clear_clicked)
 
         # Inter/Intra-rater mode toggles only swap picker labels - the
         # computation itself is identical for both modes.
@@ -1079,6 +1102,47 @@ class ReliabilityView(QWidget):
             return
         self._draw_summary_scatter(metric)
 
+    # ---------------- Clear handlers ---------------- #
+
+    def _on_summary_clear_clicked(self) -> None:
+        """Reset Summary mode to a fresh state.
+
+        Wipes file pickers, results table, scatter plot, status text,
+        and disables the Export button. The in-memory result object is
+        dropped so subsequent exports / re-renders start clean.
+        """
+        self._summary_result = None
+        self.summary_picker_a.set_path("")
+        self.summary_picker_b.set_path("")
+        self.summary_table.setRowCount(0)
+        self.summary_scatter_picker.blockSignals(True)
+        self.summary_scatter_picker.clear()
+        self.summary_scatter_picker.blockSignals(False)
+        self.summary_figure.clear()
+        self.summary_canvas.draw_idle()
+        self.summary_status.setText("")
+        self.summary_export_btn.setEnabled(False)
+        self.summary_compute_btn.setEnabled(True)
+        self.summary_progress.setVisible(False)
+        self.summary_progress_label.setVisible(False)
+
+    def _on_detailed_clear_clicked(self) -> None:
+        """Reset Detailed mode to a fresh state. Same idea as the
+        Summary variant; also resets the Review disagreements button so
+        a stale DetailedAgreementResult can't be opened by accident."""
+        self._detailed_result = None
+        self.detailed_picker_a.set_path("")
+        self.detailed_picker_b.set_path("")
+        self.detailed_table.setRowCount(0)
+        self.detailed_figure.clear()
+        self.detailed_canvas.draw_idle()
+        self.detailed_status.setText("")
+        self.detailed_export_btn.setEnabled(False)
+        self.detailed_review_btn.setEnabled(False)
+        self.detailed_compute_btn.setEnabled(True)
+        self.detailed_progress.setVisible(False)
+        self.detailed_progress_label.setVisible(False)
+
     # ---------------- Result rendering ---------------- #
 
     def show_summary_results(self, result) -> None:
@@ -1145,7 +1209,7 @@ class ReliabilityView(QWidget):
             pearson_item = QTableWidgetItem(_format_value(row.pearson_r, 3))
             mad_item = QTableWidgetItem(_format_value(row.mean_abs_diff, 3))
             mean_item = QTableWidgetItem(
-                f"{_format_value(row.mean_a, 2)} / "
+                f"{_format_value(row.mean_a, 2)}, "
                 f"{_format_value(row.mean_b, 2)}"
             )
 
