@@ -61,9 +61,9 @@ _OK_COLOR = "#77d9a8"        # green - acceptable agreement
 _CAUTION_COLOR = "#ffca80"   # warm amber - moderate, inspect carefully
 _WARN_COLOR = "#ff4b00"      # orange-red - below acceptance threshold
 _NEUTRAL_COLOR = "#000000"
-# Highlight color for Pearson r ≥ 0.9 - distinct gold so an
+# Highlight color for Pearson r ≥ 0.9 - distinct blue so an
 # exceptionally strong correlation reads at a glance.
-_HIGHLIGHT_COLOR = "#f6aa00"
+_HIGHLIGHT_COLOR = "#00BFFF"
 _STATUS_TEXT_COLOR = "#8a8a8a"  # secondary-grey for status labels
 
 # ----------------------------------------------------------------- #

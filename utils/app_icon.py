@@ -55,3 +55,23 @@ def find_app_icon_path() -> str | None:
                 return str(candidate)
 
     return None
+
+
+def find_resource_path(filename: str) -> str | None:
+    """Return the path to a bundled resource file, or None if missing.
+
+    Searches ``resources/<filename>`` (and the bare ``<filename>``) under
+    the same base directories used for the app icon, so it resolves both
+    in a source checkout and inside a PyInstaller bundle (``sys._MEIPASS``).
+    """
+    relative_paths = [Path("resources") / filename, Path(filename)]
+    seen: set[Path] = set()
+    for base_dir in _base_dirs():
+        for relative_path in relative_paths:
+            candidate = (base_dir / relative_path).resolve()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            if candidate.exists():
+                return str(candidate)
+    return None

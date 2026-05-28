@@ -11,6 +11,9 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QPixmap
+
+from utils.app_icon import find_resource_path
 
 class AnalysisView(QWidget):
     """
@@ -104,12 +107,33 @@ class AnalysisView(QWidget):
         self.layout.setContentsMargins(6, 6, 6, 6)
         self.layout.setSpacing(4)
         
+        # Drop-zone header: CSV icon stacked above the instruction text.
+        # Built here, but added to the shared top row alongside the
+        # Analysis Settings group further below.
+        self.dropzone_group = QVBoxLayout()
+        self.dropzone_group.setSpacing(4)
+
+        self.dropzone_icon = QLabel()
+        self.dropzone_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _csv_icon_path = find_resource_path("csvicon.png")
+        if _csv_icon_path:
+            _pixmap = QPixmap(_csv_icon_path)
+            if not _pixmap.isNull():
+                self.dropzone_icon.setPixmap(
+                    _pixmap.scaledToHeight(
+                        64, Qt.TransformationMode.SmoothTransformation
+                    )
+                )
+        self.dropzone_group.addWidget(
+            self.dropzone_icon, alignment=Qt.AlignmentFlag.AlignHCenter
+        )
+
         # Make instructions text much larger and position it lower
         self.instructions = QLabel("Drop CSV annotation files here")
         self.instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.instructions.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 16px; margin-bottom: 16px;")
-        self.layout.addWidget(self.instructions)
-        
+        self.instructions.setStyleSheet("font-size: 20px; font-weight: bold; margin-top: 4px;")
+        self.dropzone_group.addWidget(self.instructions)
+
         # Analysis Settings Group
         self.settings_group = QGroupBox("Analysis Settings")
         self.settings_group.setMinimumHeight(110)
@@ -161,9 +185,20 @@ class AnalysisView(QWidget):
         
         # Add metrics buttons to settings group
         self.settings_layout.addLayout(self.metrics_button_layout)
-        
-        # Add settings group to main layout
-        self.layout.addWidget(self.settings_group)
+
+        # Top row: Analysis Settings on the left, the CSV drop-zone
+        # (icon above text) centred in the space to its right. Equal
+        # stretches on either side of the drop-zone keep it centred;
+        # the settings group is pinned top-left so the two line up.
+        self.top_row = QHBoxLayout()
+        self.top_row.setContentsMargins(0, 0, 0, 0)
+        self.top_row.addWidget(
+            self.settings_group, alignment=Qt.AlignmentFlag.AlignTop
+        )
+        self.top_row.addStretch()
+        self.top_row.addLayout(self.dropzone_group)
+        self.top_row.addStretch()
+        self.layout.addLayout(self.top_row)
 
         # Tabbed area: Files / Summary / Intervals
         self.tab_widget = QTabWidget()

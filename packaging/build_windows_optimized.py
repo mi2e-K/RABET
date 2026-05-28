@@ -502,7 +502,7 @@ datas = []
 # Windows distribution, so we list the files we actually want by name
 # instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    for _resource_name in ('RABET.ico',):
+    for _resource_name in ('RABET.ico', 'csvicon.png'):
         _resource_path = os.path.join('{resource_dir}', _resource_name)
         if os.path.exists(_resource_path):
             datas.append((_resource_path, 'resources'))
@@ -676,7 +676,7 @@ datas = []
 # Windows distribution, so we list the files we actually want by name
 # instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    for _resource_name in ('RABET.ico',):
+    for _resource_name in ('RABET.ico', 'csvicon.png'):
         _resource_path = os.path.join('{resource_dir}', _resource_name)
         if os.path.exists(_resource_path):
             datas.append((_resource_path, 'resources'))
@@ -897,12 +897,19 @@ coll = COLLECT(
             print(f"Creating resources directory in distribution")
             os.makedirs(dist_resources_dir, exist_ok=True)
             
+            # Files that are bundled *inside* the exe via the spec's
+            # datas and must NOT also appear as loose files in the
+            # visible resources/ folder.
+            embed_only_files = {'csvicon.png'}
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)
                 # Skip directories, JSON files, and the macOS-only .icns icon
                 # (it is ~1.7 MB and serves no purpose in a Windows bundle).
                 if file_name.endswith(('.json', '.icns')) or os.path.isdir(file_path):
+                    continue
+                # Skip files that are embedded in the exe instead.
+                if file_name in embed_only_files:
                     continue
                 # Copy other files (icons, images, etc.)
                 print(f"Copying resource file: {file_name}")
@@ -1003,12 +1010,19 @@ Do not delete these folders while using the application.
             print(f"Creating resources directory in distribution")
             os.makedirs(dist_resources_dir, exist_ok=True)
             
+            # Files that are bundled *inside* the exe via the spec's
+            # datas and must NOT also appear as loose files in the
+            # visible resources/ folder.
+            embed_only_files = {'csvicon.png'}
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)
                 # Skip directories, JSON files, and the macOS-only .icns icon
                 # (it is ~1.7 MB and serves no purpose in a Windows bundle).
                 if file_name.endswith(('.json', '.icns')) or os.path.isdir(file_path):
+                    continue
+                # Skip files that are embedded in the exe instead.
+                if file_name in embed_only_files:
                     continue
                 # Copy other files (icons, images, etc.)
                 print(f"Copying resource file: {file_name}")

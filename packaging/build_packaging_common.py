@@ -449,6 +449,13 @@ def get_data_files(include_ico=True, include_icns=True, include_png=True):
         if png_icon.exists():
             datas.append((str(png_icon), "resources"))
 
+    # Extra UI resources that aren't app icons but are loaded at runtime
+    # (e.g. the Analysis-tab drop-zone CSV icon).
+    for extra_name in ("csvicon.png",):
+        extra_path = resources_dir / extra_name
+        if extra_path.exists():
+            datas.append((str(extra_path), "resources"))
+
     return datas
 
 
@@ -523,6 +530,11 @@ def copy_runtime_assets(target_dir, include_ico=True, include_icns=True, include
             png_icon = ROOT_DIR / "images" / "RABET.png"
             if png_icon.exists():
                 shutil.copy2(png_icon, destination / "RABET.png")
+
+        # NOTE: csvicon.png is intentionally NOT copied here. It is
+        # bundled *inside* the PyInstaller archive via get_data_files()
+        # (extracted to sys._MEIPASS at runtime), so it must not also
+        # appear as a loose file in the visible resources/ folder.
 
 
 def write_readme(target_dir, platform_label):
