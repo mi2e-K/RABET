@@ -9,8 +9,11 @@ from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QFormLayout, QCheckBox, QFrame, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QAction, QCursor, QDragEnterEvent, QDropEvent
+from PySide6.QtGui import (
+    QAction, QCursor, QDragEnterEvent, QDropEvent, QGuiApplication, QPixmap,
+)
 
+from utils.app_icon import find_resource_path
 from utils.video_detection import is_video_file, video_file_dialog_filter
 
 class ProjectView(QWidget):
@@ -54,7 +57,32 @@ class ProjectView(QWidget):
         
         self.setup_ui()
         self.connect_signals()
-    
+
+    def _update_project_icon(self):
+        """Render the project-mode icon crisply on High-DPI screens.
+
+        Scales the source PNG to the *physical* pixel height (logical
+        height x devicePixelRatio) and tags the pixmap with that ratio,
+        so it isn't a blurry up-stretched bitmap at 150% / 200% scaling.
+        """
+        source = getattr(self, "_project_icon_source", None)
+        if source is None or source.isNull():
+            return
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        target_h = max(1, round(self._project_icon_height * dpr))
+        scaled = source.scaledToHeight(
+            target_h, Qt.TransformationMode.SmoothTransformation
+        )
+        scaled.setDevicePixelRatio(dpr)
+        self.project_icon.setPixmap(scaled)
+
+    def showEvent(self, event):
+        # Re-render the icon once the widget is on its final screen so
+        # the devicePixelRatio matches (crisp on High-DPI).
+        super().showEvent(event)
+        self._update_project_icon()
+
     def setup_ui(self):
         """Set up user interface."""
         # Main layout
@@ -65,7 +93,20 @@ class ProjectView(QWidget):
         
         # Project name and path
         self.header_layout = QHBoxLayout()
-        
+
+        # Project-mode icon at the top of the view, left of the project
+        # name. Kept modest in size and rendered High-DPI-aware (see
+        # _update_project_icon) so it stays crisp at 150% / 200% scaling.
+        self.project_icon = QLabel()
+        self.project_icon.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self._project_icon_height = 100  # logical px
+        self._project_icon_source = QPixmap()
+        _project_icon_path = find_resource_path("project_mode.png")
+        if _project_icon_path:
+            self._project_icon_source = QPixmap(_project_icon_path)
+        self._update_project_icon()
+        self.header_layout.addWidget(self.project_icon, 0)
+
         self.project_name_label = QLabel("No Project Open")
         self.project_name_label.setStyleSheet("font-weight: bold; font-size: 16px;")
         self.header_layout.addWidget(self.project_name_label, 1)

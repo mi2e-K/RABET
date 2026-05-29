@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QGuiApplication, QPixmap
 
 from utils.app_icon import find_resource_path
 
@@ -99,7 +99,36 @@ class AnalysisView(QWidget):
             sem_value = math.sqrt(variance) / math.sqrt(len(values))
 
         return f"{mean_value:.2f}", f"{sem_value:.2f}"
-    
+
+    def _update_dropzone_icon(self):
+        """Render the CSV drop-zone icon crisply on High-DPI screens.
+
+        The source PNG is high resolution (743x970). We scale it to the
+        *physical* pixel height (logical height x devicePixelRatio) and
+        tag the resulting pixmap with that ratio. Without this, Qt draws
+        a 64-logical-px pixmap stretched across the screen's physical
+        pixels (e.g. 96 px at 150% scaling), which looks blurry.
+        """
+        source = getattr(self, "_dropzone_pixmap_source", None)
+        if source is None or source.isNull():
+            return
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        target_h = max(1, round(self._dropzone_icon_height * dpr))
+        scaled = source.scaledToHeight(
+            target_h, Qt.TransformationMode.SmoothTransformation
+        )
+        scaled.setDevicePixelRatio(dpr)
+        self.dropzone_icon.setPixmap(scaled)
+
+    def showEvent(self, event):
+        # Re-render the icon once the widget is mapped: at construction
+        # time the window may not yet be on its final screen, so the
+        # devicePixelRatio could differ from the primary screen used
+        # during setup_ui.
+        super().showEvent(event)
+        self._update_dropzone_icon()
+
     def setup_ui(self):
         """Set up simplified user interface for automatic analysis."""
         # Main layout
@@ -115,15 +144,13 @@ class AnalysisView(QWidget):
 
         self.dropzone_icon = QLabel()
         self.dropzone_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Logical display height of the icon in device-independent px.
+        self._dropzone_icon_height = 64
+        self._dropzone_pixmap_source = QPixmap()
         _csv_icon_path = find_resource_path("csvicon.png")
         if _csv_icon_path:
-            _pixmap = QPixmap(_csv_icon_path)
-            if not _pixmap.isNull():
-                self.dropzone_icon.setPixmap(
-                    _pixmap.scaledToHeight(
-                        64, Qt.TransformationMode.SmoothTransformation
-                    )
-                )
+            self._dropzone_pixmap_source = QPixmap(_csv_icon_path)
+        self._update_dropzone_icon()
         self.dropzone_group.addWidget(
             self.dropzone_icon, alignment=Qt.AlignmentFlag.AlignHCenter
         )

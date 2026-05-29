@@ -6,8 +6,11 @@ from PySide6.QtWidgets import (
     QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QDateTime
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QImage, QPixmap
+from PySide6.QtGui import (
+    QDragEnterEvent, QDropEvent, QGuiApplication, QImage, QPixmap,
+)
 
+from utils.app_icon import find_resource_path
 from utils.loading_overlay import LoadingOverlay
 from utils.video_detection import is_video_file
 
@@ -165,6 +168,21 @@ class VideoPlayerView(QWidget):
         # the display label regardless of the pixmap inside.
         self.drop_label.setParent(self.video_frame)
         self.drop_label.raise_()
+
+        # Drop-zone icon, stacked above the "Drop Video File Here" text.
+        # Also a free-floating child of the video frame; its geometry is
+        # managed alongside drop_label in _sync_video_placeholder_geometry.
+        self.drop_icon = QLabel(self.video_frame)
+        self.drop_icon.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.drop_icon.setStyleSheet("background-color: transparent;")
+        self.drop_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._drop_icon_height = 120  # logical px
+        self._drop_icon_source = QPixmap()
+        _drop_icon_path = find_resource_path("drop_video_file.png")
+        if _drop_icon_path:
+            self._drop_icon_source = QPixmap(_drop_icon_path)
+        self._update_drop_icon_pixmap()
+        self.drop_icon.raise_()
 
         # Cache of the most recently decoded QImage, so resizeEvent can
         # re-scale it without forcing the model to re-decode.
@@ -332,21 +350,56 @@ class VideoPlayerView(QWidget):
                 "background-color: #000000; border: none;"
             )
 
+    def _update_drop_icon_pixmap(self):
+        """Render the drop-zone icon crisply on High-DPI screens.
+
+        The source PNG is high resolution; we scale it to the *physical*
+        pixel height (logical height x devicePixelRatio) and tag the
+        pixmap with that ratio so Qt doesn't stretch a low-res bitmap
+        across the screen's physical pixels (which looks blurry at 150%
+        / 200% display scaling)."""
+        source = getattr(self, "_drop_icon_source", None)
+        if source is None or source.isNull():
+            return
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        target_h = max(1, round(self._drop_icon_height * dpr))
+        scaled = source.scaledToHeight(
+            target_h, Qt.TransformationMode.SmoothTransformation
+        )
+        scaled.setDevicePixelRatio(dpr)
+        self.drop_icon.setPixmap(scaled)
+        self.drop_icon.adjustSize()
+
+    def _has_drop_icon(self):
+        pixmap = self.drop_icon.pixmap() if hasattr(self, "drop_icon") else None
+        return pixmap is not None and not pixmap.isNull()
+
     def _sync_video_placeholder_geometry(self):
         """Keep the idle placeholder surface aligned to the full video frame
-        and center the drop hint label inside it."""
+        and center the drop hint (icon stacked above text) inside it."""
         self.placeholder_background.setGeometry(self.video_frame.rect())
 
-        # Center the free-floating drop label within the video frame. Without
-        # this the label stays at the default (0, 0) position and looks
-        # left-aligned even though its internal text alignment is centered.
-        self.drop_label.adjustSize()
         frame_rect = self.video_frame.rect()
+        self.drop_label.adjustSize()
         label_size = self.drop_label.size()
-        x = max(0, (frame_rect.width() - label_size.width()) // 2)
-        y = max(0, (frame_rect.height() - label_size.height()) // 2)
-        self.drop_label.move(x, y)
 
+        if self._has_drop_icon():
+            # Stack icon above text as a vertically-centred group.
+            self.drop_icon.adjustSize()
+            icon_size = self.drop_icon.size()
+            gap = 8
+            total_h = icon_size.height() + gap + label_size.height()
+            top = max(0, (frame_rect.height() - total_h) // 2)
+            icon_x = max(0, (frame_rect.width() - icon_size.width()) // 2)
+            self.drop_icon.move(icon_x, top)
+            label_y = top + icon_size.height() + gap
+            self.drop_icon.raise_()
+        else:
+            label_y = max(0, (frame_rect.height() - label_size.height()) // 2)
+
+        label_x = max(0, (frame_rect.width() - label_size.width()) // 2)
+        self.drop_label.move(label_x, label_y)
         self.drop_label.raise_()
 
     def _update_empty_state_visibility(self):
@@ -354,6 +407,8 @@ class VideoPlayerView(QWidget):
         show_placeholder = not self._has_video
         self.placeholder_background.setVisible(show_placeholder)
         self.drop_label.setVisible(show_placeholder)
+        if hasattr(self, "drop_icon"):
+            self.drop_icon.setVisible(show_placeholder and self._has_drop_icon())
         if show_placeholder:
             self._sync_video_placeholder_geometry()
 
@@ -865,10 +920,15 @@ class VideoPlayerView(QWidget):
         # disappear, otherwise it sits on top of the video. We hide it
         # here (rather than in load_video) because the model is the one
         # that confirms a frame actually decoded.
-        if self.drop_label.isVisible():
-            self.drop_label.hide()
-        if self.placeholder_background.isVisible():
-            self.placeholder_background.hide()
+        # Hide the drop hint unconditionally (hide() is a no-op if it's
+        # already hidden). Guarding on isVisible() was unreliable when a
+        # frame decodes before the view is shown — isVisible() is False
+        # then, so the hint never got hidden and could flash over the
+        # first frame.
+        self.drop_label.hide()
+        if hasattr(self, "drop_icon"):
+            self.drop_icon.hide()
+        self.placeholder_background.hide()
         self._render_frame()
 
     def _render_frame(self) -> None:
@@ -927,5 +987,8 @@ class VideoPlayerView(QWidget):
             self.controls_container.show()
             self.controls_container.updateGeometry()
 
+        # Re-render the drop icon now that the widget is on its final
+        # screen, so the devicePixelRatio matches (crisp on High-DPI).
+        self._update_drop_icon_pixmap()
         self._sync_video_placeholder_geometry()
         QTimer.singleShot(0, self.refresh_empty_placeholder)

@@ -502,7 +502,7 @@ datas = []
 # Windows distribution, so we list the files we actually want by name
 # instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    for _resource_name in ('RABET.ico', 'csvicon.png'):
+    for _resource_name in ('RABET.ico', 'csvicon.png', 'drop_video_file.png', 'project_mode.png'):
         _resource_path = os.path.join('{resource_dir}', _resource_name)
         if os.path.exists(_resource_path):
             datas.append((_resource_path, 'resources'))
@@ -676,7 +676,7 @@ datas = []
 # Windows distribution, so we list the files we actually want by name
 # instead of adding the whole directory.
 if os.path.exists('{resource_dir}'):
-    for _resource_name in ('RABET.ico', 'csvicon.png'):
+    for _resource_name in ('RABET.ico', 'csvicon.png', 'drop_video_file.png', 'project_mode.png'):
         _resource_path = os.path.join('{resource_dir}', _resource_name)
         if os.path.exists(_resource_path):
             datas.append((_resource_path, 'resources'))
@@ -900,7 +900,7 @@ coll = COLLECT(
             # Files that are bundled *inside* the exe via the spec's
             # datas and must NOT also appear as loose files in the
             # visible resources/ folder.
-            embed_only_files = {'csvicon.png'}
+            embed_only_files = {'csvicon.png', 'drop_video_file.png', 'project_mode.png'}
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)
@@ -1013,7 +1013,7 @@ Do not delete these folders while using the application.
             # Files that are bundled *inside* the exe via the spec's
             # datas and must NOT also appear as loose files in the
             # visible resources/ folder.
-            embed_only_files = {'csvicon.png'}
+            embed_only_files = {'csvicon.png', 'drop_video_file.png', 'project_mode.png'}
             # Only copy icon and specific resource files
             for file_name in os.listdir(resource_dir):
                 file_path = os.path.join(resource_dir, file_name)

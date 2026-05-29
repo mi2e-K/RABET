@@ -451,7 +451,7 @@ def get_data_files(include_ico=True, include_icns=True, include_png=True):
 
     # Extra UI resources that aren't app icons but are loaded at runtime
     # (e.g. the Analysis-tab drop-zone CSV icon).
-    for extra_name in ("csvicon.png",):
+    for extra_name in ("csvicon.png", "drop_video_file.png", "project_mode.png"):
         extra_path = resources_dir / extra_name
         if extra_path.exists():
             datas.append((str(extra_path), "resources"))
