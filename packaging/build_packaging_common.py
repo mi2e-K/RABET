@@ -584,13 +584,22 @@ sudo apt install \\
   libfreetype6"""
     elif platform_key in {"macos", "mac"}:
         launch_notes = f"""How to launch on macOS:
-- Open {APP_NAME}.app.
-- This build is unsigned. On first launch, macOS may require right-click > Open,
-  or allowing the app from Privacy & Security settings.
+- FIRST LAUNCH: right-click "Open RABET (first run).command" > Open, then
+  click Open in the dialog. It clears the macOS quarantine flag and starts
+  {APP_NAME}. You only need to do this once.
+- After that, open {APP_NAME}.app normally.
+
+Why is this needed?
+- This build is unsigned/un-notarised. macOS quarantines apps downloaded
+  from the internet and reports them as "damaged and can't be opened".
+  The helper above removes that quarantine flag from {APP_NAME}.app and
+  launches it. The app itself cannot do this (macOS blocks it before any
+  of its code runs), which is why a separate one-time helper is provided.
+- Alternatively, in Terminal:  xattr -dr com.apple.quarantine /path/to/{APP_NAME}.app
 
 macOS package notes:
 - The app bundle uses resources/RABET.icns as the Finder/Dock icon.
-- The release zip includes this README next to {APP_NAME}.app."""
+- The release zip includes this README and the first-run helper next to {APP_NAME}.app."""
     elif platform_key == "windows":
         launch_notes = f"""How to launch on Windows:
 - Double-click {APP_NAME}.exe, or use Launch RABET.bat when it is included.

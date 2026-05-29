@@ -153,6 +153,40 @@ def create_macos_zip(app_path, dist_dir):
     if readme_path.exists():
         shutil.copy2(readme_path, package_dir / "README.txt")
 
+    # First-run helper. The .app is unsigned/un-notarised, so a copy
+    # downloaded from GitHub is quarantined and macOS reports it as
+    # "damaged". Gatekeeper blocks the app before any of its own code
+    # runs, so the app cannot clear its own quarantine — but a separate
+    # .command script can (removing the flag from a *different* file is
+    # an ordinary, allowed operation). Scripts get the milder Gatekeeper
+    # treatment, so the user can approve this once via right-click >
+    # Open, and it then launches the app cleanly.
+    first_run_script = package_dir / "Open RABET (first run).command"
+    first_run_script.write_text(
+        "#!/bin/bash\n"
+        "# One-time helper for the unsigned RABET.app downloaded from\n"
+        "# GitHub. macOS quarantines downloaded unsigned apps and reports\n"
+        "# them as \"damaged\". This removes that quarantine flag from\n"
+        "# RABET.app and launches it. Safe to run more than once.\n"
+        'DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+        'APP="$DIR/RABET.app"\n'
+        'if [ ! -d "$APP" ]; then\n'
+        '    echo "RABET.app was not found next to this script."\n'
+        '    echo "Keep this file in the same folder as RABET.app and run it again."\n'
+        '    read -n 1 -s -r -p "Press any key to close..."\n'
+        '    echo ""\n'
+        "    exit 1\n"
+        "fi\n"
+        'echo "Preparing RABET for first launch..."\n'
+        'xattr -dr com.apple.quarantine "$APP" 2>/dev/null\n'
+        'open "$APP"\n'
+        'echo "RABET should now be opening. You can close this window."\n',
+        encoding="utf-8",
+    )
+    # Executable bit so Finder runs it via Terminal on double-click /
+    # right-click > Open (otherwise it opens in a text editor).
+    first_run_script.chmod(0o755)
+
     packaged_app_path = package_dir / app_path.name
     ditto = shutil.which("ditto")
     if ditto:
