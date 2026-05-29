@@ -97,8 +97,20 @@ class MainWindow(QMainWindow):
         self._settings_restored = False
 
         self.setWindowTitle("RABET - Real-time Animal Behavior Event Tagger")
-        # Increase default window size
-        self.resize(1400, 900)
+        # Increase default window size, but never open larger than the
+        # screen (laptops / 1080p) — otherwise the window spills off the
+        # right edge on smaller displays.
+        default_w, default_h = 1400, 900
+        try:
+            from PySide6.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                avail = screen.availableGeometry()
+                default_w = min(default_w, avail.width() - 40)
+                default_h = min(default_h, avail.height() - 80)
+        except Exception:
+            pass
+        self.resize(max(800, default_w), max(600, default_h))
         
         # Set app icon for window and taskbar
         self.setup_window_icon()

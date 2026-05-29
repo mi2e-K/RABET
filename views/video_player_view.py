@@ -1,9 +1,9 @@
 # views/video_player_view.py - Enhanced loading overlay handling
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QSlider, QFrame, QSpinBox, QSizePolicy,
-    QCheckBox
+    QCheckBox, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal, Slot, QTimer, QDateTime
 from PySide6.QtGui import (
@@ -309,9 +309,36 @@ class VideoPlayerView(QWidget):
         # kept harmless for binary compatibility with any external code
         # that still listens to it, but nothing in the app emits it.
         
-        # Add controls to container
-        self.controls_container_layout.addLayout(self.controls_layout)
-        
+        # Put the playback controls row inside a horizontal scroll area.
+        # The row packs many fixed-width controls (play / step / speed /
+        # zoom / relocated timeline aux) that do NOT wrap. Left as a raw
+        # layout it forces a ~1600 px minimum width on the whole window,
+        # which clips the UI on laptops and 1080p displays (it only ever
+        # "fit" on very wide monitors). Wrapping it lets the window shrink
+        # to the screen; on a narrow window a thin horizontal scrollbar
+        # appears instead of pushing controls off-screen.
+        self.controls_row_widget = QWidget()
+        self.controls_row_widget.setLayout(self.controls_layout)
+        self.controls_scroll = QScrollArea()
+        self.controls_scroll.setObjectName("controlsScroll")
+        self.controls_scroll.setWidget(self.controls_row_widget)
+        self.controls_scroll.setWidgetResizable(True)
+        self.controls_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.controls_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.controls_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.controls_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        # Fixed height = one control row + room for the horizontal
+        # scrollbar so the row is never clipped vertically.
+        _row_height = max(34, self.controls_row_widget.sizeHint().height())
+        self.controls_scroll.setFixedHeight(_row_height + 16)
+        self.controls_container_layout.addWidget(self.controls_scroll)
+
         # Add controls container to main layout
         self.layout.addWidget(self.controls_container)
         
