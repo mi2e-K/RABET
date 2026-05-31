@@ -39,6 +39,12 @@ class VideoPlayerView(QWidget):
     volume_changed = Signal(int)
     video_dropped = Signal(str)  # New signal for drag and drop
     frame_by_frame_mode_changed = Signal(bool)  # New signal for frame-by-frame mode
+    # Emitted (throttled) with the video pane's logical size (w, h) whenever
+    # it resizes or first shows. The controller wires this to
+    # VideoModel.set_target_display_size so the model can decode frames
+    # straight to display size (Change A). Logical px on purpose — matches
+    # the previous on-screen quality on high-DPI displays.
+    display_size_changed = Signal(int, int)
     
     def __init__(self):
         super().__init__()
@@ -91,7 +97,18 @@ class VideoPlayerView(QWidget):
 
         # Frame-by-frame mode state
         self._frame_by_frame_mode = False
-    
+
+        # ----- Adaptive-quality / display-size state (Changes A & B) -----
+        # When True (set by the model only under detected CPU load), motion
+        # frames are scaled with the cheaper FastTransformation. Idle stays
+        # Smooth, exactly like before.
+        self._low_quality = False
+        # Throttle display_size_changed: resize fires many events; we only
+        # want to tell the model the final size once it settles (~120 ms).
+        self._size_emit_timer = QTimer(self)
+        self._size_emit_timer.setSingleShot(True)
+        self._size_emit_timer.timeout.connect(self._emit_display_size)
+
     def setup_ui(self):
         """Set up user interface."""
         # Main layout
@@ -895,12 +912,21 @@ class VideoPlayerView(QWidget):
             is_playing (bool): True if playing, False if paused
         """
         self._is_playing = is_playing
-        
+
         # Update play/pause button text
         self.play_pause_button.setText("Pause" if is_playing else "Play")
-        
+
+        # Settle to full quality on pause: with _is_playing now False,
+        # _render_frame() uses SmoothTransformation. The model also re-emits
+        # the frozen frame at full resolution on pause, so the still the
+        # user examines is always crisp; this is the matching view-side
+        # guarantee (and covers the case where the model has no decoded
+        # frame to re-emit).
+        if not is_playing and getattr(self, "_last_qimage", None) is not None:
+            self._render_frame()
+
         self._update_empty_state_visibility()
-        
+
         # CRITICAL FIX: Force layout update after state change
         # This ensures that all widgets maintain their proper positions
         self.layout.activate()
@@ -965,15 +991,52 @@ class VideoPlayerView(QWidget):
         target_size = self.video_display_label.size()
         if target_size.width() <= 0 or target_size.height() <= 0:
             return
-        # SmoothTransformation gives much nicer downscaling for 1080p
-        # videos shown in smaller panes; on modern CPUs it's still a
-        # 2-4 ms operation per frame so the playback timer can keep up.
+        # Default is SmoothTransformation: it gives much nicer downscaling
+        # for 1080p videos shown in smaller panes and is what the user sees
+        # at all times on an idle machine. Only while actively *playing* and
+        # the model has flagged sustained CPU load (Change B) do we drop to
+        # the cheaper FastTransformation for the in-motion frames; the
+        # moment playback pauses or load clears we go back to Smooth. Note
+        # that under load the model also hands us frames already scaled to
+        # display size (Change A), so this Qt step is usually a near-no-op
+        # then — this is belt-and-suspenders for the case where the model's
+        # fast path is unavailable (e.g. older PyAV without reformat).
+        if self._is_playing and getattr(self, "_low_quality", False):
+            mode = Qt.TransformationMode.FastTransformation
+        else:
+            mode = Qt.TransformationMode.SmoothTransformation
         scaled = self._last_qimage.scaled(
             target_size,
             Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+            mode,
         )
         self.video_display_label.setPixmap(QPixmap.fromImage(scaled))
+
+    @Slot(bool)
+    def set_low_quality_mode(self, low_quality: bool) -> None:
+        """Switch motion-frame scaling between Fast (under load) and Smooth.
+
+        Connected to ``VideoModel.render_load_changed`` by the controller.
+        Re-renders the current frame immediately so the change is visible
+        without waiting for the next decoded frame.
+        """
+        low_quality = bool(low_quality)
+        if low_quality == self._low_quality:
+            return
+        self._low_quality = low_quality
+        self.logger.debug("Low-quality (under-load) rendering: %s", low_quality)
+        self._render_frame()
+
+    def _schedule_display_size_emit(self) -> None:
+        """(Re)start the throttle so the final settled pane size is emitted."""
+        self._size_emit_timer.start(120)
+
+    def _emit_display_size(self) -> None:
+        """Emit the video pane's current logical size to the model."""
+        size = self.video_display_label.size()
+        w, h = size.width(), size.height()
+        if w > 0 and h > 0:
+            self.display_size_changed.emit(int(w), int(h))
 
     def resizeEvent(self, event):
         """Handle resize events to ensure overlay is properly sized."""
@@ -994,6 +1057,10 @@ class VideoPlayerView(QWidget):
         # old dimensions and either leaves blank bars or gets clipped.
         if getattr(self, "_last_qimage", None) is not None:
             self._render_frame()
+
+        # Tell the model (throttled) the new pane size so it can decode
+        # straight to display size (Change A).
+        self._schedule_display_size_emit()
 
         # Force layout update
         self.layout.activate()
@@ -1019,3 +1086,7 @@ class VideoPlayerView(QWidget):
         self._update_drop_icon_pixmap()
         self._sync_video_placeholder_geometry()
         QTimer.singleShot(0, self.refresh_empty_placeholder)
+
+        # Now that the pane has its real on-screen size, tell the model so
+        # it can size its decode output to match (Change A).
+        self._schedule_display_size_emit()

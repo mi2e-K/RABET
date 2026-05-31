@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from fractions import Fraction
 from pathlib import Path
 from typing import Optional
@@ -97,9 +98,28 @@ class VideoModel(QObject):
     error_occurred = Signal(str)
     frame_ready = Signal(QImage)
 
+    # Emitted (only on change) when the playback tick detects it is, or is
+    # no longer, falling behind real time under CPU load. True = under load
+    # (render cheaply); False = keeping up (render at full quality). The
+    # view connects this to switch its scaling between Fast and Smooth.
+    render_load_changed = Signal(bool)
+
     # Reasonable defaults for codecs that don't report a frame rate.
     _DEFAULT_FRAME_RATE = 30.0
     _DEFAULT_FRAME_DURATION_MS = 33
+
+    # ----- Load-detection tuning (Change B) -----
+    # A tick is "late" when the wall-clock gap since the previous tick
+    # exceeds ``interval * _LATE_GAP_FACTOR + _LATE_GAP_FLOOR_MS``. The
+    # factor tolerates ordinary timer jitter; the floor keeps very short
+    # intervals (high playback rates) from tripping on sub-millisecond
+    # noise. Hysteresis: engage "under load" only after this many
+    # consecutive late ticks, and clear it only after this many consecutive
+    # on-time ticks — prevents quality flicker on transient spikes.
+    _LATE_GAP_FACTOR = 1.5
+    _LATE_GAP_FLOOR_MS = 5.0
+    _LOAD_ENGAGE_LATE_FRAMES = 4
+    _LOAD_CLEAR_ONTIME_FRAMES = 12
 
     def __init__(self):
         super().__init__()
@@ -142,6 +162,32 @@ class VideoModel(QObject):
         # without re-decoding.
         self._last_frame_image: Optional[QImage] = None
 
+        # ----- Display-size / load-adaptation state (Changes A & B) -----
+        # Retain the most recent *decoded* frame (not just its QImage) so a
+        # resize-while-paused can re-run libswscale at the new target size
+        # and stay crisp instead of upscaling a small bitmap.
+        self._last_decoded_frame: Optional[av.VideoFrame] = None
+        # Target display size in *logical* pixels (the size of the view's
+        # video label). 0 means "unset" → fall back to full-res convert.
+        self._target_display_w: int = 0
+        self._target_display_h: int = 0
+        # Load state + tick-timing bookkeeping (see _update_load_state).
+        self._under_load: bool = False
+        self._last_tick_monotonic: Optional[float] = None
+        self._late_tick_count: int = 0
+        self._ontime_tick_count: int = 0
+        # libswscale interpolation modes. Resolved once here; if the
+        # installed PyAV doesn't expose the enum (older builds) we degrade
+        # gracefully to "no interpolation argument".
+        try:
+            from av.video.reformatter import Interpolation as _Interp
+            self._interp_normal = _Interp.BILINEAR
+            self._interp_fast = _Interp.FAST_BILINEAR
+        except Exception:
+            self._interp_normal = None
+            self._interp_fast = None
+        self._interp_supported = self._interp_normal is not None
+
         # Guard against re-entrant decode calls. Decoding happens on the
         # main thread today, but a future move to a worker thread should
         # not break correctness.
@@ -175,28 +221,97 @@ class VideoModel(QObject):
         delta = pts - self._stream_start_pts
         return int(Fraction(delta) * self._time_base * 1000)
 
-    def _frame_to_qimage(self, frame: av.VideoFrame) -> QImage:
+    def _playback_target_size(self, frame: av.VideoFrame) -> Optional[tuple]:
+        """Compute the aspect-ratio-fit target size for ``frame``.
+
+        Returns ``(width, height)`` to which the frame should be downscaled
+        so it fits inside the current display label, or ``None`` when no
+        target is set or fitting would *upscale* the frame. We never upscale
+        here: enlarging is cheap for Qt and keeping the full-res image lets a
+        later resize stay crisp.
+        """
+        tw = self._target_display_w
+        th = self._target_display_h
+        if tw <= 0 or th <= 0:
+            return None
+        src_w = int(frame.width)
+        src_h = int(frame.height)
+        if src_w <= 0 or src_h <= 0:
+            return None
+        # Aspect-ratio-fit (letterbox) inside the label, matching Qt's
+        # KeepAspectRatio used by the view's full-res path.
+        scale = min(tw / src_w, th / src_h)
+        if scale >= 1.0:
+            return None  # Would upscale → keep full resolution.
+        out_w = max(1, int(round(src_w * scale)))
+        out_h = max(1, int(round(src_h * scale)))
+        if out_w >= src_w or out_h >= src_h:
+            return None
+        return (out_w, out_h)
+
+    def _reformat_to_rgb(self, frame: av.VideoFrame, target: Optional[tuple]):
+        """Fused YUV→RGB convert (+ optional downscale) via libswscale.
+
+        Returns a numpy ``rgb24`` array, or ``None`` if reformat fails (the
+        caller then falls back to the plain full-res convert path).
+        """
+        try:
+            kwargs = dict(format="rgb24")
+            if target is not None:
+                kwargs["width"] = target[0]
+                kwargs["height"] = target[1]
+            if self._interp_supported:
+                # Cheaper scaler while under load; crisp bilinear otherwise.
+                kwargs["interpolation"] = (
+                    self._interp_fast if self._under_load else self._interp_normal
+                )
+            try:
+                rgb_frame = frame.reformat(**kwargs)
+            except TypeError:
+                # Older PyAV without the ``interpolation`` kwarg.
+                self._interp_supported = False
+                kwargs.pop("interpolation", None)
+                rgb_frame = frame.reformat(**kwargs)
+            return rgb_frame.to_ndarray()
+        except Exception as exc:
+            self.logger.debug("reformat-to-size failed (%s); full-res fallback", exc)
+            return None
+
+    def _frame_to_qimage(self, frame: av.VideoFrame, for_playback: bool = False) -> QImage:
         """Convert a PyAV VideoFrame to a self-contained QImage.
 
+        When ``for_playback`` is True and a display target size is set that
+        is *smaller* than the frame, libswscale fuses the YUV→RGB convert
+        and the downscale into a single pass (Change A) — far cheaper than
+        converting at full resolution and then letting Qt rescale, which is
+        the dominant per-frame cost on 4K. Under detected load the cheaper
+        FAST_BILINEAR scaler is used (Change B). Otherwise we fall back to a
+        full-resolution convert and let the view scale (keeps paused/seeked
+        stills crisp and lets resize re-render from full res).
+
         Implementation notes:
-            - ``frame.to_ndarray(format="rgb24")`` can return a numpy
-              array whose underlying buffer is not C-contiguous (PyAV
-              17+ in particular sometimes hands back a view into a
-              SwsContext output buffer with extra alignment padding).
-              QImage rejects non-contiguous buffers with ``BufferError``,
-              so we force contiguity explicitly.
-            - We pass the array's actual row stride (``strides[0]``)
-              rather than ``3 * width`` to be defensive against any
-              future libswscale change that pads each row.
-            - The ``.copy()`` at the end is mandatory: without it the
-              QImage shares the numpy buffer, but ``frame`` is about to
-              be GC'd or recycled by the next decode call, which would
-              leave the QImage pointing at freed memory.
+            - ``to_ndarray`` can return a numpy array whose underlying
+              buffer is not C-contiguous (PyAV 17+ in particular sometimes
+              hands back a view into a SwsContext output buffer with extra
+              alignment padding). QImage rejects non-contiguous buffers with
+              ``BufferError``, so we force contiguity explicitly.
+            - We pass the array's actual row stride (``strides[0]``) rather
+              than ``3 * width`` to be defensive against any future
+              libswscale change that pads each row.
+            - The ``.copy()`` at the end is mandatory: without it the QImage
+              shares the numpy buffer, but ``frame`` is about to be GC'd or
+              recycled by the next decode call, which would leave the QImage
+              pointing at freed memory.
         """
-        # H264/H265 streams decode to YUV; ``rgb24`` triggers libswscale
-        # conversion which is acceptably fast for 1080p on modern CPUs.
-        # For 4K we may want to push this onto a worker thread later.
-        arr = frame.to_ndarray(format="rgb24")
+        arr = None
+        if for_playback:
+            target = self._playback_target_size(frame)
+            if target is not None:
+                arr = self._reformat_to_rgb(frame, target)
+        if arr is None:
+            # Full-resolution convert (load/first-frame/paused/seek paths,
+            # or fallback when reformat-to-size is unavailable).
+            arr = frame.to_ndarray(format="rgb24")
         if not arr.flags["C_CONTIGUOUS"]:
             arr = np.ascontiguousarray(arr)
         height, width, _ = arr.shape
@@ -269,9 +384,17 @@ class VideoModel(QObject):
             self._container = None
         self._stream = None
         self._last_frame_image = None
+        self._last_decoded_frame = None
         self._current_pts = 0
         self._current_ms = 0
         self._last_emitted_position = -1
+        # Reset load-detection state so a freshly loaded video starts
+        # optimistic (full quality) rather than inheriting the prior file's
+        # under-load flag.
+        self._under_load = False
+        self._last_tick_monotonic = None
+        self._late_tick_count = 0
+        self._ontime_tick_count = 0
 
     def _decode_next_frame(self) -> Optional[av.VideoFrame]:
         """Pull the next decoded video frame from the demuxer.
@@ -307,9 +430,15 @@ class VideoModel(QObject):
             self._last_emitted_position = new_ms
             self.position_changed.emit(new_ms)
 
-    def _emit_frame(self, frame: av.VideoFrame) -> None:
-        """Helper: convert to QImage, cache, and emit ``frame_ready``."""
-        qimg = self._frame_to_qimage(frame)
+    def _emit_frame(self, frame: av.VideoFrame, for_playback: bool = False) -> None:
+        """Helper: convert to QImage, cache, and emit ``frame_ready``.
+
+        ``for_playback`` enables the decode-to-display-size fast path
+        (Change A). The decoded frame is retained so a resize-while-paused
+        can re-render it at full quality for the new target size.
+        """
+        self._last_decoded_frame = frame
+        qimg = self._frame_to_qimage(frame, for_playback=for_playback)
         self._last_frame_image = qimg
         self.frame_ready.emit(qimg)
 
@@ -403,6 +532,16 @@ class VideoModel(QObject):
             return
         self.logger.debug("Play command received")
         self._is_playing = True
+        # Start optimistic: reset the tick-timing baseline and counters so a
+        # fresh play() re-evaluates load from scratch. If we were flagged
+        # under load from a previous run, clear it and tell the view to go
+        # back to full quality; sustained lag will re-engage it.
+        self._last_tick_monotonic = None
+        self._late_tick_count = 0
+        self._ontime_tick_count = 0
+        if self._under_load:
+            self._under_load = False
+            self.render_load_changed.emit(False)
         interval = max(1, int(self._frame_duration_ms / max(0.01, self._playback_rate)))
         self._playback_timer.start(interval)
         self.playback_state_changed.emit(True)
@@ -415,6 +554,18 @@ class VideoModel(QObject):
         self._is_playing = False
         self._playback_timer.stop()
         self.playback_state_changed.emit(False)
+        # Re-render the frozen frame at full resolution. During playback the
+        # emitted QImage may have been downscaled-to-fit (Change A) and/or
+        # rendered with the cheaper scaler (Change B); the still frame the
+        # user now examines should always be crisp. Cheap: one extra convert
+        # of the already-decoded frame, only on the pause transition.
+        if self._last_decoded_frame is not None and (
+            self._target_display_w > 0 or self._under_load
+        ):
+            try:
+                self._emit_frame(self._last_decoded_frame, for_playback=False)
+            except Exception as exc:
+                self.logger.debug("Full-res re-render on pause failed: %s", exc)
 
     @Slot()
     def stop(self) -> None:
@@ -445,6 +596,11 @@ class VideoModel(QObject):
         if self._container is None:
             self.pause()
             return
+        # Cheap load detection: measure how late this tick fired relative to
+        # the timer interval. Must run before the decode work so the gap we
+        # measure is the *inter-tick* gap, capturing both OS starvation
+        # (timer firing late) and our own per-frame slowness from last tick.
+        self._update_load_state()
         try:
             frame = self._decode_next_frame()
             if frame is None:
@@ -453,10 +609,48 @@ class VideoModel(QObject):
                 self.pause()
                 return
             self._update_current_position(frame)
-            self._emit_frame(frame)
+            self._emit_frame(frame, for_playback=True)
         except Exception as exc:
             self.logger.error("Playback tick failed: %s", exc, exc_info=True)
             self.pause()
+
+    def _update_load_state(self) -> None:
+        """Detect sustained playback lag and toggle ``_under_load``.
+
+        Compares the wall-clock gap since the previous tick against the
+        timer interval. A handful of consecutive late ticks engages
+        "under load" (cheaper rendering); a longer run of on-time ticks
+        clears it. Hysteresis (the asymmetric thresholds) avoids quality
+        flicker on transient spikes. Cost is a couple of ``monotonic()``
+        reads and integer compares per frame — negligible against the
+        multi-millisecond decode/convert that follows.
+        """
+        now = time.monotonic()
+        last = self._last_tick_monotonic
+        self._last_tick_monotonic = now
+        if last is None:
+            # First tick after play()/rate change — no baseline to compare.
+            return
+        interval_ms = self._playback_timer.interval() or self._frame_duration_ms
+        gap_ms = (now - last) * 1000.0
+        late = gap_ms > interval_ms * self._LATE_GAP_FACTOR + self._LATE_GAP_FLOOR_MS
+        if late:
+            self._late_tick_count += 1
+            self._ontime_tick_count = 0
+        else:
+            self._ontime_tick_count += 1
+            self._late_tick_count = 0
+
+        if not self._under_load and self._late_tick_count >= self._LOAD_ENGAGE_LATE_FRAMES:
+            self._under_load = True
+            self._late_tick_count = 0
+            self.logger.debug("Playback under load: switching to fast rendering")
+            self.render_load_changed.emit(True)
+        elif self._under_load and self._ontime_tick_count >= self._LOAD_CLEAR_ONTIME_FRAMES:
+            self._under_load = False
+            self._ontime_tick_count = 0
+            self.logger.debug("Playback caught up: restoring full-quality rendering")
+            self.render_load_changed.emit(False)
 
     # ------------------------------------------------------------------ #
     # Seek / step
@@ -671,7 +865,35 @@ class VideoModel(QObject):
         if self._is_playing:
             interval = max(1, int(self._frame_duration_ms / self._playback_rate))
             self._playback_timer.setInterval(interval)
+            # The interval just changed; drop the timing baseline so the
+            # next tick's gap isn't measured against the old interval and
+            # mis-flagged as "late".
+            self._last_tick_monotonic = None
         self.logger.debug("Playback rate set to %.3fx", rate)
+
+    @Slot(int, int)
+    def set_target_display_size(self, width: int, height: int) -> None:
+        """Tell the model the size (logical px) of the view's video pane.
+
+        The view emits this (throttled) from its resize/show events. When
+        set, the playback path downscales frames to fit this size in a
+        single libswscale pass (Change A) instead of converting at full
+        resolution and letting Qt rescale. Logical (not device) pixels are
+        used deliberately so output quality matches the previous behaviour
+        on high-DPI displays.
+
+        This is a pure setter: it only affects subsequently decoded
+        *playback* frames. Resize-while-paused stays crisp without any
+        re-decode here, because every paused emit path (load / pause / seek
+        / step / stop) emits the frame at full resolution, and the view
+        re-scales that cached full-res image itself on resize.
+        """
+        w = max(0, int(width))
+        h = max(0, int(height))
+        if w == self._target_display_w and h == self._target_display_h:
+            return
+        self._target_display_w = w
+        self._target_display_h = h
 
     # ------------------------------------------------------------------ #
     # Compatibility no-ops

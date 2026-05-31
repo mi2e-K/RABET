@@ -232,7 +232,19 @@ class VideoController(QObject):
         # The view paints the QImage into ``video_display_label`` — that
         # is the entirety of the render path.
         self._video_model.frame_ready.connect(self._view.display_frame)
-    
+        # Load-resilience (1.3.4): when the model detects sustained CPU
+        # load that makes playback fall behind real time, it emits
+        # ``render_load_changed(True)`` so the view drops motion frames to
+        # the cheaper scaler; it emits False again when playback catches up.
+        # hasattr guards keep this safe if a stripped-down model/view is
+        # ever wired in (e.g. in a test double).
+        if hasattr(self._video_model, "render_load_changed") and hasattr(
+            self._view, "set_low_quality_mode"
+        ):
+            self._video_model.render_load_changed.connect(
+                self._view.set_low_quality_mode
+            )
+
     def _update_frame_rate(self, video_path):
         """Update frame rate info when a video is loaded."""
         # Get the frame rate from the model
@@ -279,6 +291,17 @@ class VideoController(QObject):
         # together with the VLC backend. Audio is not played at all under
         # the PyAV backend, so there's no model-side volume API to wire
         # up. The view's volume slider is already hidden in setup_ui.
+
+        # Load-resilience (1.3.4): the view reports its video-pane size
+        # (throttled) so the model can decode frames straight to display
+        # size in one libswscale pass instead of converting full-res and
+        # letting Qt rescale. hasattr guards keep this optional.
+        if hasattr(self._view, "display_size_changed") and hasattr(
+            self._video_model, "set_target_display_size"
+        ):
+            self._view.display_size_changed.connect(
+                self._video_model.set_target_display_size
+            )
 
         # Connect drag and drop signal
         if hasattr(self._view, 'video_dropped'):
