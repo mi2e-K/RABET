@@ -18,3 +18,23 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install ruff
       - run: python -m ruff check .
+
+  test:
+    name: pytest
+    runs-on: ubuntu-latest
+    env:
+      # PySide6 widgets are constructed in some tests; run headless.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      # Install the project with its dev extras (pytest, pytest-benchmark)
+      # plus the runtime deps needed to import the models/views under test.
+      - run: python -m pip install -e ".[dev]"
+      # Linux Qt platform plugins need libEGL/xkbcommon for the offscreen
+      # backend to load even without a display.
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0
+      - run: python -m pytest -q

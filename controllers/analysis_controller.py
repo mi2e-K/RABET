@@ -90,8 +90,16 @@ class AnalysisController(QObject):
 
             # Update via the public replace API instead of poking at private
             # attributes; this keeps validation centralised in
-            # ``AnalysisMetricsConfig``.
-            config.replace_metrics(latency_metrics, total_time_metrics)
+            # ``AnalysisMetricsConfig``. A slug collision across categories
+            # (BUG-013) is rejected here rather than silently overwriting a
+            # result column.
+            try:
+                config.replace_metrics(latency_metrics, total_time_metrics)
+            except ValueError as exc:
+                QMessageBox.warning(
+                    self._view, "Invalid metrics configuration", str(exc)
+                )
+                return
 
             # Apply to the model
             self._model.set_metrics_config(config)
@@ -315,6 +323,20 @@ class AnalysisController(QObject):
         else:
             self.logger.info("Standard analysis complete")
             self._view.set_status_message(f"Analysis complete. Results processed for {len(results)} file(s).")
+
+        # Surface approximate metrics (summary-only input; §16-4 / BUG-023) so
+        # the user does not mistake them for overlap-aware values.
+        try:
+            approx_names = self._model.get_approximate_metric_names()
+            if approx_names:
+                note = (
+                    "Note: " + ", ".join(sorted(approx_names))
+                    + " is approximate (overlap not considered) for summary-only files."
+                )
+                self._view.set_status_message(note)
+                self.logger.warning(note)
+        except Exception:
+            self.logger.exception("Failed to surface approximate-metric note")
 
         # Auto-export the summary table only if this was triggered by file loading
         if self._should_auto_export:

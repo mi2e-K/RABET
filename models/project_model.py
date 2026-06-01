@@ -99,17 +99,34 @@ class ProjectModel(QObject):
                 "video_annotation_files": {},
             }
             
-            # Save project configuration
-            self._save_project_config(project_dir)
-            
+            # Save project configuration. If the manifest cannot be written we
+            # must NOT report success or enter the "project open" state — doing
+            # so left RABET pointing at a project with no project.json on disk
+            # (BUG-007).
+            if not self._save_project_config(project_dir):
+                error_msg = (
+                    f"Failed to write project manifest at {project_dir / 'project.json'}"
+                )
+                self.logger.error(error_msg)
+                self.error_occurred.emit(error_msg)
+                # Roll back the freshly-created (and now empty/partial) project
+                # directory so a retry to the same path is not blocked.
+                try:
+                    shutil.rmtree(project_dir)
+                except OSError as exc:
+                    self.logger.warning(
+                        f"Could not clean up failed project dir {project_dir}: {exc}"
+                    )
+                return False
+
             # Update current project
             self._project_path = str(project_dir)
             self._project_name = project_name
             self._is_modified = False
-            
+
             self.project_created.emit(self._project_path)
             return True
-            
+
         except Exception as e:
             error_msg = f"Failed to create project: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
@@ -1178,7 +1195,11 @@ class ProjectModel(QObject):
             bool: True if saved successfully, False otherwise
         """
         config_file = project_dir / "project.json"
-        return self._file_manager.save_json(self._project_config, config_file)
+        # Atomic write + keep the prior manifest as project.json.bak so an
+        # interrupted save can be recovered (BUG-019).
+        return self._file_manager.save_json(
+            self._project_config, config_file, atomic=True, backup=True
+        )
     
     def resolve_path(self, relative_path):
         """

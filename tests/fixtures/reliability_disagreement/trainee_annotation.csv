@@ -1,0 +1,18 @@
+Metadata,,
+RABET Version,1.3.2,
+Format Schema,v1,
+Test Duration (seconds),60,
+,,
+Event,Onset,Offset
+RecordingStart,0.0000,0.0000
+Attack bites,5.1000,6.0500
+Sideways threats,15.0000,16.5000
+Chasing,30.2000,31.1000
+Attack bites,40.0500,40.7800
+Tail rattles,55.0000,55.3000
+
+Behavior,Duration,Frequency
+Attack bites,1.78,2
+Sideways threats,1.50,1
+Tail rattles,0.30,1
+Chasing,0.90,1

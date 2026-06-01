@@ -154,7 +154,12 @@ class ActionMapModel(QObject):
                     raise ValueError(f"Invalid behavior label for key {key}: {value}")
             
             self._action_map = data
-            
+
+            # Tolerate (but warn about) duplicate behaviour names on load for
+            # backward compatibility (§16-2): older maps may map two keys to
+            # the same behaviour. New add/edit operations reject duplicates.
+            self._warn_duplicate_behaviors()
+
             if emit_signal:
                 self.map_changed.emit()
             
@@ -235,7 +240,22 @@ class ActionMapModel(QObject):
             self.logger.error(error_msg)
             self.error_occurred.emit(error_msg)
             return False
-        
+
+        # Reject a behaviour name already mapped to a DIFFERENT key (§16-2 /
+        # BUG-011). Each behaviour must have a single key so CSV import can
+        # resolve the key unambiguously. Re-assigning the same key (an edit) or
+        # re-confirming the same pair is allowed.
+        behavior_cf = behavior.strip().casefold()
+        for existing_key, existing_behavior in self._action_map.items():
+            if existing_key != key and str(existing_behavior).strip().casefold() == behavior_cf:
+                error_msg = (
+                    f"Behavior '{behavior}' is already mapped to key "
+                    f"'{existing_key}'. Each behaviour must have a unique name."
+                )
+                self.logger.warning(error_msg)
+                self.error_occurred.emit(error_msg)
+                return False
+
         self.logger.debug(f"Adding mapping: {key} -> {behavior}")
         self._action_map[key] = behavior
         self.map_changed.emit()
@@ -279,6 +299,42 @@ class ActionMapModel(QObject):
             self.logger.warning(f"Key not found in action map: {key}")
             return False
     
+    def _warn_duplicate_behaviors(self):
+        """Log a warning if any behaviour name is mapped to more than one key.
+
+        Does not modify the map — purely diagnostic for legacy files. New
+        add/edit operations prevent duplicates going forward (§16-2).
+        """
+        seen = {}
+        duplicates = {}
+        for key, behavior in self._action_map.items():
+            cf = str(behavior).strip().casefold()
+            if cf in seen:
+                duplicates.setdefault(behavior, [seen[cf]]).append(key)
+            else:
+                seen[cf] = key
+        if duplicates:
+            for behavior, keys in duplicates.items():
+                self.logger.warning(
+                    "Behavior '%s' is mapped to multiple keys %s; CSV import "
+                    "will resolve to the first key in sorted order. Consider "
+                    "removing the duplicates.",
+                    behavior, sorted(keys),
+                )
+
+    def has_behavior(self, behavior, ignore_key=None):
+        """Return True if ``behavior`` (case-insensitive) is already mapped.
+
+        ``ignore_key`` lets an edit of an existing key skip its own row.
+        """
+        target = str(behavior).strip().casefold()
+        for key, mapped in self._action_map.items():
+            if key == ignore_key:
+                continue
+            if str(mapped).strip().casefold() == target:
+                return True
+        return False
+
     def get_behavior(self, key):
         """
         Get behavior label for a key.

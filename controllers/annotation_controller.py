@@ -52,6 +52,11 @@ class AnnotationController(QObject):
         # video, so it does not look like a rewind past the previous
         # recording start.
         self._skip_next_seek_rewind = False
+        # 1.3.4 seek-intent model: VideoController tags the intent behind an
+        # imminent seek ("user" slider drag / "step" frame step / "loader"
+        # reset) via notify_seek_intent. Only "user" may delete annotations on
+        # a backward jump; consumed one-shot in on_position_changed.
+        self._pending_seek_origin = None
         
         # Key press tracking with high-precision system time
         self._key_press_times = {}  # Key -> (timestamp, system_time)
@@ -147,6 +152,14 @@ class AnnotationController(QObject):
     def _has_unsaved_annotations(self):
         """Return whether there are in-memory events that still need saving."""
         return self._annotations_dirty and bool(self._annotation_model.get_all_events())
+
+    def has_unsaved_annotations(self):
+        """Public accessor for the application-close guard (BUG-003)."""
+        return self._has_unsaved_annotations()
+
+    def is_recording(self):
+        """Return whether a recording session is currently open."""
+        return self._is_recording
 
     def _clear_annotations_without_dirtying(self):
         """Clear events as part of a video switch/import workflow."""
@@ -375,16 +388,29 @@ class AnnotationController(QObject):
         self._timeline_view.set_position(position)
         self._timeline_view.should_update()
 
-        # Check for rewind during any recording state (paused or active)
-        if self._is_recording:
-            # If position changed backward (rewind operation)
-            # Use a smaller threshold (100ms) to catch more rewind operations
-            if self._last_position - position > 100:
-                self.logger.debug(f"Rewind detected: {self._last_position}ms -> {position}ms")
+        # Seek-intent model (1.3.4): rewind-driven annotation deletion only
+        # ever happens for an *explicit user seek* (dragging the position
+        # slider). Frame steps, loader resets and ordinary playback ticks all
+        # change the position too, but must NEVER delete annotations — that was
+        # the cause of "stepping backward during recording silently wipes my
+        # work" (data-loss). VideoController tags the intent via
+        # ``notify_seek_intent`` immediately before issuing the seek; we consume
+        # it one-shot here.
+        origin = getattr(self, "_pending_seek_origin", None)
+        self._pending_seek_origin = None
+        if getattr(self, "_skip_next_seek_rewind", False):
+            # Loader-emitted reset (e.g. position=0 right after a video load).
+            self._skip_next_seek_rewind = False
+            origin = "loader"
 
-                # Only remove annotations if preservation is not enabled
-                if not self._preserve_annotations_on_rewind:
-                    self.remove_future_annotations(position)
+        if (
+            self._is_recording
+            and origin == "user"
+            and self._last_position - position > 100
+        ):
+            self.logger.debug(f"User rewind detected: {self._last_position}ms -> {position}ms")
+            if not self._preserve_annotations_on_rewind:
+                self.remove_future_annotations(position)
 
         # Update last position
         self._last_position = position
@@ -727,12 +753,15 @@ class AnnotationController(QObject):
         active-events dict is out of sync (e.g. a key seems "stuck"
         despite repeated presses). Confirmation is intentional — we do
         not want Esc to silently destroy work if it is mashed by accident.
+
+        Gated on active events *existing* rather than on ``_is_recording`` so
+        the user can still rescue an event that was somehow stranded after the
+        session stopped (BUG-008).
         """
-        if not self._is_recording:
-            return
         active = self._annotation_model.get_active_events()
         if not active:
-            self._main_window.set_status_message("No active annotations to cancel.")
+            if self._is_recording:
+                self._main_window.set_status_message("No active annotations to cancel.")
             return
 
         names = ", ".join(
@@ -760,6 +789,56 @@ class AnnotationController(QObject):
         )
         self._main_window.set_status_message(
             f"Cancelled {len(active)} active annotation(s)."
+        )
+
+    @Slot()
+    def on_application_inactive(self):
+        """React to the whole application losing focus (§16-3 / BUG-022).
+
+        Real-time recording: if an event is in progress, finalise it at the
+        current playhead and pause the session. Otherwise the video keeps
+        playing behind the other window and a held key's event would be
+        silently extended for as long as the user is away — fabricating
+        duration. Frame-by-frame: no-op, because FBF events are bounded by the
+        second key press (not elapsed time) and FBF work normally happens while
+        paused.
+
+        IMPORTANT: this must be wired to ``QApplication.applicationStateChanged``
+        / ``Qt.ApplicationInactive`` (whole-app deactivation) only — NOT to
+        per-widget focus-out or window-deactivate events, which would misfire
+        on ordinary in-window interactions (e.g. clicking a spin box).
+        """
+        if not self._is_recording:
+            return
+        if self._is_frame_by_frame_mode():
+            return
+        active = self._annotation_model.get_active_events()
+        if not active:
+            return
+
+        ended = self._finalize_active_events()
+
+        # Pause the recording session and the video so the user resumes
+        # deliberately on return.
+        try:
+            self.pause_recording()
+        except Exception:
+            self.logger.exception("on_application_inactive: pause_recording failed")
+        try:
+            if self._video_model is not None and self._video_model.is_playing():
+                self._video_model.pause()
+        except Exception:
+            self.logger.exception("on_application_inactive: video pause failed")
+
+        self._timeline_view.set_events(
+            self._annotation_model.get_all_events_with_active()
+        )
+        self._main_window.set_status_message(
+            f"Focus lost: ended {ended} active annotation(s) and paused recording."
+        )
+        self.logger.warning(
+            "Application lost focus; finalised %d active event(s) and paused.",
+            ended,
         )
 
     def _handle_fbf_key_press(self, key):
@@ -891,11 +970,13 @@ class AnnotationController(QObject):
         position = self._video_model.get_position()
         system_time = time.monotonic()
 
-        # Store both position and system time
-        self._key_press_times[key] = (position, system_time)
-
-        # Start event in annotation model
+        # Start event in annotation model. Only record the press time when the
+        # event actually started: for an unmapped key (or a duplicate of an
+        # already-active key) ``start_event`` returns False, and tracking the
+        # press would otherwise leave a stale entry in ``_key_press_times`` that
+        # never gets a matching release (BUG-010).
         if self._annotation_model.start_event(key, position):
+            self._key_press_times[key] = (position, system_time)
             self.logger.debug(f"Started event for key {key} at {position}ms (system time: {system_time:.6f})")
             # Update timeline to show active event
             self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
@@ -1073,11 +1154,90 @@ class AnnotationController(QObject):
             # Mark video as not annotated
             self._project_model.set_video_annotation_status(self._current_video_id, "not_annotated")
     
+    def _finalize_active_events(self, end_position=None):
+        """End EVERY in-progress event, real-time and frame-by-frame.
+
+        The source of truth is the annotation model's active-events dict, not
+        ``_key_press_times`` — frame-by-frame events are started via the
+        press/press flow and never populate ``_key_press_times``, so the old
+        per-call ``_key_press_times`` loops left them stranded on stop /
+        auto-complete (BUG-002). Each event is closed at ``end_position``
+        (default: current video position), enforcing the minimum one-frame
+        duration.
+
+        Returns:
+            int: number of events finalised.
+        """
+        active = self._annotation_model.get_active_events()
+        if not active:
+            self._key_press_times = {}
+            return 0
+
+        if end_position is None:
+            end_position = self._video_model.get_position()
+
+        ended = 0
+        for key, event in list(active.items()):
+            position = end_position
+            if position <= event.onset:
+                position = event.onset + self._frame_duration_ms
+            if self._annotation_model.end_event(key, position):
+                ended += 1
+
+        # Press-time tracking is only meaningful while the events are open.
+        self._key_press_times = {}
+        return ended
+
+    def _confirm_replace_annotations_for_new_session(self):
+        """Confirm clearing existing annotations before a new session (§16-1).
+
+        Returns True if it is OK to proceed (annotations cleared, or there were
+        none), False if the user cancelled. Unsaved annotations get an
+        export-first option; already-saved annotations get a plain confirm.
+        """
+        if not self._annotation_model.get_all_events():
+            return True
+
+        if self._has_unsaved_annotations():
+            result = QMessageBox.question(
+                self._main_window,
+                "Start a New Recording Session?",
+                "There are unsaved annotations from the current session. "
+                "Starting a new recording will clear them.\n\n"
+                "Export them first?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if result == QMessageBox.StandardButton.Cancel:
+                return False
+            if result == QMessageBox.StandardButton.Yes:
+                # Export, then verify it actually saved (user may cancel the
+                # save dialog) before we clear.
+                self.export_annotations_dialog()
+                if self._has_unsaved_annotations():
+                    return False
+        else:
+            result = QMessageBox.question(
+                self._main_window,
+                "Start a New Recording Session?",
+                "Starting a new recording will clear the current annotations "
+                "(one recording session per file). Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if result != QMessageBox.StandardButton.Yes:
+                return False
+
+        self._clear_annotations_without_dirtying()
+        return True
+
     @Slot(int)
     def start_timed_recording(self, duration_seconds):
         """
         Start a timed annotation recording session.
-        
+
         Args:
             duration_seconds (int): Duration of the recording in seconds
         """
@@ -1086,7 +1246,16 @@ class AnnotationController(QObject):
             self._main_window.show_error("No video loaded. Please load a video before starting recording.")
             self._main_window.recording_control_view.set_idle_state()
             return
-        
+
+        # One CSV = one session (§16-1 / BUG-014): starting a new recording
+        # while annotations already exist would append a SECOND RecordingStart
+        # marker and make the session boundaries ambiguous. Require an explicit
+        # export/discard first, and let the user cancel.
+        if not self._confirm_replace_annotations_for_new_session():
+            self._main_window.recording_control_view.set_idle_state()
+            self._main_window.set_status_message("Recording cancelled.")
+            return
+
         # Store recording parameters
         self._recording_duration = duration_seconds
         self._is_recording = True
@@ -1134,20 +1303,11 @@ class AnnotationController(QObject):
             self._is_recording = False
             self._is_recording_paused = False
             self._recording_timer.stop()
-            
-            # End any active events
-            for key, (position, _) in list(self._key_press_times.items()):
-                # Calculate a reasonable offset with minimum duration
-                current_position = self._video_model.get_position()
-                if current_position <= position:
-                    current_position = position + self._frame_duration_ms
-                
-                # End the event
-                self._annotation_model.end_event(key, current_position)
-            
-            # Clear key press times
-            self._key_press_times = {}
-            
+
+            # Finalise ALL active events (real-time and frame-by-frame) at the
+            # current playhead, so nothing is left stranded after stop (BUG-002).
+            self._finalize_active_events()
+
             # Update UI
             self._main_window.set_status_message("Recording stopped manually")
             self._main_window.recording_control_view.set_idle_state()
@@ -1217,47 +1377,53 @@ class AnnotationController(QObject):
         
         self.logger.info("Recording resumed")
     
-    def handle_seek(self, position):
-        """
-        Handle seek operation.
+    def notify_seek_intent(self, origin):
+        """Record the *intent* behind an imminent seek (seek-intent model).
+
+        Called by ``VideoController`` immediately before it issues a seek/step
+        on the video model, so that the ``position_changed`` signal that fires
+        synchronously during the seek can decide whether a backward jump should
+        delete annotations. Only ``"user"`` (an explicit slider drag) may;
+        ``"step"`` (frame stepping) and ``"loader"`` never do.
 
         Args:
-            position (int): New position in milliseconds
+            origin (str): one of ``"user"``, ``"step"``, ``"loader"``.
         """
-        # 1.3.3+: swallow the loader-emitted seek that fires immediately
-        # after _on_video_loaded so we do not interpret it as a user
-        # rewind past the (now-irrelevant) previous recording start.
+        self._pending_seek_origin = origin
+
+    def handle_seek(self, position, origin=None):
+        """
+        Handle a seek operation's bookkeeping.
+
+        Rewind-driven annotation deletion now lives entirely in
+        ``on_position_changed`` (the seek-intent model): that slot fires
+        synchronously *during* the seek, while ``_last_position`` still holds
+        the pre-seek value, so it is the correct place to detect a user rewind.
+        ``handle_seek`` runs *after* the seek and is therefore reduced to state
+        bookkeeping. An explicit ``origin`` may still be supplied for callers
+        that route intent only through here.
+
+        Args:
+            position (int): New position in milliseconds.
+            origin (str, optional): seek intent if not already set via
+                ``notify_seek_intent``.
+        """
+        if origin is not None:
+            self._pending_seek_origin = origin
+
+        # Loader-emitted seek right after a video load: swallow without any
+        # rewind handling (kept for callers that reach handle_seek directly,
+        # e.g. tests; the normal path consumes this flag in on_position_changed).
         if getattr(self, "_skip_next_seek_rewind", False):
             self._skip_next_seek_rewind = False
+            self._pending_seek_origin = None
             self._last_position = position
             return
 
-        # Check for rewind in any recording state (paused or active)
-        if self._is_recording:
-            if self._last_position > position:
-                # This is a rewind operation
-                self.logger.debug(f"Seek rewind detected: {self._last_position}ms -> {position}ms")
-                
-                # Find the recording start position to check if we've rewound before it
-                recording_start_position = None
-                events = self._annotation_model.get_all_events()
-                for event in events:
-                    if event.behavior == "RecordingStart":
-                        recording_start_position = event.onset
-                        break
-                
-                # If we've rewound before the recording start, handle specially
-                if recording_start_position is not None and position < recording_start_position:
-                    self.logger.debug(f"Rewound before recording start point: {recording_start_position}ms -> {position}ms")
-                    # The confirmation and reset will be handled in remove_future_annotations
-                
-                # Only remove annotations if preservation is not enabled
-                if not self._preserve_annotations_on_rewind:
-                    self.remove_future_annotations(position)
-        
-        # Update last position
+        # Update last position; deletion (if any) already happened in
+        # on_position_changed during the seek.
         self._last_position = position
-        
+
         # If recording is active, update the time display
         if self._is_recording:
             self._update_recording_time_display()
@@ -1314,20 +1480,11 @@ class AnnotationController(QObject):
         self._is_recording = False
         self._is_recording_paused = False
         self._recording_timer.stop()
-        
-        # End any active events
-        for key, (position, _) in list(self._key_press_times.items()):
-            # Calculate a reasonable offset with minimum duration
-            current_position = self._video_model.get_position()
-            if current_position <= position:
-                current_position = position + self._frame_duration_ms
-            
-            # End the event
-            self._annotation_model.end_event(key, current_position)
-        
-        # Clear key press times
-        self._key_press_times = {}
-        
+
+        # Finalise ALL active events (real-time and frame-by-frame) at the
+        # session-end playhead, so nothing is left stranded (BUG-002).
+        self._finalize_active_events()
+
         # Update UI
         self._main_window.set_status_message("Recording completed")
         self._main_window.recording_control_view.set_complete_state()

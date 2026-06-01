@@ -1,0 +1,108 @@
+Metadata
+RABET Version,1.3.2
+Format Schema,v1
+Test Duration (seconds),300
+
+Event,Onset,Offset
+RecordingStart,0.0000,0.0000
+Chasing,3.5363,5.0626
+Social contact,5.1274,6.7437
+Rearing,7.8234,9.5472
+Tail rattles,10.1387,10.3575
+Self-grooming,12.6591,15.7504
+Self-grooming,13.8522,18.2875
+Sideways threats,17.5668,18.2543
+Locomotion,24.5376,24.8849
+Rearing,25.2320,27.9973
+Locomotion,25.6311,26.0324
+Social contact,32.0086,32.9487
+Attack bites,45.6777,45.8281
+Locomotion,46.1275,46.8261
+Sideways threats,50.3187,50.8479
+Rearing,50.5188,52.1985
+Social contact,51.2608,52.0751
+Locomotion,56.0489,57.0076
+Social contact,57.4069,58.3038
+Self-grooming,62.8966,66.7096
+Social contact,67.5539,68.1195
+Tail rattles,69.3722,69.5724
+Locomotion,71.9252,72.8083
+Rearing,73.4592,75.7423
+Attack bites,78.1540,78.4093
+Locomotion,81.7521,82.4793
+Rearing,89.7070,92.0050
+Locomotion,92.2028,93.0218
+Locomotion,94.0624,95.0039
+Locomotion,94.7185,95.5425
+Rearing,96.6478,99.2440
+Attack bites,98.8606,98.9228
+Locomotion,99.2204,100.4303
+Rearing,105.4311,108.3317
+Locomotion,107.6513,108.4315
+Social contact,111.5797,112.0582
+Tail rattles,111.8669,112.0203
+Social contact,113.4379,114.1052
+Rearing,114.7624,116.5564
+Locomotion,118.6539,119.4647
+Social contact,118.7117,119.2947
+Locomotion,119.1303,120.0885
+Rearing,125.4464,127.7772
+Locomotion,129.1657,129.7772
+Locomotion,130.7331,131.5171
+Locomotion,134.2491,134.7599
+Self-grooming,141.4613,142.3205
+Rearing,144.2525,146.7919
+Tail rattles,144.8404,144.9305
+Sideways threats,146.0554,147.2740
+Tail rattles,146.2344,146.4476
+Rearing,146.9016,149.6894
+Social contact,149.5076,149.8268
+Attack bites,149.6407,149.9704
+Locomotion,149.7871,150.6855
+Social contact,157.4630,158.3573
+Chasing,157.9782,159.2650
+Social contact,165.3130,166.1518
+Self-grooming,168.3423,171.4490
+Locomotion,168.5458,170.0207
+Rearing,170.3870,171.1457
+Locomotion,185.0280,185.9690
+Tail rattles,185.1961,185.3115
+Rearing,186.1975,187.7588
+Social contact,195.5324,195.7995
+Attack bites,196.1860,196.3553
+Tail rattles,200.2976,200.3487
+Tail rattles,211.9741,212.1833
+Locomotion,213.1720,213.7114
+Locomotion,216.5973,218.0878
+Locomotion,221.2309,221.6179
+Locomotion,226.0027,227.3743
+Tail rattles,229.1106,229.1786
+Sideways threats,237.7772,238.8098
+Social contact,243.2153,243.7657
+Attack bites,246.2311,246.3603
+Locomotion,249.6440,249.9538
+Locomotion,250.8476,251.3708
+Self-grooming,255.2432,258.6553
+Social contact,256.6934,257.5014
+Rearing,268.4484,272.2800
+Locomotion,268.9841,270.0921
+Social contact,272.1132,272.4305
+Sideways threats,274.2446,274.6297
+Attack bites,280.1470,280.2557
+Locomotion,281.4958,282.3124
+Locomotion,285.5981,286.8307
+Locomotion,287.5754,287.9474
+Attack bites,289.6625,289.7894
+Social contact,296.1787,297.1942
+Locomotion,296.8824,297.4016
+
+Behavior,Duration,Frequency
+Attack bites,1.33,8
+Sideways threats,3.85,5
+Tail rattles,1.32,9
+Chasing,2.81,2
+Social contact,11.57,16
+Self-grooming,18.72,6
+Locomotion,24.25,30
+Rearing,31.85,14
+hard bites,0.00,0

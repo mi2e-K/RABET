@@ -5,6 +5,7 @@ import time
 from PySide6.QtCore import QObject, Signal
 
 from version import __version__ as RABET_VERSION
+from utils.csv_safety import SafeCsvWriter
 
 # Schema version stamped into exported CSV files. Bump this when the file
 # layout changes in a way that breaks older readers.
@@ -560,8 +561,10 @@ class AnnotationModel(QObject):
                     all_behaviors.append(behavior)
                     seen_behaviors.add(behavior)
             
-            with open(csv_path, 'w', newline='') as f:
-                writer = csv.writer(f)
+            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+                # Wrap the writer so user-controlled text cells (behaviour
+                # names) cannot smuggle a spreadsheet formula into shared CSVs.
+                writer = SafeCsvWriter(csv.writer(f))
 
                 # Part 1: Metadata section with provenance and schema info so
                 # third-party tools can detect the producing application's
@@ -635,15 +638,20 @@ class AnnotationModel(QObject):
         """
         try:
             self.logger.info(f"Importing annotations from: {csv_path}")
-            
-            # Clear existing events
-            self.clear_events()
-            
+
+            # Transactional import (BUG-004): parse into a local list first and
+            # only replace the existing annotations once we know the file
+            # yielded at least one valid event. Previously ``clear_events()``
+            # ran up front, so importing a corrupt or empty CSV destroyed the
+            # in-memory annotations (including the RecordingStart marker) even
+            # though the import then returned False.
+            parsed_events = []
+
             imported_count = 0
             skipped_count = 0
             in_metadata = True  # Assume file might start with metadata
             
-            with open(csv_path, 'r', newline='') as f:
+            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.reader(f)
                 
                 # Track if we've found the header row
@@ -738,15 +746,24 @@ class AnnotationModel(QObject):
                             skipped_count += 1
                             continue
                         
-                        # Ensure minimum duration if offset exists
-                        if offset is not None and offset <= onset:
+                        # Ensure minimum duration if offset exists. The
+                        # synthetic ``RecordingStart`` marker is intentionally
+                        # zero-duration (onset == offset); clamping it to one
+                        # frame on import turned a 1000ms/1000ms marker into
+                        # 1000ms/1033ms on every round-trip (BUG-009), so it is
+                        # exempt from the minimum-duration rule.
+                        if (
+                            behavior != "RecordingStart"
+                            and offset is not None
+                            and offset <= onset
+                        ):
                             offset = onset + self.get_frame_duration()
                             self.logger.debug(f"Row {row_num + 1}: Adjusted offset to ensure minimum duration")
                         
-                        # Create and add event
+                        # Create event and stage it (commit happens only after
+                        # the whole file parses to >=1 event).
                         event = BehaviorEvent(key, behavior, onset, offset)
-                        self._events.append(event)
-                        self.annotation_added.emit(event)
+                        parsed_events.append(event)
                         imported_count += 1
                         
                         self.logger.debug(f"Imported: {behavior} (key={key}) at {onset}ms" + 
@@ -759,13 +776,22 @@ class AnnotationModel(QObject):
                         continue
             
             # Log import summary
-            self.logger.info(f"Import complete: {imported_count} events imported, {skipped_count} rows skipped")
-            
+            self.logger.info(f"Import complete: {imported_count} events parsed, {skipped_count} rows skipped")
+
             if imported_count == 0:
-                self.logger.warning("No events were imported. Check CSV format.")
+                # Nothing valid parsed: leave existing annotations untouched.
+                self.logger.warning("No events were imported. Existing annotations preserved.")
                 self.error_occurred.emit("No valid events found in CSV file. Please check the file format.")
                 return False
-                
+
+            # Commit: replace existing events with the parsed set. clear_events()
+            # emits annotations_cleared (timeline → empty), then each staged
+            # event is added back, mirroring the previous observable signal flow.
+            self.clear_events()
+            for event in parsed_events:
+                self._events.append(event)
+                self.annotation_added.emit(event)
+
             return True
             
         except Exception as e:
@@ -820,8 +846,12 @@ class AnnotationModel(QObject):
         """
         mappings = self._action_map_model.get_all_mappings()
 
-        for key, mapped_behavior in mappings.items():
-            if mapped_behavior.lower() == behavior.lower():
+        # Iterate keys in a stable (sorted) order so the same CSV always
+        # resolves to the same key. With unique behaviour names enforced on
+        # add/edit (§16-2) there is at most one match; for legacy maps that
+        # still contain duplicates this makes the choice deterministic.
+        for key in sorted(mappings):
+            if str(mappings[key]).lower() == behavior.lower():
                 return key
 
         self.logger.debug(

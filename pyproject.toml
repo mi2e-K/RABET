@@ -111,11 +111,13 @@ extend-exclude = [
     "projects",
     "configs",
     "__pycache__",
-    # Developer-only tooling: build scripts and helpers under ``packaging/``
-    # and ``scripts/`` intentionally use looser patterns (e.g. ``os.walk``
-    # with placeholder loop vars, single-shot CLI parsers).
+    # Developer-only tooling: build scripts and helpers under ``packaging/``,
+    # ``scripts/`` and ``tools/`` intentionally use looser patterns (e.g.
+    # ``os.walk`` with placeholder loop vars, single-shot CLI parsers, ad-hoc
+    # dependency probes). These are tracked (1.3.4+) but not strictly linted.
     "packaging",
     "scripts",
+    "tools",
 ]
 
 [tool.ruff.lint]

@@ -1,4 +1,5 @@
 # utils/config_manager.py
+import copy
 import logging
 from utils.config_path_manager import ConfigPathManager
 
@@ -94,7 +95,12 @@ class ConfigManager:
         self.logger.info("Initializing ConfigManager")
         
         self._file_manager = file_manager
-        self._config = self.DEFAULT_CONFIG.copy()
+        # Deep copy so nested dicts (e.g. annotation.annotation_colors) are
+        # not shared with the class-level DEFAULT_CONFIG. A shallow .copy()
+        # let an instance edit (e.g. setting a zoom level) mutate the class
+        # default, leaking state across ConfigManager instances and across
+        # reset_to_defaults() calls (BUG-018).
+        self._config = copy.deepcopy(self.DEFAULT_CONFIG)
         
         # Initialize config path manager
         self._config_path_manager = ConfigPathManager()
@@ -125,12 +131,17 @@ class ConfigManager:
             loaded_config = self._file_manager.load_json(self._config_file)
             
             if loaded_config:
+                # Validate structure before merging so a corrupt settings.json
+                # degrades to defaults explicitly instead of silently breaking
+                # config.get() downstream (BUG-005 robustness).
+                loaded_config = self._validate_loaded_config(loaded_config)
+
                 # Deep merge with defaults to ensure all keys exist
                 self._deep_merge(self._config, loaded_config)
-                
+
                 # Migrate old action_map keys if they exist
                 self._migrate_old_keys(self._config)
-                
+
                 self.logger.info("Config loaded successfully")
                 return True
             else:
@@ -140,6 +151,35 @@ class ConfigManager:
             self.logger.error(f"Error loading config: {str(e)}")
             return False
     
+    def _validate_loaded_config(self, loaded):
+        """Return a structurally-sane subset of ``loaded`` to merge over defaults.
+
+        Rejects (with a warning) any top-level section whose type does not match
+        the corresponding ``DEFAULT_CONFIG`` section — e.g. a corrupt
+        ``"ui": "garbage"`` where an object is expected — so the section falls
+        back to defaults instead of breaking ``_deep_merge`` / ``config.get``.
+        Unknown sections (not in defaults) are passed through unchanged.
+        """
+        if not isinstance(loaded, dict):
+            self.logger.warning(
+                "settings.json is not a JSON object (got %s); using defaults.",
+                type(loaded).__name__,
+            )
+            return {}
+
+        sane = {}
+        for section, value in loaded.items():
+            default = self.DEFAULT_CONFIG.get(section)
+            if isinstance(default, dict) and not isinstance(value, dict):
+                self.logger.warning(
+                    "settings.json section '%s' should be an object but is %s; "
+                    "ignoring it and using defaults for that section.",
+                    section, type(value).__name__,
+                )
+                continue
+            sane[section] = value
+        return sane
+
     def _migrate_old_keys(self, config):
         """
         Migrate old action_map keys to new config keys.
@@ -385,7 +425,7 @@ class ConfigManager:
         Returns:
             bool: True if reset was successful, False otherwise
         """
-        self._config = self.DEFAULT_CONFIG.copy()
+        self._config = copy.deepcopy(self.DEFAULT_CONFIG)
         return self.save_config()
     
     def _deep_merge(self, target, source):

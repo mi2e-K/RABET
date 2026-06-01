@@ -205,31 +205,91 @@ class FileManager:
             self.logger.error(f"Failed to load JSON from {file_path}: {str(e)}")
             return None
     
-    def save_json(self, data, file_path):
+    def save_json(self, data, file_path, atomic=True, backup=False):
         """
         Save data to a JSON file.
-        
+
+        By default the write is *atomic* (BUG-019): the JSON is serialised in
+        full, written to a temporary file in the same directory, flushed (and
+        ``fsync``'d where supported), then ``os.replace``'d over the target.
+        An interrupted or failing write therefore leaves the previous file
+        intact instead of truncating it to half-written / empty JSON. Set
+        ``backup=True`` to keep the prior version as ``<name>.bak``.
+
         Args:
             data (dict): Data to save
             file_path (str or pathlib.Path): Path to the JSON file
-            
+            atomic (bool): write-to-temp + os.replace (default True)
+            backup (bool): keep the previous file as ``.bak`` (default False)
+
         Returns:
             bool: True if saving was successful, False otherwise
         """
         file_path = Path(file_path)
-        
+
         # Ensure parent directory exists
         if not self.ensure_directory_exists(file_path.parent, create=True):
             return False
-        
+
         try:
-            with open(file_path, 'w') as f:
-                json.dump(data, f, indent=2)
-            self.logger.debug(f"Saved JSON to {file_path}")
+            # Serialise FIRST so a serialisation error cannot leave a partially
+            # written target behind.
+            payload = json.dumps(data, indent=2)
+        except Exception as e:
+            self.logger.error(f"Failed to serialise JSON for {file_path}: {str(e)}")
+            return False
+
+        if not atomic:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(payload)
+                self.logger.debug(f"Saved JSON to {file_path}")
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to save JSON to {file_path}: {str(e)}")
+                return False
+
+        import os
+        import tempfile
+
+        tmp_path = None
+        try:
+            # Temp file in the SAME directory so os.replace is atomic (same
+            # filesystem). delete=False because we close then replace.
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f".{file_path.name}.", suffix=".tmp", dir=str(file_path.parent)
+            )
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(payload)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except OSError:
+                    # Not all filesystems support fsync; the os.replace below
+                    # still gives crash-consistency on common platforms.
+                    pass
+
+            if backup and file_path.exists():
+                try:
+                    backup_path = file_path.with_name(file_path.name + ".bak")
+                    os.replace(str(file_path), str(backup_path))
+                except OSError as exc:
+                    self.logger.warning(f"Could not write backup for {file_path}: {exc}")
+
+            os.replace(tmp_path, str(file_path))
+            tmp_path = None  # consumed by replace
+            self.logger.debug(f"Atomically saved JSON to {file_path}")
             return True
         except Exception as e:
             self.logger.error(f"Failed to save JSON to {file_path}: {str(e)}")
             return False
+        finally:
+            # Clean up the temp file if replace never happened.
+            if tmp_path is not None:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
     
     def load_csv(self, file_path):
         """

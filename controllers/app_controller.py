@@ -1,7 +1,7 @@
 # controllers/app_controller.py - Updated with icon management, theme integration, and visualization support
 import logging
 from version import __version__
-from PySide6.QtCore import QObject, Slot, QTimer
+from PySide6.QtCore import QObject, Slot, QTimer, Qt
 from PySide6.QtGui import QIcon
 
 from models.video_model import VideoModel
@@ -134,7 +134,23 @@ class AppController(QObject):
         
         # Provide the annotation controller reference to the main window
         self.main_window.annotation_controller = self.annotation_controller
-        
+
+        # Route every close path (X button, Alt+F4, File > Exit) through one
+        # unsaved-data guard (BUG-003).
+        self.main_window.set_close_guard(self.confirm_application_close)
+
+        # React to the whole application losing focus during a recording
+        # session (§16-3 / BUG-022). Bound to applicationStateChanged so it
+        # fires only on app-level (in)activation, never on in-window focus
+        # changes.
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                app.applicationStateChanged.connect(self._on_application_state_changed)
+        except Exception:
+            self.logger.exception("Failed to connect applicationStateChanged")
+
         # Connect main window signals
         self.connect_main_window_signals()
         
@@ -286,29 +302,93 @@ class AppController(QObject):
             self.video_model.pause()
         else:
             self.video_model.play()
+
+    @Slot(Qt.ApplicationState)
+    def _on_application_state_changed(self, state):
+        """Forward app-level deactivation to the annotation controller.
+
+        Only ``ApplicationInactive`` (the whole app lost focus) triggers the
+        active-event safeguard; other states are ignored.
+        """
+        if state == Qt.ApplicationState.ApplicationInactive:
+            try:
+                self.annotation_controller.on_application_inactive()
+            except Exception:
+                self.logger.exception("on_application_inactive handler failed")
     
     def handle_exit_action(self):
-        """Handle exit action, checking for unsaved project changes."""
-        # Check if project has unsaved changes
-        if self.project_model.is_project_open() and self.project_model.is_modified():
-            from PySide6.QtWidgets import QMessageBox
-            result = QMessageBox.question(
-                self.main_window,
-                "Save Project Changes",
-                "The current project has unsaved changes. Save before exiting?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
-            )
-            
-            if result == QMessageBox.StandardButton.Cancel:
-                return
-            
-            if result == QMessageBox.StandardButton.Yes:
-                if not self.project_model.save_project():
-                    # Save failed, don't exit
-                    return
-        
-        # Close the main window
+        """Handle File > Exit.
+
+        Routes through ``main_window.close()`` so the single
+        ``confirm_application_close`` guard (installed via ``set_close_guard``)
+        runs for both the menu action and the OS window-close (BUG-003).
+        """
         self.main_window.close()
+
+    def confirm_application_close(self):
+        """Unsaved-data guard run before the application window closes.
+
+        Order (BUG-003): stop any recording and finalise active events, then
+        prompt about unsaved in-memory annotations, then about an unsaved
+        project. Returns True to proceed with the close, False to veto it.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        ac = self.annotation_controller
+
+        # 1. Stop an in-progress recording. stop_timed_recording finalises all
+        #    active events (real-time and FBF) and auto-saves if enabled.
+        try:
+            if ac is not None and ac.is_recording():
+                ac.stop_timed_recording()
+        except Exception:
+            self.logger.exception("confirm_application_close: stop recording failed")
+
+        # 2. Unsaved in-memory annotations.
+        try:
+            if ac is not None and ac.has_unsaved_annotations():
+                result = QMessageBox.question(
+                    self.main_window,
+                    "Unsaved Annotations",
+                    "You have unsaved annotations. Export them before exiting?",
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No
+                    | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Cancel,
+                )
+                if result == QMessageBox.StandardButton.Cancel:
+                    return False
+                if result == QMessageBox.StandardButton.Yes:
+                    # Run the export dialog; it marks annotations saved on
+                    # success. If they are still dirty afterwards the user
+                    # cancelled the save dialog, so veto the close.
+                    ac.export_annotations_dialog()
+                    if ac.has_unsaved_annotations():
+                        return False
+        except Exception:
+            self.logger.exception("confirm_application_close: annotation check failed")
+
+        # 3. Unsaved project.
+        try:
+            if self.project_model.is_project_open() and self.project_model.is_modified():
+                result = QMessageBox.question(
+                    self.main_window,
+                    "Save Project Changes",
+                    "The current project has unsaved changes. Save before exiting?",
+                    QMessageBox.StandardButton.Yes
+                    | QMessageBox.StandardButton.No
+                    | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Cancel,
+                )
+                if result == QMessageBox.StandardButton.Cancel:
+                    return False
+                if result == QMessageBox.StandardButton.Yes:
+                    if not self.project_model.save_project():
+                        return False
+        except Exception:
+            self.logger.exception("confirm_application_close: project check failed")
+
+        return True
     
     def perform_log_cleanup(self):
         """Perform automatic log cleanup."""

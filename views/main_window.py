@@ -998,7 +998,35 @@ class MainWindow(QMainWindow):
         """
         # Check the focused widget to prevent space key from affecting recording control buttons
         focused_widget = QApplication.focusWidget()
-        
+
+        # Recording "waiting" state: the session has been armed (Start Recording
+        # clicked) and we are waiting for the user's go signal. The FIRST
+        # non-autorepeat key press starts the session. Contract (BUG-001): any
+        # key starts it; Space and navigation keys act purely as the start
+        # signal, while a *behaviour* key is ALSO forwarded so the first
+        # annotation is not silently dropped. This must run before the Space
+        # handler below, which would otherwise swallow Space and never start
+        # the session.
+        if (
+            self.recording_control_view.is_in_waiting_state()
+            and not event.isAutoRepeat()
+        ):
+            self.logger.debug("Starting recording from waiting state")
+            self.recording_control_view.start_recording()
+            self.schedule_layout_diagnostic_snapshots("waiting_key_started_recording")
+
+            key_text = event.text()
+            navigation_keys = (
+                Qt.Key.Key_Space, Qt.Key.Key_Left, Qt.Key.Key_Right,
+                Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Escape,
+            )
+            if key_text and key_text != " " and event.key() not in navigation_keys:
+                # start_recording() emits timed_recording_requested
+                # synchronously, so the session is already active here and
+                # on_key_pressed will accept this behaviour key.
+                self.key_pressed.emit(key_text)
+            return
+
         # Handle space key for play/pause
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             # Check if focus is on a button or other interactive widget in the recording control
@@ -1076,17 +1104,8 @@ class MainWindow(QMainWindow):
         # Convert key to string for normal key handling
         key = event.text()
 
-        # Check if in waiting state for recording
-        if self.recording_control_view.is_in_waiting_state():
-            # Start actual recording upon any key press
-            if key and not event.isAutoRepeat():
-                self.logger.debug("Starting recording from waiting state")
-                self.recording_control_view.start_recording()
-                self.schedule_layout_diagnostic_snapshots("waiting_key_started_recording")
-                
-                # Don't emit key press for this initial trigger
-                return
-        
+        # Waiting-state start is handled at the top of this method (BUG-001).
+
         # Emit signal if key is printable and not auto-repeated
         if key and not event.isAutoRepeat():
             self.logger.debug(f"Key pressed: {key}")
@@ -1553,8 +1572,30 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.logger.warning("Failed to persist settings: %s", exc, exc_info=True)
 
+    def set_close_guard(self, guard):
+        """Install a callable consulted before the window closes.
+
+        ``guard()`` must return True to allow the close to proceed, or False to
+        veto it (e.g. the user cancelled an unsaved-changes prompt). Wiring this
+        from AppController routes EVERY close path — the window's X button,
+        Alt+F4 and File > Exit (which calls ``close()``) — through the same
+        unsaved-data checks (BUG-003).
+        """
+        self._close_guard = guard
+
     def closeEvent(self, event):
-        """Persist user settings before the window actually closes."""
+        """Run the unsaved-data guard, then persist settings before closing."""
+        guard = getattr(self, "_close_guard", None)
+        if guard is not None:
+            try:
+                if not guard():
+                    event.ignore()
+                    return
+            except Exception:
+                # A guard failure must not trap the user in the app; log and
+                # fall through to a normal close.
+                self.logger.exception("Close guard raised; closing anyway")
+
         self._persist_settings()
         super().closeEvent(event)
 

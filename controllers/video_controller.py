@@ -333,15 +333,32 @@ class VideoController(QObject):
             return
             
         self.logger.debug(f"Handling seek to position: {position_ms}ms")
-        
+
+        # Seek-intent model (1.3.4): tag this as an explicit *user* seek
+        # BEFORE issuing it, so the position_changed signal that fires
+        # synchronously inside ``seek`` knows a backward jump here may delete
+        # annotations (subject to the preserve-on-rewind toggle). This is the
+        # ONLY path allowed to delete; frame steps tag "step" instead.
+        annotation_controller = self._get_annotation_controller()
+        if annotation_controller is not None and hasattr(
+            annotation_controller, "notify_seek_intent"
+        ):
+            annotation_controller.notify_seek_intent("user")
+
         # Update the model (which now handles frame refreshing internally)
         self._video_model.seek(position_ms)
-        
-        # Check if annotation controller is available (it will be set by app_controller)
+
+        # Notify annotation controller about the seek operation (bookkeeping;
+        # any deletion already happened in on_position_changed during the seek).
+        if annotation_controller is not None:
+            annotation_controller.handle_seek(position_ms)
+
+    def _get_annotation_controller(self):
+        """Return the AnnotationController via the hosting window, if wired."""
         main_window = self._view.window()
-        if main_window and hasattr(main_window, 'annotation_controller'):
-            # Notify annotation controller about the seek operation
-            main_window.annotation_controller.handle_seek(position_ms)
+        if main_window is not None and hasattr(main_window, "annotation_controller"):
+            return main_window.annotation_controller
+        return None
     
     def handle_step_forward(self, time_ms=100):
         """
@@ -363,6 +380,8 @@ class VideoController(QObject):
         if self._video_model is None or self._stepping_in_progress:
             return False
         self._stepping_in_progress = True
+        # Seek-intent model: a frame step must never delete annotations.
+        self._tag_step_intent()
         try:
             self._video_model.step_forward(time_ms)
             return True
@@ -377,6 +396,14 @@ class VideoController(QObject):
             # already finished synchronously inside step_forward.
             self._step_complete_timer.start(50)
 
+    def _tag_step_intent(self):
+        """Mark the imminent model step as a frame step (never deletes)."""
+        annotation_controller = self._get_annotation_controller()
+        if annotation_controller is not None and hasattr(
+            annotation_controller, "notify_seek_intent"
+        ):
+            annotation_controller.notify_seek_intent("step")
+
     def handle_step_backward(self, time_ms=100):
         """
         Handle step backward request — thin wrapper over the model.
@@ -388,6 +415,9 @@ class VideoController(QObject):
         if self._video_model is None or self._stepping_in_progress:
             return False
         self._stepping_in_progress = True
+        # Seek-intent model: stepping backward must never delete annotations
+        # (the data-loss bug this hotfix targets).
+        self._tag_step_intent()
         try:
             self._video_model.step_backward(time_ms)
             return True

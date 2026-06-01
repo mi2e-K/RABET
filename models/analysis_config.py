@@ -233,6 +233,39 @@ class AnalysisMetricsConfig:
         self.logger.warning(f"Latency metric '{name}' not found for removal")
         return False
     
+    @staticmethod
+    def _metric_slug(name):
+        """Normalised key used to store a metric's result.
+
+        Mirrors the slug ``analysis_model`` derives
+        (``name.lower().replace(' ', '_')``) but also strips surrounding
+        whitespace, so "Total Aggression" and "total aggression " collide.
+        """
+        return str(name).strip().lower().replace(" ", "_")
+
+    def find_slug_collisions(self, latency_metrics=None, total_time_metrics=None):
+        """Return [(first_name, colliding_name), ...] across BOTH categories.
+
+        A latency metric and a total-time metric that normalise to the same
+        slug would overwrite each other's value in the analysis results dict
+        (BUG-013), so collisions are detected across the union, not per-list.
+        """
+        latency = self._latency_metrics if latency_metrics is None else latency_metrics
+        total = self._total_time_metrics if total_time_metrics is None else total_time_metrics
+
+        seen = {}
+        collisions = []
+        for metric in list(latency or []) + list(total or []):
+            name = metric.get("name", "")
+            slug = self._metric_slug(name)
+            if not slug:
+                continue
+            if slug in seen:
+                collisions.append((seen[slug], name))
+            else:
+                seen[slug] = name
+        return collisions
+
     def replace_metrics(self, latency_metrics, total_time_metrics):
         """
         Atomically replace both metric lists.
@@ -241,12 +274,26 @@ class AnalysisMetricsConfig:
         rather than editing them entry-by-entry. The previous workflow had
         callers reach into ``_latency_metrics`` / ``_total_time_metrics``
         directly, which bypassed validation; this method centralises the
-        assignment so future invariants can be enforced in one place.
+        assignment AND enforces the cross-category slug-uniqueness invariant
+        in one place (BUG-013).
 
         Args:
             latency_metrics (list[dict]): New latency-metric entries.
             total_time_metrics (list[dict]): New total-time-metric entries.
+
+        Raises:
+            ValueError: if two metrics (in either category) normalise to the
+                same result slug.
         """
+        collisions = self.find_slug_collisions(latency_metrics, total_time_metrics)
+        if collisions:
+            detail = "; ".join(f"'{a}' / '{b}'" for a, b in collisions)
+            raise ValueError(
+                "Metric names collide after normalisation (case- and "
+                f"space-insensitive): {detail}. Please give each metric a "
+                "distinct name across latency and total-time."
+            )
+
         self._latency_metrics = [dict(m) for m in (latency_metrics or [])]
         self._total_time_metrics = [dict(m) for m in (total_time_metrics or [])]
         self.logger.info(

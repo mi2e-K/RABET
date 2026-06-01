@@ -8,6 +8,7 @@ import re
 from PySide6.QtCore import QObject, Signal
 from models.analysis_config import AnalysisMetricsConfig
 from utils.annotation_csv_parser import extract_event_dataframe
+from utils.csv_safety import SafeCsvWriter
 
 from version import __version__ as RABET_VERSION
 
@@ -39,6 +40,9 @@ class AnalysisModel(QObject):
         self._raw_data = {}  # File path -> data
         self._analysis_inputs = {}  # File path -> analysis context
         self._results = {}  # File path -> metrics
+        # File path -> set of total-time metric names that are approximate
+        # because the input was summary-only (§16-4 / BUG-023).
+        self._approximate_metrics = {}
         
         # Interval analysis settings
         self._interval_enabled = False  # Whether to use time intervals for analysis
@@ -155,6 +159,7 @@ class AnalysisModel(QObject):
 
         self._results = {}
         self._interval_results = {}
+        self._approximate_metrics = {}
         self._rebuild_behavior_catalog()
 
         analysis_order = self._file_paths or list(self._analysis_inputs.keys())
@@ -201,6 +206,7 @@ class AnalysisModel(QObject):
         self._analysis_inputs = {}
         self._results = {}
         self._interval_results = {}
+        self._approximate_metrics = {}
         successful_loads = 0
         
         # Reset behaviors to defaults and clear custom behaviors
@@ -404,21 +410,25 @@ class AnalysisModel(QObject):
                 self.logger.warning("Could not find summary section header")
                 return summary_data
             
-            # Process the summary data lines
+            # Process the summary data lines. Parse with ``csv.reader`` rather
+            # than ``str.split(',')`` so a behaviour name that itself contains
+            # a comma (exported quoted, e.g. ``"Investigate, object"``) is read
+            # as a single field instead of being torn into two columns
+            # (BUG-015).
             for i in range(summary_start + 1, len(lines)):
                 line = lines[i].strip()
                 if not line:
                     break  # End of summary section
-                
-                parts = line.split(',')
+
+                parts = next(iter(csv.reader([lines[i]])), [])
                 if len(parts) >= 3:
                     behavior = parts[0].strip()
-                    
+
                     # FIX: Skip empty behavior names to prevent "nan" columns
                     if not behavior:
                         self.logger.warning(f"Skipping empty behavior name in summary data line: {line}")
                         continue
-                    
+
                     try:
                         # Parse duration and frequency, handling potential format issues
                         duration_str = parts[1].strip()
@@ -585,14 +595,28 @@ class AnalysisModel(QObject):
                 for metric in total_time_metrics:
                     metric_name = metric["name"]
                     behaviors = metric["behaviors"]
-                    
+
                     # Sum the durations for the behaviors in this metric
                     total_time = 0.0
                     for behavior in behaviors:
                         if behavior in summary_data:
                             total_time += summary_data[behavior]["duration"]
-                    
+
                     results[f"{metric_name.lower().replace(' ', '_')}"] = total_time
+
+                    # Overlap-awareness is impossible from summary data alone:
+                    # for a metric spanning MULTIPLE behaviours, this plain sum
+                    # double-counts any time they overlapped, so the value is
+                    # only approximate (§16-4 / BUG-023). A single-behaviour
+                    # metric cannot self-overlap (one key = one active event),
+                    # so it stays exact.
+                    if len(behaviors) > 1:
+                        self._approximate_metrics.setdefault(file_path, set()).add(metric_name)
+                        self.logger.warning(
+                            "Summary-only input: '%s' is approximate "
+                            "(overlap not considered) for %s",
+                            metric_name, os.path.basename(file_path),
+                        )
                 
                 # We can't do interval analysis without raw event data
                 if self._interval_enabled:
@@ -995,12 +1019,20 @@ class AnalysisModel(QObject):
             if df.empty:
                 self.logger.debug(f"Empty dataframe, using test duration as {target_behavior} latency: {test_duration}s")
                 return test_duration
-            
+
+            # Operate on a private copy so the numeric coercion below cannot
+            # mutate the caller's DataFrame. The same df is reused for other
+            # metrics in the same analysis pass, so an in-place
+            # ``df['Onset'] = pd.to_numeric(...)`` previously leaked side
+            # effects (and spurious "Converted ... to numeric" log noise)
+            # into subsequent metric calculations (cross-cut B / read-only df).
+            df = df.copy()
+
             # Verify data types of time columns - critical for accurate calculation
             try:
                 # Log column types for debugging
                 self.logger.debug(f"Column dtypes before numeric conversion: {df.dtypes}")
-                
+
                 # Ensure Onset and Offset are numeric
                 if pd.api.types.is_object_dtype(df['Onset']):
                     df['Onset'] = pd.to_numeric(df['Onset'], errors='coerce')
@@ -1039,30 +1071,19 @@ class AnalysisModel(QObject):
                 min_behavior_time = behavior_events['Onset'].min()
                 self.logger.info(f"  First {target_behavior} onset: {min_behavior_time}s (type: {type(min_behavior_time)})")
             
-            # Handle the case with multiple RecordingStart events
-            if len(recording_starts) > 1:
-                self.logger.info(f"  Multiple RecordingStart events detected - determining best match")
-                
-                # Get first behavior time
-                first_behavior_time = float(behavior_events['Onset'].min())
-                
-                # Find the RecordingStart that comes before this behavior
-                # Sort RecordingStarts by time and find the last one that's before the first occurrence
-                valid_starts = recording_starts[recording_starts['Onset'] < first_behavior_time]
-                
-                if not valid_starts.empty:
-                    # Use the latest RecordingStart before the first behavior
-                    start_time = float(valid_starts['Onset'].max())
-                    self.logger.info(f"  Using RecordingStart at {start_time}s (latest before first {target_behavior})")
-                else:
-                    # If no RecordingStart is before the first behavior, use the earliest RecordingStart
-                    # This is a fallback that shouldn't normally happen with valid data
-                    start_time = float(recording_starts['Onset'].min())
-                    self.logger.info(f"  No RecordingStart before first {target_behavior}! Using earliest at {start_time}s")
-            elif not recording_starts.empty:
-                # Just one RecordingStart - use it directly
+            # One CSV = one session (§16-1): the recorder now enforces a single
+            # RecordingStart per file, so latency keys off the FIRST one. Older
+            # or hand-edited files may still contain several; in that case we
+            # use the first and warn rather than guessing a "best" match.
+            if not recording_starts.empty:
+                if len(recording_starts) > 1:
+                    self.logger.warning(
+                        "  %d RecordingStart events in this file; using the "
+                        "first (one-session model). Re-export to normalise.",
+                        len(recording_starts),
+                    )
                 start_time = float(recording_starts['Onset'].iloc[0])
-                self.logger.info(f"  Using single RecordingStart at {start_time}s")
+                self.logger.info(f"  Using RecordingStart at {start_time}s")
             else:
                 # No RecordingStart found - fall back to earliest event time
                 start_time = float(df['Onset'].min())
@@ -1247,6 +1268,7 @@ class AnalysisModel(QObject):
         self._analysis_inputs = {}
         self._results = {}
         self._interval_results = {}
+        self._approximate_metrics = {}
         self._behaviors = self._default_behaviors.copy()
         self._custom_behaviors = set()
         self._source_view_for_next_load = None
@@ -1254,11 +1276,23 @@ class AnalysisModel(QObject):
     def get_interval_results(self):
         """
         Get interval-based analysis results.
-        
+
         Returns:
             dict: Interval analysis results
         """
         return self._interval_results
+
+    def get_approximate_metrics(self):
+        """Return {file_path: {metric_name, ...}} of approximate total-time
+        metrics (summary-only input, overlap not considered; §16-4)."""
+        return {path: set(names) for path, names in self._approximate_metrics.items()}
+
+    def get_approximate_metric_names(self):
+        """Return the union of approximate total-time metric names across files."""
+        names = set()
+        for metric_names in self._approximate_metrics.values():
+            names |= metric_names
+        return names
 
     def get_behaviors_list(self):
         """
@@ -1376,8 +1410,10 @@ class AnalysisModel(QObject):
         """
         try:
             # Create a specialized CSV writer that preserves the exact format we want
-            with open(file_path, 'w', newline='') as f:
-                writer = csv.writer(f)
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                # Sanitise user-controlled text cells (animal_id, behaviour
+                # and metric names) against spreadsheet formula injection.
+                writer = SafeCsvWriter(csv.writer(f))
 
                 # Provenance: emit a single header row with the producing
                 # RABET version and schema identifier. Downstream tools can
@@ -1479,7 +1515,20 @@ class AnalysisModel(QObject):
                     writer.writerow(row)
 
                 self._append_standard_summary_stats(writer, data_rows, column_headers)
-            
+
+                # Note any approximate total-time metrics (summary-only input
+                # double-counts overlapping behaviours; §16-4 / BUG-023). Kept
+                # as a trailing note row so the table layout above is unchanged
+                # and downstream column parsing is unaffected (backward compat).
+                approx_names = self.get_approximate_metric_names()
+                if approx_names:
+                    writer.writerow([])
+                    writer.writerow([
+                        "Note",
+                        "Approximate (overlap not considered; computed from "
+                        "summary-only input): " + ", ".join(sorted(approx_names)),
+                    ])
+
             self.logger.info(f"Successfully exported standard summary table to {file_path}")
             return True
         except Exception as e:
@@ -1500,8 +1549,9 @@ class AnalysisModel(QObject):
         """
         try:
             # Create a specialized CSV writer that preserves the exact format we want
-            with open(file_path, 'w', newline='') as f:
-                writer = csv.writer(f)
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                # Sanitise user-controlled text cells against formula injection.
+                writer = SafeCsvWriter(csv.writer(f))
 
                 # Provenance row: producing app version and schema identifier.
                 # writer.writerow([f"RABET {RABET_VERSION} interval-summary export (schema {SUMMARY_CSV_SCHEMA})"])

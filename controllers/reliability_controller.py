@@ -22,6 +22,7 @@ from models.reliability_model import (
     SummaryAgreementResult,
     DetailedAgreementResult,
 )
+from utils.csv_safety import SafeCsvWriter
 from views.disagreement_review_view import DisagreementReviewDialog
 from views.reliability_view import ReliabilityView, SummaryMatchDialog
 
@@ -252,7 +253,7 @@ class ReliabilityController(QObject):
     @staticmethod
     def _write_summary_csv(result: SummaryAgreementResult, path: str) -> None:
         with open(path, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
+            writer = SafeCsvWriter(csv.writer(fh))
             writer.writerow([
                 "Metric", "n_pairs", "ICC(2,1)", "Pearson_r",
                 "Mean_abs_diff", "Mean_A", "Mean_B",
@@ -290,7 +291,7 @@ class ReliabilityController(QObject):
     @staticmethod
     def _write_detailed_csv(result: DetailedAgreementResult, path: str) -> None:
         with open(path, "w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
+            writer = SafeCsvWriter(csv.writer(fh))
             writer.writerow([
                 "Bin width (s)", f"{result.bin_seconds:.3f}",
                 "Test duration (s)", f"{result.test_duration_seconds:.3f}",

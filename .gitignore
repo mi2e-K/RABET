@@ -49,11 +49,14 @@ env/
 # Claude Code local session/settings (developer tooling only)
 .claude/
 
-# Test suite is maintained locally only; not shipped with the public repo
-tests/
+# Test suite is versioned and run in CI (1.3.4+). Only large generated
+# fixtures (e.g. long sample videos) should be ignored; keep the small
+# CSV/JSON fixtures and the pytest sources tracked.
+tests/performance/fixtures/_generated/
 
-# Internal developer tooling (env checks, PE inspector, leak checker)
-tools/
+# Internal developer tooling. The performance/benchmark helpers under
+# tools/ are tracked (1.3.4+) so CI and contributors can regenerate
+# fixtures; the one-off leak checker stays local.
 scripts/_phase8_leak_check.py
 
 # Release notes are managed via the GitHub Releases page rather than a
