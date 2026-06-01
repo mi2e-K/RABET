@@ -929,8 +929,12 @@ class AnalysisModel(QObject):
         # Make a copy to avoid SettingWithCopyWarning
         filtered_df = df.copy()
 
-        filtered_df.loc[:, 'Onset'] = pd.to_numeric(filtered_df['Onset'], errors='coerce')
-        filtered_df.loc[:, 'Offset'] = pd.to_numeric(filtered_df['Offset'], errors='coerce')
+        # Column-replacement assignment (filtered_df is already a copy) so a
+        # string/object source column can become float. pandas 2.1+ rejects
+        # ``.loc[:, col] = <float>`` into a str-dtype column ("Invalid value
+        # ... for dtype 'str'").
+        filtered_df['Onset'] = pd.to_numeric(filtered_df['Onset'], errors='coerce')
+        filtered_df['Offset'] = pd.to_numeric(filtered_df['Offset'], errors='coerce')
         filtered_df = filtered_df.dropna(subset=['Onset', 'Offset'])
         filtered_df = filtered_df[filtered_df['Offset'] >= filtered_df['Onset']]
         
@@ -1135,8 +1139,12 @@ class AnalysisModel(QObject):
             # Convert onset/offset to numeric to ensure proper calculations
             try:
                 # Use .loc to avoid SettingWithCopyWarning
-                behaviors_df.loc[:, 'Onset'] = pd.to_numeric(behaviors_df['Onset'], errors='coerce')
-                behaviors_df.loc[:, 'Offset'] = pd.to_numeric(behaviors_df['Offset'], errors='coerce')
+                # Column-replacement assignment (behaviors_df is already a
+                # copy) so a string/object source column can become float;
+                # pandas 2.1+ rejects ``.loc[:, col] = <float>`` into a
+                # str-dtype column.
+                behaviors_df['Onset'] = pd.to_numeric(behaviors_df['Onset'], errors='coerce')
+                behaviors_df['Offset'] = pd.to_numeric(behaviors_df['Offset'], errors='coerce')
                 
                 # Drop any rows with NaN values after conversion
                 behaviors_df = behaviors_df.dropna(subset=['Onset', 'Offset'])
