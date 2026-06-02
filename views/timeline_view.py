@@ -813,46 +813,66 @@ class TimelineCanvas(QWidget):
         # the same cache so click hit-testing matches what the user sees.
         self._event_levels = self._compute_event_levels()
 
-        # Draw background
-        painter.fillRect(self.rect(), QColor(240, 240, 240))
+        # Viewport culling (Phase 4): repaint only the dirty rectangle Qt asks
+        # for, and skip time markers / events that fall entirely outside it. On
+        # a long timeline the visible slice is tiny compared to the full canvas,
+        # so per-frame work drops from "draw all events" to "draw visible
+        # events". Click hit-testing in mousePressEvent still scans all events,
+        # so selection is unaffected.
+        clip = event.rect()
+
+        # Draw background (only the dirty area)
+        painter.fillRect(clip, QColor(240, 240, 240))
 
         # Draw time markers
-        self._draw_time_markers(painter)
+        self._draw_time_markers(painter, clip)
 
         # Draw events
-        self._draw_events(painter)
+        self._draw_events(painter, clip)
 
         # Draw current position
         self._draw_position_marker(painter)
     
-    def _draw_time_markers(self, painter):
+    def _draw_time_markers(self, painter, clip=None):
         """
         Draw time markers on the timeline.
-        
+
         Args:
             painter (QPainter): Painter object
+            clip (QRect, optional): dirty rectangle; markers outside its x
+                range are skipped (viewport culling).
         """
         if self.timeline_view._duration == 0:
             return
-        
+
         # Set text font - LARGER SIZE and DARKER COLOR
         font = QFont()
         font.setPointSize(8)  # Increased from 6 to 8
         painter.setFont(font)
-        
+
         # Set darker gray color for text
         text_color = QColor(60, 60, 60)  # Dark gray
-        
+
         # Set pen for lines
         line_pen = QPen(QColor(200, 200, 200))
         line_pen.setWidth(1)
-        
+
         # Calculate marker interval based on zoom level
         # Aim for markers approximately every 100 pixels
         seconds_per_marker = max(1, int(100 / self.timeline_view._zoom_level))
-        
+
+        # Restrict the marker loop to the visible x range (+ one marker margin
+        # so labels at the edges are not clipped away).
+        total_seconds = int(self.timeline_view._duration / 1000)
+        start_seconds = 0
+        end_seconds = total_seconds
+        if clip is not None and self.timeline_view._zoom_level > 0:
+            zoom = self.timeline_view._zoom_level
+            start_seconds = max(0, int(clip.left() / zoom) - seconds_per_marker)
+            end_seconds = min(total_seconds, int(clip.right() / zoom) + seconds_per_marker)
+
         # Draw markers
-        for seconds in range(0, int(self.timeline_view._duration / 1000) + 1, seconds_per_marker):
+        for seconds in range(start_seconds, end_seconds + 1, seconds_per_marker):
             # Calculate x position
             x = int(seconds * self.timeline_view._zoom_level)
             
@@ -868,15 +888,32 @@ class TimelineCanvas(QWidget):
             painter.setPen(QPen(text_color))
             painter.drawText(x + 2, 12, time_text)
     
-    def _draw_events(self, painter):
+    @staticmethod
+    def _span_visible(x1, x2, clip_left, clip_right):
+        """True if the horizontal span [x1, x2] intersects the visible range.
+
+        ``clip_left is None`` means "no culling" (always visible). Used by the
+        timeline's viewport culling so off-screen events are not drawn.
+        """
+        if clip_left is None:
+            return True
+        return not (x2 < clip_left or x1 > clip_right)
+
+    def _draw_events(self, painter, clip=None):
         """
         Draw behavior events on the timeline.
 
         Args:
             painter (QPainter): Painter object
+            clip (QRect, optional): dirty rectangle; events whose horizontal
+                span does not intersect it are skipped (viewport culling).
         """
         if not self.timeline_view._events:
             return
+
+        # Visible x range for culling (None => draw everything).
+        clip_left = clip.left() if clip is not None else None
+        clip_right = clip.right() if clip is not None else None
 
         # Base y position for level-0 events. Higher overlap levels get
         # shifted downward by _LEVEL_OFFSET each (see _compute_event_levels).
@@ -910,6 +947,10 @@ class TimelineCanvas(QWidget):
 
             # Special case for RecordingStart events - draw as vertical line with text
             if event.behavior == "RecordingStart":
+                # Cull if the marker line and its "REC start" label (drawn to
+                # the left of x1, ~60px wide) fall outside the dirty rect.
+                if not self._span_visible(x1 - 60, x1, clip_left, clip_right):
+                    continue
                 # Draw a vertical dashed line
                 rec_pen = QPen(self.timeline_view._recording_start_color)
                 rec_pen.setWidth(2)  # Thicker line
@@ -942,6 +983,10 @@ class TimelineCanvas(QWidget):
                 x2 = int(self.timeline_view._current_position / 1000 * self.timeline_view._zoom_level)
 
             width = max(2, x2 - x1)  # Ensure minimum width
+
+            # Cull events whose horizontal span does not intersect the dirty rect.
+            if not self._span_visible(x1, x2, clip_left, clip_right):
+                continue
 
             # O(1) selection check using enumerate index instead of list.index
             is_selected = (i == selected_index)

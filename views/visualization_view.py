@@ -2104,7 +2104,7 @@ class RasterPlotWidget(QWidget):
         self._refresh_file_group_visibility()
         
         # Update the plot
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_colormap_changed(self, colormap_name):
         """Handle colormap selection change."""
@@ -2127,34 +2127,34 @@ class RasterPlotWidget(QWidget):
         
         # Update behavior list and plot
         self.update_behavior_list()
-        self.update_plot()
+        self._schedule_plot_update()
         self.selected_colormap_changed.emit(colormap_name)
     
     def on_time_unit_changed(self, unit):
         """Handle time unit change."""
         self._time_unit = unit
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_tick_interval_changed(self, value):
         """Handle tick interval change."""
         self._tick_interval = value
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_x_range_changed(self, value):
         """Handle x-axis range change."""
         self._x_range_max = value
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_bar_height_changed(self, value):
         """Handle bar height change."""
         self._bar_height = value
         self.logger.debug(f"Bar height changed to: {value}")
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_text_font_size_changed(self, value):
         """Handle text font size changes."""
         self._text_font_size = value
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_png_dpi_changed(self, value):
         """Handle PNG export DPI changes."""
@@ -2163,12 +2163,12 @@ class RasterPlotWidget(QWidget):
     def on_border_mode_changed(self, mode):
         """Handle plot border visibility changes."""
         self._border_mode = mode
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_transparent_outside_changed(self, state):
         """Handle outside-plot transparency changes."""
         self._transparent_outside_plot = (state == Qt.CheckState.Checked.value)
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_plot_size_changed(self, value):
         """Handle plot size change."""
@@ -2186,7 +2186,7 @@ class RasterPlotWidget(QWidget):
             
             # Update canvas
             self.canvas.updateGeometry()
-            self.update_plot()
+            self._schedule_plot_update()
     
     def on_auto_size_changed(self, state):
         """Handle auto-size checkbox change."""
@@ -2226,7 +2226,7 @@ class RasterPlotWidget(QWidget):
                 self.frame_height_spinbox.setValue(min(max(suggested_height, 40), 100))
         
         self.canvas.updateGeometry()
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_individual_frames_changed(self, state):
         """Handle individual frames checkbox change."""
@@ -2246,21 +2246,21 @@ class RasterPlotWidget(QWidget):
                 suggested_height = int(self._bar_height * 3)
                 self.frame_height_spinbox.setValue(min(max(suggested_height, 40), 100))
         
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_frame_height_changed(self, value):
         """Handle frame height change."""
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_vertical_grid_changed(self, state):
         """Handle vertical grid visibility changes."""
         self._show_vertical_grid = (state == Qt.CheckState.Checked.value)
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_horizontal_grid_changed(self, state):
         """Handle horizontal grid visibility changes."""
         self._show_horizontal_grid = (state == Qt.CheckState.Checked.value)
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_grid_style_clicked(self):
         """Handle grid color and line-style changes."""
@@ -2268,17 +2268,17 @@ class RasterPlotWidget(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._grid_color, self._grid_linestyle = dialog.result()
             self._update_grid_style_button()
-            self.update_plot()
+            self._schedule_plot_update()
 
     def on_file_label_numbers_changed(self, state):
         """Handle behavior-label file number visibility changes."""
         self._show_file_label_numbers = (state == Qt.CheckState.Checked.value)
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_file_separators_changed(self, state):
         """Handle individual file separator visibility changes."""
         self._show_file_separators = (state == Qt.CheckState.Checked.value)
-        self.update_plot()
+        self._schedule_plot_update()
 
     def edit_overlay_groups(self):
         """Open the overlay group editor for the current behavior list."""
@@ -2301,7 +2301,7 @@ class RasterPlotWidget(QWidget):
             return
 
         self._overlay_groups, self._behavior_opacity = dialog.result()
-        self.update_plot()
+        self._schedule_plot_update()
 
     def edit_current_colormap(self):
         """Open the custom color-map editor and request a save."""
@@ -2326,7 +2326,7 @@ class RasterPlotWidget(QWidget):
         self._behavior_colors = {}
         self.custom_colormap_save_requested.emit(colormap_name, color_map)
         self.update_behavior_list()
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_behavior_selection_changed(self, item):
         """Handle behavior checkbox state change."""
@@ -2336,7 +2336,7 @@ class RasterPlotWidget(QWidget):
         self.logger.debug(
             f"behavior visibility -> {behavior}={new_state}"
         )
-        self.update_plot()
+        self._schedule_plot_update()
 
     def on_file_selection_changed(self, item):
         """Handle file selection change in overlay mode."""
@@ -2346,7 +2346,7 @@ class RasterPlotWidget(QWidget):
         self.logger.debug(
             f"file visibility -> {os.path.basename(file_path)}={new_state}"
         )
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_behavior_double_clicked(self, item):
         """Handle double click on a behavior item - change color."""
@@ -2373,7 +2373,7 @@ class RasterPlotWidget(QWidget):
                 self.behavior_list.blockSignals(was_blocked)
 
             # Update plot
-            self.update_plot()
+            self._schedule_plot_update()
     
     def on_behaviors_reordered(self):
         """Handle behaviors being reordered in the list."""
@@ -2383,7 +2383,7 @@ class RasterPlotWidget(QWidget):
             self._custom_behavior_order.append(item.text())
         
         self.logger.debug(f"Behaviors reordered: {self._custom_behavior_order}")
-        self.update_plot()
+        self._schedule_plot_update()
     
     def on_files_reordered(self):
         """Handle files being reordered in the list."""
@@ -2397,7 +2397,7 @@ class RasterPlotWidget(QWidget):
         
         # Update the file list to renumber items
         self.update_file_list()
-        self.update_plot()
+        self._schedule_plot_update()
     
     # Data management methods
     def set_data(self, data_dict):
@@ -2426,7 +2426,7 @@ class RasterPlotWidget(QWidget):
         self._refresh_file_group_visibility()
         
         # Update the plot
-        self.update_plot()
+        self._schedule_plot_update()
         
         # Schedule deferred updates to ensure proper display
         for delay in [50, 100, 200]:
@@ -2494,7 +2494,7 @@ class RasterPlotWidget(QWidget):
             file_path,
         )
         self.update_behavior_list()
-        self.update_plot()
+        self._schedule_plot_update()
 
     def clear_action_map_behavior_source(self):
         """Return visualization behavior discovery to the loaded data."""
@@ -2506,7 +2506,7 @@ class RasterPlotWidget(QWidget):
         self.clear_action_map_button.setEnabled(False)
         self.action_map_status_label.setText("Behaviors: data")
         self.update_behavior_list()
-        self.update_plot()
+        self._schedule_plot_update()
 
     def _read_action_map_behaviors(self, file_path):
         """Return unique behavior names from a RABET action map JSON file."""
@@ -2541,7 +2541,7 @@ class RasterPlotWidget(QWidget):
             
             # Update behavior list to apply new colors
             self.update_behavior_list()
-            self.update_plot()
+            self._schedule_plot_update()
     
     def add_custom_colormaps_to_dropdown(self, custom_colormaps):
         """Add custom colormaps to the main colormap dropdown."""
@@ -2629,6 +2629,8 @@ class RasterPlotWidget(QWidget):
     
     def save_plot(self):
         """Save the current plot to a file."""
+        # Apply any debounced redraw before snapshotting the figure.
+        self._flush_pending_plot_update()
         if not hasattr(self, 'canvas') or not self._data:
             QMessageBox.warning(self, "Warning", "No plot to save.")
             return
@@ -2657,6 +2659,8 @@ class RasterPlotWidget(QWidget):
 
     def export_individual_plots(self):
         """Export one plot per file/individual using the current plot settings."""
+        # Apply any debounced redraw so current settings are reflected.
+        self._flush_pending_plot_update()
         if not hasattr(self, 'canvas') or not self._data:
             QMessageBox.warning(self, "Warning", "No plot to export.")
             return
@@ -2696,7 +2700,7 @@ class RasterPlotWidget(QWidget):
                             for path in self._data
                         }
                         self.update_file_list()
-                        self.update_plot()
+                        self._schedule_plot_update()
 
                         individual_stem = self._safe_export_stem(individual_path, index)
                         output_name = (
@@ -2715,7 +2719,7 @@ class RasterPlotWidget(QWidget):
             finally:
                 self._file_visibility = original_visibility
                 self.update_file_list()
-                self.update_plot()
+                self._schedule_plot_update()
 
             if exported_paths:
                 self._remember_plot_save_path(exported_paths[-1])
@@ -2944,8 +2948,38 @@ class RasterPlotWidget(QWidget):
         self.file_list.blockSignals(was_blocked)
     
     # Main plotting methods
+    def _schedule_plot_update(self, reason=""):
+        """Debounced raster redraw (Phase 4).
+
+        Settings widgets (spin boxes, check boxes, selection toggles) can fire
+        in rapid succession; redrawing on every one is wasteful. Coalesce them
+        into a single redraw ~150 ms after the last change. Explicit Refresh,
+        file loads and exports bypass this via update_plot() /
+        _flush_pending_plot_update().
+        """
+        timer = getattr(self, "_plot_update_timer", None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self.update_plot)
+            self._plot_update_timer = timer
+        timer.start(150)
+        if hasattr(self, "status_label") and self.status_label is not None:
+            self.status_label.setText("Updating plot...")
+
+    def _flush_pending_plot_update(self):
+        """Run any debounced redraw now (e.g. before exporting an image)."""
+        timer = getattr(self, "_plot_update_timer", None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+            self.update_plot()
+
     def update_plot(self):
         """Update the raster plot with current data and settings."""
+        # A debounced update (if any) is now satisfied by this redraw.
+        timer = getattr(self, "_plot_update_timer", None)
+        if timer is not None and timer.isActive():
+            timer.stop()
         # Check if data is available
         if not self._data:
             self.status_label.setText("No data loaded")
