@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import shutil
+import uuid
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
@@ -50,6 +51,11 @@ class ProjectModel(QObject):
             "analyses": [],
             "video_annotation_files": {},
         }
+        # PR-S2: stored-path -> stable video id. Populated on load/add; the id
+        # is persisted in the v2 manifest (entry.id) and reused rather than
+        # recomputed from the path, so it survives moving the project folder
+        # (BUG-006). _get_video_id reads this map; only add_video mints new ids.
+        self._video_id_by_path = {}
         self._is_modified = False
     
     def create_project(self, project_path, project_name, description=""):
@@ -98,7 +104,8 @@ class ProjectModel(QObject):
                 "video_annotation_status": {},  # New field to track annotation status
                 "video_annotation_files": {},
             }
-            
+            self._video_id_by_path = {}
+
             # Save project configuration. If the manifest cannot be written we
             # must NOT report success or enter the "project open" state — doing
             # so left RABET pointing at a project with no project.json on disk
@@ -164,19 +171,28 @@ class ProjectModel(QObject):
                 self.logger.error(error_msg)
                 self.error_occurred.emit(error_msg)
                 return False
-            
-            # Ensure video_annotation_status exists (for backwards compatibility)
+
+            # Set the project path/name early so video-id resolution works while
+            # we normalise the manifest below.
+            self._project_path = str(project_dir)
+            self._project_name = self._project_config.get("name", project_dir.name)
+
+            # Normalise the on-disk manifest (v1 string-list videos OR v2 object
+            # videos) into the internal representation used by the rest of
+            # ProjectModel (string-list videos + status/files maps). A v1 file
+            # is flagged dirty so it is re-saved in v2 form below (migration).
+            loaded_schema = self._project_config.get("schema_version")
+            self._load_into_internal(self._project_config)
+            if not isinstance(loaded_schema, int) or loaded_schema < 2:
+                self._is_modified = True
+
+            # Ensure the internal maps exist (older files / fresh conversion).
             if "video_annotation_status" not in self._project_config:
                 self._project_config["video_annotation_status"] = {}
                 self._is_modified = True
             if "video_annotation_files" not in self._project_config:
                 self._project_config["video_annotation_files"] = {}
                 self._is_modified = True
-            
-            # Update current project
-            self._project_path = str(project_dir)
-            self._project_name = self._project_config.get("name", 
-                                                          project_dir.name)
 
             self._migrate_video_annotation_status()
             
@@ -363,20 +379,71 @@ class ProjectModel(QObject):
             if self._get_legacy_video_id(video_path) == annotation_base_name
         ]
 
-    def _get_video_id(self, video_path):
-        """
-        Get a unique identifier for a video from its path.
-        
-        Args:
-            video_path (str): Path to the video file
-            
-        Returns:
-            str: Stable video identifier derived from the normalized path
+    def _legacy_hash_id(self, video_path):
+        """Legacy id: basename + absolute-path hash.
+
+        Deterministic but NOT move-stable (it embeds the absolute path, which
+        is exactly BUG-006). Kept as a fallback for videos not yet registered
+        in ``_video_id_by_path`` and to derive ids when migrating a v1 manifest.
         """
         legacy_id = self._get_legacy_video_id(video_path)
         normalized_path = self._normalize_video_reference(video_path)
         digest = hashlib.sha1(normalized_path.encode('utf-8')).hexdigest()[:12]
         return f"{legacy_id}__{digest}"
+
+    def _mint_video_id(self, stored_path):
+        """Mint a new move-stable id for a freshly-added video (PR-S2)."""
+        legacy_id = self._get_legacy_video_id(stored_path)
+        return f"{legacy_id}__{uuid.uuid4().hex[:12]}"
+
+    def _stored_path_for(self, video_reference):
+        """Resolve a reference to its stored path WITHOUT calling _get_video_id.
+
+        Breaks the id<->path resolution recursion (PR-S2). Accepts a stored
+        path, an absolute path, a persisted id, or an unambiguous legacy
+        basename id; returns the reference unchanged if nothing matches.
+        """
+        if video_reference is None:
+            return None
+        reference = str(video_reference)
+        videos = self._project_config.get("videos", [])
+        if reference in videos:
+            return reference
+        if self._project_path:
+            normalized_reference = self._normalize_video_reference(reference)
+            for video_path in videos:
+                if self._normalize_video_reference(video_path) == normalized_reference:
+                    return video_path
+        for path, vid in self._video_id_by_path.items():
+            if vid == reference:
+                return path
+        legacy_matches = [
+            v for v in videos if self._get_legacy_video_id(v) == reference
+        ]
+        if len(legacy_matches) == 1:
+            return legacy_matches[0]
+        return reference
+
+    def _get_video_id(self, video_path):
+        """
+        Get a stable identifier for a video (PR-S2).
+
+        Reads the persisted ``stored-path -> id`` map so the id survives moving
+        the project folder. Falls back to the legacy absolute-path hash for a
+        video not registered yet (e.g. a pre-add existence check). Pure: it
+        never mints/registers an id — ``add_video`` does that.
+
+        Args:
+            video_path (str): Path / reference to the video file
+
+        Returns:
+            str: Stable video identifier
+        """
+        stored = self._stored_path_for(video_path)
+        persisted = self._video_id_by_path.get(stored)
+        if persisted:
+            return persisted
+        return self._legacy_hash_id(video_path)
 
     def get_video_id(self, video_path):
         """Get the internal video ID for a stored path, absolute path, or video ID."""
@@ -537,8 +604,9 @@ class ProjectModel(QObject):
                 "video_annotation_status": {},
                 "video_annotation_files": {},
             }
+            self._video_id_by_path = {}
             self._is_modified = False
-            
+
             self.project_closed.emit()
             return True
             
@@ -599,9 +667,10 @@ class ProjectModel(QObject):
             
             # Add video to project
             self._project_config["videos"].append(rel_path)
-            
-            # Initialize annotation status for this video
-            video_id = self._get_video_id(rel_path)
+
+            # Mint and register a move-stable id (PR-S2), then initialise status.
+            video_id = self._mint_video_id(rel_path)
+            self._video_id_by_path[rel_path] = video_id
             if "video_annotation_status" not in self._project_config:
                 self._project_config["video_annotation_status"] = {}
             self._project_config["video_annotation_status"][video_id] = "not_annotated"
@@ -1195,12 +1264,98 @@ class ProjectModel(QObject):
             bool: True if saved successfully, False otherwise
         """
         config_file = project_dir / "project.json"
-        # Atomic write + keep the prior manifest as project.json.bak so an
-        # interrupted save can be recovered (BUG-019).
+        # Serialize the internal representation to the v2 on-disk shape, then
+        # write atomically (+ keep project.json.bak) so an interrupted save can
+        # be recovered (BUG-019).
+        manifest = self._serialize_to_v2()
         return self._file_manager.save_json(
-            self._project_config, config_file, atomic=True, backup=True
+            manifest, config_file, atomic=True, backup=True
         )
-    
+
+    # ------------------------------------------------------------------ #
+    # Manifest schema v1 <-> v2 conversion (PR-S1)
+    #
+    # The rest of ProjectModel keeps the v1-era *internal* representation:
+    #   videos:                  list[str] of stored paths
+    #   video_annotation_status: {video_id: status}
+    #   video_annotation_files:  {video_id: rel_path}
+    # Only the on-disk form changes to v2 (schema_version + one object per
+    # video that embeds id / storage / annotation status+path). This keeps the
+    # ~17 video-id methods untouched; UUID-based ids are PR-S2.
+    # ------------------------------------------------------------------ #
+
+    def _serialize_to_v2(self):
+        """Build the v2 on-disk manifest from the internal representation."""
+        cfg = dict(self._project_config)
+        status_map = self._project_config.get("video_annotation_status", {})
+        files_map = self._project_config.get("video_annotation_files", {})
+
+        video_objects = []
+        for path in self._project_config.get("videos", []):
+            video_id = self._get_video_id(path)
+            entry = {
+                "id": video_id,
+                "path": str(path),
+                "storage": "external" if os.path.isabs(str(path)) else "copied",
+                "annotation_status": status_map.get(video_id, "not_annotated"),
+            }
+            ann_path = files_map.get(video_id)
+            if ann_path:
+                entry["annotation_path"] = ann_path
+            video_objects.append(entry)
+
+        cfg["schema_version"] = 2
+        cfg["videos"] = video_objects
+        # status/files now live inside each video entry on disk.
+        cfg.pop("video_annotation_status", None)
+        cfg.pop("video_annotation_files", None)
+        return cfg
+
+    def _load_into_internal(self, config):
+        """Normalise a loaded manifest (v1 or v2) into the internal representation.
+
+        v1: ``videos`` is a list of path strings with top-level
+        ``video_annotation_status`` / ``video_annotation_files`` maps — left
+        as-is. v2: ``videos`` is a list of objects; we flatten them back into
+        the path list + maps the rest of the model expects. Mutates and returns
+        ``config``.
+        """
+        if not isinstance(config, dict):
+            return config
+
+        # Rebuild the stored-path -> id map for this project (PR-S2).
+        self._video_id_by_path = {}
+
+        videos = config.get("videos", [])
+        if videos and isinstance(videos[0], dict):
+            # v2: object videos with embedded id / status / path.
+            path_list = []
+            status_map = {}
+            files_map = {}
+            for entry in videos:
+                if not isinstance(entry, dict):
+                    continue
+                path = entry.get("path")
+                if not path:
+                    continue
+                path_list.append(path)
+                video_id = entry.get("id") or self._legacy_hash_id(path)
+                self._video_id_by_path[path] = video_id
+                status_map[video_id] = entry.get("annotation_status", "not_annotated")
+                ann_path = entry.get("annotation_path")
+                if ann_path:
+                    files_map[video_id] = ann_path
+            config["videos"] = path_list
+            config["video_annotation_status"] = status_map
+            config["video_annotation_files"] = files_map
+        else:
+            # v1: string-list videos. Adopt the legacy hash id as the persisted
+            # id (the v1 status/files maps are keyed by it), so the next save
+            # writes it into the v2 manifest and it stays stable thereafter.
+            for path in videos:
+                self._video_id_by_path[str(path)] = self._legacy_hash_id(path)
+        return config
+
     def resolve_path(self, relative_path):
         """
         Resolve a project-relative path to an absolute path.
