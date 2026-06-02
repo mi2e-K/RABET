@@ -2,7 +2,7 @@
 import logging
 import os
 from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 class ProjectController(QObject):
     """
@@ -88,10 +88,75 @@ class ProjectController(QObject):
             project_path (str): Path to the loaded project
         """
         self.logger.info(f"Project loaded: {project_path}")
-        
+
         # Update view with project information
         self._update_view_with_project_info()
-    
+
+        # Offer to relink any videos whose files could not be located (PR-S3).
+        self._check_and_offer_relink()
+
+    def _check_and_offer_relink(self):
+        """After load, ask the user to locate any missing video files.
+
+        Relink keeps each video's id, so annotation status/links are preserved.
+        A partial content hash guards against picking the wrong file.
+        """
+        try:
+            missing = self._model.get_missing_videos()
+        except Exception:
+            return
+        if not missing:
+            return
+
+        reply = QMessageBox.question(
+            self._view,
+            "Missing videos",
+            f"{len(missing)} video(s) referenced by this project could not be "
+            "found (they may have been moved or renamed).\n\n"
+            "Locate them now?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        relinked = 0
+        for stored in missing:
+            if self._prompt_relink_single(stored):
+                relinked += 1
+        if relinked:
+            self._model.save_project()
+            self._update_view_with_project_info()
+
+    def _prompt_relink_single(self, stored_path):
+        """Prompt for a replacement file for one missing video; relink if given.
+
+        Returns True if the video was relinked. Honours the content-hash check:
+        a mismatch asks for explicit confirmation before forcing the relink.
+        """
+        name = os.path.basename(stored_path)
+        new_path, _ = QFileDialog.getOpenFileName(
+            self._view,
+            f"Locate '{name}'",
+            "",
+            "Video files (*.mp4 *.avi *.mov *.mkv *.wmv *.flv);;All files (*.*)",
+        )
+        if not new_path:
+            return False
+
+        match = self._model.content_hash_matches(stored_path, new_path)
+        if match is False:
+            proceed = QMessageBox.warning(
+                self._view,
+                "Content mismatch",
+                f"The selected file does not look like the same video as "
+                f"'{name}'.\n\nRelink anyway?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if proceed != QMessageBox.Yes:
+                return False
+            return self._model.relink_video(stored_path, new_path, verify_hash=False)
+        return self._model.relink_video(stored_path, new_path, verify_hash=True)
+
     @Slot()
     def on_project_saved(self):
         """Handle project saved event."""

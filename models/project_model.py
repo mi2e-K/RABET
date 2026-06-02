@@ -8,6 +8,9 @@ import uuid
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
+from utils.content_hash import compute_partial_hash
+
+
 class ProjectModel(QObject):
     """
     Model for managing research projects containing related videos, 
@@ -103,6 +106,7 @@ class ProjectModel(QObject):
                 "analyses": [],
                 "video_annotation_status": {},  # New field to track annotation status
                 "video_annotation_files": {},
+                "video_content_hash": {},
             }
             self._video_id_by_path = {}
 
@@ -603,6 +607,7 @@ class ProjectModel(QObject):
                 "analyses": [],
                 "video_annotation_status": {},
                 "video_annotation_files": {},
+                "video_content_hash": {},
             }
             self._video_id_by_path = {}
             self._is_modified = False
@@ -674,6 +679,15 @@ class ProjectModel(QObject):
             if "video_annotation_status" not in self._project_config:
                 self._project_config["video_annotation_status"] = {}
             self._project_config["video_annotation_status"][video_id] = "not_annotated"
+
+            # Record a partial content hash for relink matching (PR-S3). The
+            # source file equals the copied file, so hashing video_path is valid
+            # for both copied and external videos.
+            content_hash = compute_partial_hash(str(video_path))
+            if content_hash:
+                self._project_config.setdefault(
+                    "video_content_hash", {}
+                )[video_id] = content_hash
             
             self._is_modified = True
             
@@ -1289,6 +1303,7 @@ class ProjectModel(QObject):
         cfg = dict(self._project_config)
         status_map = self._project_config.get("video_annotation_status", {})
         files_map = self._project_config.get("video_annotation_files", {})
+        hash_map = self._project_config.get("video_content_hash", {})
 
         video_objects = []
         for path in self._project_config.get("videos", []):
@@ -1302,13 +1317,17 @@ class ProjectModel(QObject):
             ann_path = files_map.get(video_id)
             if ann_path:
                 entry["annotation_path"] = ann_path
+            content_hash = hash_map.get(video_id)
+            if content_hash:
+                entry["content_hash"] = content_hash
             video_objects.append(entry)
 
         cfg["schema_version"] = 2
         cfg["videos"] = video_objects
-        # status/files now live inside each video entry on disk.
+        # status/files/hash now live inside each video entry on disk.
         cfg.pop("video_annotation_status", None)
         cfg.pop("video_annotation_files", None)
+        cfg.pop("video_content_hash", None)
         return cfg
 
     def _load_into_internal(self, config):
@@ -1332,6 +1351,7 @@ class ProjectModel(QObject):
             path_list = []
             status_map = {}
             files_map = {}
+            hash_map = {}
             for entry in videos:
                 if not isinstance(entry, dict):
                     continue
@@ -1345,13 +1365,18 @@ class ProjectModel(QObject):
                 ann_path = entry.get("annotation_path")
                 if ann_path:
                     files_map[video_id] = ann_path
+                content_hash = entry.get("content_hash")
+                if content_hash:
+                    hash_map[video_id] = content_hash
             config["videos"] = path_list
             config["video_annotation_status"] = status_map
             config["video_annotation_files"] = files_map
+            config["video_content_hash"] = hash_map
         else:
             # v1: string-list videos. Adopt the legacy hash id as the persisted
             # id (the v1 status/files maps are keyed by it), so the next save
             # writes it into the v2 manifest and it stays stable thereafter.
+            config.setdefault("video_content_hash", {})
             for path in videos:
                 self._video_id_by_path[str(path)] = self._legacy_hash_id(path)
         return config
@@ -1375,3 +1400,78 @@ class ProjectModel(QObject):
         
         # Resolve relative path
         return os.path.join(self._project_path, relative_path)
+
+    # --- Relink support (PR-S3) --------------------------------------------
+
+    def get_missing_videos(self):
+        """Return stored paths of project videos whose file is not on disk.
+
+        Used after load to offer relink for external videos moved/renamed
+        outside the project (PR-S3). Copied videos under the project folder are
+        normally present; an external (absolute) path can dangle.
+        """
+        missing = []
+        for path in self._project_config.get("videos", []):
+            resolved = self.resolve_path(path)
+            if not resolved or not os.path.exists(resolved):
+                missing.append(path)
+        return missing
+
+    def content_hash_matches(self, video_reference, candidate_path):
+        """Whether candidate_path has the same content hash as the stored video.
+
+        Returns True/False, or None when there is no stored hash to compare
+        against (unknown - let the user decide).
+        """
+        video_id = self.get_video_id(video_reference)
+        expected = self._project_config.get("video_content_hash", {}).get(video_id)
+        if not expected:
+            return None
+        actual = compute_partial_hash(str(candidate_path))
+        if actual is None:
+            return None
+        return actual == expected
+
+    def relink_video(self, video_reference, new_path, verify_hash=True):
+        """Point a (missing) video at a new file, preserving its id.
+
+        The video id is unchanged, so annotation status / files / content hash
+        (all keyed by id) stay attached (PR-S3). When verify_hash is True and a
+        stored content hash exists, the new file must match it or the relink is
+        refused (returns False) so the caller can warn/force. On success the
+        stored path is updated, the id map is moved to the new path, the content
+        hash is refreshed, and the project is marked modified.
+        """
+        stored = self._stored_path_for(video_reference)
+        videos = self._project_config.get("videos", [])
+        if stored not in videos:
+            return False
+        if not new_path or not os.path.exists(new_path):
+            return False
+
+        video_id = self._video_id_by_path.get(stored) or self._get_video_id(stored)
+
+        if verify_hash:
+            expected = self._project_config.get(
+                "video_content_hash", {}
+            ).get(video_id)
+            if expected:
+                actual = compute_partial_hash(str(new_path))
+                if actual != expected:
+                    return False
+
+        new_stored = str(new_path)
+        index = videos.index(stored)
+        videos[index] = new_stored
+        # Move the id registration to the new stored path.
+        self._video_id_by_path.pop(stored, None)
+        self._video_id_by_path[new_stored] = video_id
+        # Refresh the content hash from the relinked file (covers the
+        # no-prior-hash case and keeps it current).
+        refreshed = compute_partial_hash(new_stored)
+        if refreshed:
+            self._project_config.setdefault(
+                "video_content_hash", {}
+            )[video_id] = refreshed
+        self._is_modified = True
+        return True
