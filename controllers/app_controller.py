@@ -3,6 +3,7 @@ import logging
 from version import __version__
 from PySide6.QtCore import QObject, Slot, QTimer, Qt
 from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QWidget, QVBoxLayout
 
 from models.video_model import VideoModel
 from models.action_map_model import ActionMapModel
@@ -82,16 +83,28 @@ class AppController(QObject):
         # Initialize project view
         self.project_view = ProjectView()
         
-        # Initialize visualization view
-        self.visualization_view = VisualizationView()
-
-        # 1.3.2: Reliability view
-        self.reliability_view = ReliabilityView()
-
-        # Add views to main window
+        # Add the (lightweight) Project view eagerly.
         self.main_window.add_view("Project", self.project_view)
-        self.main_window.add_view("Visualization", self.visualization_view)  # Add visualization view
-        self.main_window.add_view("Reliability", self.reliability_view)  # 1.3.2
+
+        # Visualization and Reliability are matplotlib-backed and dominate
+        # startup construction time. Build them lazily on first tab switch
+        # (Phase 5-2): a placeholder container reserves each stack slot now, and
+        # _ensure_visualization / _ensure_reliability populate it on demand.
+        self.visualization_view = None
+        self.visualization_controller = None
+        self._visualization_container = QWidget()
+        QVBoxLayout(self._visualization_container).setContentsMargins(0, 0, 0, 0)
+        self.main_window.register_lazy_view(
+            "Visualization", self._visualization_container, self._ensure_visualization
+        )
+
+        self.reliability_view = None
+        self.reliability_controller = None
+        self._reliability_container = QWidget()
+        QVBoxLayout(self._reliability_container).setContentsMargins(0, 0, 0, 0)
+        self.main_window.register_lazy_view(
+            "Reliability", self._reliability_container, self._ensure_reliability
+        )
         
         # Initialize controllers
         self.video_controller = VideoController(self.video_model, self.main_window.video_player_view)
@@ -112,22 +125,10 @@ class AppController(QObject):
             self.analysis_controller
         )
         
-        # Initialize visualization controller
-        # CRITICAL FIX: Completely decouple visualization from analysis model
-        self.visualization_controller = VisualizationController(
-            self.visualization_view,
-            config_manager=self.config_manager,
-        )
-
-        # 1.3.2: Reliability controller. The second positional argument is
-        # a QObject parent (this AppController), which Qt uses for normal
-        # parent-child lifetime tracking - not a strong app-wide reference
-        # cycle, so memory management is delegated to Qt as usual.
-        self.reliability_controller = ReliabilityController(self.reliability_view, self)
-        
-        # Keep the main window on the visualization screen when files are
-        # dropped there, but let the visualization controller own the load.
-        self.visualization_view.files_dropped.connect(self.handle_visualization_files_dropped)
+        # Visualization / Reliability controllers are created lazily alongside
+        # their views (see _ensure_visualization / _ensure_reliability). The
+        # analysis -> visualize bridge is wired eagerly; its handler builds the
+        # Visualization tab on demand.
         self.main_window.analysis_view.visualize_files_requested.connect(
             self.handle_analysis_visualize_requested
         )
@@ -177,9 +178,8 @@ class AppController(QObject):
         self.video_controller.config_manager = self.config_manager
         self.video_controller.project_model = self.project_model
         self.annotation_controller.config_manager = self.config_manager
-        # 1.3.2: Reliability tab remembers its picker directories across
-        # sessions via ConfigManager.
-        self.reliability_controller.set_config_manager(self.config_manager)
+        # The Reliability tab's ConfigManager wiring (picker-directory memory)
+        # now happens in _ensure_reliability when that tab is first built.
 
         # Expose the video controller on main_window so menu actions
         # (e.g. Open Recent Video) can drive video loads without going
@@ -219,9 +219,42 @@ class AppController(QObject):
             self.main_window.show_info("No annotation files are loaded in Analysis.")
             return
 
+        # Build the Visualization tab on demand if the user has not opened it yet.
+        self._ensure_visualization()
         self.visualization_controller.load_files(file_paths)
         self.main_window.switch_to_view("Visualization")
-    
+
+    def _ensure_visualization(self):
+        """Lazily construct the Visualization view + controller (Phase 5-2).
+
+        Idempotent: safe to call from the tab-switch builder, the analysis ->
+        visualize bridge, and the drop handler.
+        """
+        if self.visualization_view is not None:
+            return
+        self.visualization_view = VisualizationView()
+        self._visualization_container.layout().addWidget(self.visualization_view)
+        self.visualization_controller = VisualizationController(
+            self.visualization_view,
+            config_manager=self.config_manager,
+        )
+        self.visualization_view.files_dropped.connect(
+            self.handle_visualization_files_dropped
+        )
+        self.logger.info("Visualization tab constructed lazily")
+
+    def _ensure_reliability(self):
+        """Lazily construct the Reliability view + controller (Phase 5-2)."""
+        if self.reliability_view is not None:
+            return
+        self.reliability_view = ReliabilityView()
+        self._reliability_container.layout().addWidget(self.reliability_view)
+        self.reliability_controller = ReliabilityController(
+            self.reliability_view, self
+        )
+        self.reliability_controller.set_config_manager(self.config_manager)
+        self.logger.info("Reliability tab constructed lazily")
+
     def set_application_icon(self):
         """Set the application and window icons."""
         icon_path = find_app_icon_path()

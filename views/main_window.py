@@ -218,6 +218,10 @@ class MainWindow(QMainWindow):
             "Annotation": 0,
             "Analysis": 1
         }
+        # name -> builder callable for views constructed lazily on first switch
+        # (Phase 5-2). The builder populates the placeholder container that was
+        # registered via register_lazy_view and wires its controller.
+        self._lazy_view_builders = {}
         
         # Status bar removed - status messages now integrated into timeline view
         
@@ -1148,6 +1152,9 @@ class MainWindow(QMainWindow):
         Args:
             view_name (str): Name of the view to switch to
         """
+        # Build a lazily-registered view the first time it is shown (Phase 5-2).
+        self._ensure_lazy_view_built(view_name)
+
         if view_name in self._view_index:
             index = self._view_index[view_name]
             self.stacked_widget.setCurrentIndex(index)
@@ -1264,6 +1271,27 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to add view {name}: {str(e)}")
             return False
 
+    def register_lazy_view(self, name, placeholder, builder):
+        """Register a view to be constructed on first switch (Phase 5-2).
+
+        ``placeholder`` is added to the stack now (reserving its index and menu
+        slot); ``builder`` is invoked the first time the user switches to
+        ``name`` and is expected to populate the placeholder and wire its
+        controller. This keeps heavy tabs (matplotlib-backed Visualization /
+        Reliability) out of the startup path.
+        """
+        self.add_view(name, placeholder)
+        self._lazy_view_builders[name] = builder
+
+    def _ensure_lazy_view_built(self, name):
+        """Run a registered lazy builder once, on first access to ``name``."""
+        builder = self._lazy_view_builders.pop(name, None)
+        if builder is not None:
+            try:
+                builder()
+            except Exception:
+                self.logger.exception("Lazy view '%s' build failed", name)
+
     def _current_view_name(self):
         """Return the name of the currently visible top-level view."""
         current_index = self.stacked_widget.currentIndex()
@@ -1278,6 +1306,26 @@ class MainWindow(QMainWindow):
         if index is None:
             return None
         return self.stacked_widget.widget(index)
+
+    def _lazy_real_widget(self, name):
+        """Return the real widget for a (possibly lazy) view by name.
+
+        For a lazily-built view (Phase 5-2) the widget registered in the stack
+        is a placeholder container holding the real view as its single child;
+        this unwraps to that child. For eager views the widget itself is
+        returned.
+        """
+        widget = self._view_by_name(name)
+        if widget is None:
+            return None
+        # A placeholder container exposes no view signals; unwrap to its child.
+        if not hasattr(widget, "files_dropped"):
+            layout = widget.layout()
+            if layout is not None and layout.count() > 0:
+                child = layout.itemAt(0).widget()
+                if child is not None:
+                    return child
+        return widget
     
     # ------------------------------------------------------------------ #
     # Recent Files menus
@@ -1682,9 +1730,9 @@ class MainWindow(QMainWindow):
         if csvs:
             if self._current_view_name() == "Visualization":
                 self.switch_to_view("Visualization")
-                visualization_view = self._view_by_name("Visualization")
-                if visualization_view is not None:
-                    visualization_view.files_dropped.emit(csvs)
+                target = self._lazy_real_widget("Visualization")
+                if target is not None and hasattr(target, "files_dropped"):
+                    target.files_dropped.emit(csvs)
             elif hasattr(self, "analysis_view"):
                 self.switch_to_view("Analysis")
                 self.analysis_view.files_dropped.emit(csvs)
