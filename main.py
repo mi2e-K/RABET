@@ -11,7 +11,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 
-from controllers.app_controller import AppController
+# NOTE: ``controllers.app_controller`` is imported lazily inside main() AFTER
+# the splash screen is shown (Phase 4-C). It transitively pulls in matplotlib,
+# pandas and the visualization/reliability views, which dominate import time;
+# deferring it lets the splash appear almost immediately.
 from utils.logger import setup_logger
 from utils.theme_manager import ThemeManager
 from utils.config_path_manager import ConfigPathManager
@@ -250,6 +253,10 @@ def main():
         theme_manager = ThemeManager()
         theme_manager.apply_dark_theme(app)
         splash.set_progress(25, "Initialising controllers...")
+
+        # Lazy import (Phase 4-C): pull in the heavy view/model/matplotlib stack
+        # only now, after the splash is already on screen.
+        from controllers.app_controller import AppController
 
         # Initialize main controller
         # Pass development mode flag if the app_controller accepts it
