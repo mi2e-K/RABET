@@ -27,6 +27,7 @@ fast enough.
 
 from __future__ import annotations
 
+import bisect
 import logging
 import re
 from dataclasses import dataclass, field
@@ -854,15 +855,36 @@ def _candidate_pairs_for_behavior(
     trainees: List[ReliabilityEvent],
     matching_window_seconds: float,
 ) -> List[_CandidatePair]:
-    """Score every behavior-matched (ref, trainee) cross product.
+    """Score plausible (ref, trainee) candidate pairs within one behaviour.
 
-    A pair is kept only if it could plausibly describe the same event:
-    they overlap, they are within the matching window of each other, or
-    their onsets are close enough.
+    A pair is kept only if it could describe the same event: they overlap, are
+    within the matching window of each other, or their onsets are close enough.
+
+    Rather than the full O(N*M) cross product, trainees are sorted by onset and
+    each reference only considers trainees in its neighbourhood. A candidate
+    requires ``trn.onset <= ref.offset + window`` (bisect upper bound) AND
+    ``trn.offset >= ref.onset - window`` (cheap lower skip). Anything outside
+    that band has overlap == 0, gap > window and onset_delta > window, so it
+    can never be kept — the produced candidate set is therefore IDENTICAL to the
+    brute-force version (§16-6), only faster on sparse data.
     """
+    if not references or not trainees:
+        return []
+
+    trainees_sorted = sorted(trainees, key=lambda t: t.onset)
+    onsets = [t.onset for t in trainees_sorted]
+
     candidates: List[_CandidatePair] = []
     for ref in references:
-        for trn in trainees:
+        # Upper bound: a trainee whose onset is beyond ref.offset + window
+        # cannot overlap, fall within the gap window, or share a close onset.
+        hi = bisect.bisect_right(onsets, ref.offset + matching_window_seconds)
+        lower_offset = ref.onset - matching_window_seconds
+        for trn in trainees_sorted[:hi]:
+            # Lower bound: a trainee that ends before ref.onset - window is too
+            # far in the past to satisfy any keep-condition.
+            if trn.offset < lower_offset:
+                continue
             pair = _build_candidate_pair(ref, trn)
             if (
                 pair.overlap_seconds > 0
