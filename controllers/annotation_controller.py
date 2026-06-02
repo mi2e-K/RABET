@@ -388,14 +388,21 @@ class AnnotationController(QObject):
         self._timeline_view.set_position(position)
         self._timeline_view.should_update()
 
-        # Seek-intent model (1.3.4): rewind-driven annotation deletion only
-        # ever happens for an *explicit user seek* (dragging the position
-        # slider). Frame steps, loader resets and ordinary playback ticks all
-        # change the position too, but must NEVER delete annotations — that was
-        # the cause of "stepping backward during recording silently wipes my
-        # work" (data-loss). VideoController tags the intent via
-        # ``notify_seek_intent`` immediately before issuing the seek; we consume
-        # it one-shot here.
+        # Seek-intent model (1.3.4): a backward jump deletes future annotations
+        # only for *user-initiated* seeks — dragging the position slider OR
+        # stepping frames — and only when the "Preserve annotations on rewind"
+        # toggle is OFF. The toggle is the single user-facing control for this:
+        # ON keeps annotations on any rewind, OFF removes the future ones.
+        # Loader resets (video switch) and ordinary playback ticks also move the
+        # position but must never delete. VideoController tags the intent
+        # ("user"/"step"/"loader") via ``notify_seek_intent`` just before
+        # issuing the seek; we consume it one-shot here.
+        #
+        # Note: earlier in 1.3.4 frame steps were unconditionally preserved,
+        # which bypassed the Preserve toggle (a user who chose OFF could not
+        # rewind-and-redo with frame steps). Steps now honour the toggle exactly
+        # like the slider; only loader/playback are exempt (worker-prep intent
+        # separation is kept).
         origin = getattr(self, "_pending_seek_origin", None)
         self._pending_seek_origin = None
         if getattr(self, "_skip_next_seek_rewind", False):
@@ -405,10 +412,12 @@ class AnnotationController(QObject):
 
         if (
             self._is_recording
-            and origin == "user"
+            and origin in ("user", "step")
             and self._last_position - position > 100
         ):
-            self.logger.debug(f"User rewind detected: {self._last_position}ms -> {position}ms")
+            self.logger.debug(
+                f"User-initiated rewind ({origin}): {self._last_position}ms -> {position}ms"
+            )
             if not self._preserve_annotations_on_rewind:
                 self.remove_future_annotations(position)
 

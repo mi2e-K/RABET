@@ -125,12 +125,28 @@ def _make_recording_controller_with_events(action_map):
     return ctrl
 
 
-def test_step_backward_during_recording_keeps_annotations():
+def test_step_backward_with_preserve_off_deletes_future():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)  # preserve OFF
+
+    # Frame steps now honour the Preserve toggle just like the slider: with
+    # preservation OFF, a backward step removes the future event.
+    ctrl.notify_seek_intent("step")
+    ctrl.on_position_changed(3000)
+
+    remaining = ctrl._annotation_model.get_all_events()
+    assert len(remaining) == 1
+    assert remaining[0].onset == 1000
+
+
+def test_step_backward_with_preserve_on_keeps():
     action_map = ActionMapModel()
     action_map.add_mapping("z", "Test behavior")
     ctrl = _make_recording_controller_with_events(action_map)
+    ctrl._preserve_annotations_on_rewind = True
 
-    # Frame step tags "step": a backward jump must NOT delete anything.
+    # Preserve ON: a backward step keeps everything (the toggle wins).
     ctrl.notify_seek_intent("step")
     ctrl.on_position_changed(3000)
 
