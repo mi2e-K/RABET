@@ -89,3 +89,29 @@ def test_load_video_returns_bool_via_blocking_invoke(qt_app, tmp_path):
         assert result is False
     finally:
         vm.shutdown()
+
+
+def test_drain_seek_coalesces_to_latest(qt_app):
+    # Worker-level: rapid pings collapse to the newest pending target, and a
+    # target already served is skipped (PR-V3 seek coalescing).
+    worker = _VideoDecodeWorker()
+    served = []
+    worker.seek = lambda ms: served.append(ms) or True
+    worker._pending_seek_ms = 30
+    worker._drain_seek()          # serves 30
+    worker._drain_seek()          # same target -> skipped
+    worker._pending_seek_ms = 50
+    worker._drain_seek()          # serves 50
+    assert served == [30, 50]
+
+
+def test_facade_seek_publishes_latest_target(qt_app):
+    vm = VideoModel()
+    try:
+        vm.seek(7480)
+        # The facade publishes to the worker's pending slot (drained later) and
+        # caches the position for synchronous reads.
+        assert vm._worker._pending_seek_ms == 7480
+        assert vm._last_seek_position == 7480
+    finally:
+        vm.shutdown()

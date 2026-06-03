@@ -219,6 +219,12 @@ class _VideoDecodeWorker(QObject):
         self._playback_timer.timeout.connect(self._on_playback_tick)
         self._playback_timer.setTimerType(Qt.TimerType.PreciseTimer)
 
+        # Seek coalescing (PR-V3): the facade publishes the latest drag target
+        # to _pending_seek_ms and pings _drain_seek; intermediate targets are
+        # superseded so a fast slider drag doesn't decode every waypoint.
+        self._pending_seek_ms: Optional[int] = None
+        self._last_drained_seek: Optional[int] = None
+
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
@@ -417,6 +423,8 @@ class _VideoDecodeWorker(QObject):
         self._last_tick_monotonic = None
         self._late_tick_count = 0
         self._ontime_tick_count = 0
+        self._pending_seek_ms = None
+        self._last_drained_seek = None
 
     def _decode_next_frame(self) -> Optional[av.VideoFrame]:
         """Pull the next decoded video frame from the demuxer.
@@ -694,6 +702,20 @@ class _VideoDecodeWorker(QObject):
     # ------------------------------------------------------------------ #
     # Seek / step
     # ------------------------------------------------------------------ #
+
+    @Slot()
+    def _drain_seek(self) -> None:
+        """Coalesced seek entry point (PR-V3).
+
+        Reads the latest target the facade published to ``_pending_seek_ms`` and
+        seeks to it, skipping a target already served. Rapid drag pings collapse
+        to the newest position instead of decoding every waypoint.
+        """
+        ms = self._pending_seek_ms
+        if ms is None or ms == self._last_drained_seek:
+            return
+        self._last_drained_seek = ms
+        self.seek(ms)
 
     @Slot(int)
     def seek(self, position_ms: int) -> bool:
@@ -1053,11 +1075,12 @@ class VideoModel(QObject):
         QMetaObject.invokeMethod(self._worker, "toggle_play", Qt.QueuedConnection)
 
     def seek(self, position_ms: int) -> bool:
-        self._last_seek_position = int(position_ms)
-        QMetaObject.invokeMethod(
-            self._worker, "seek", Qt.QueuedConnection,
-            Q_ARG(int, int(position_ms)),
-        )
+        ms = int(position_ms)
+        self._last_seek_position = ms
+        # Coalesce rapid seeks (slider drag): publish the latest target and ping
+        # the worker to drain it; intermediate targets are superseded (PR-V3).
+        self._worker._pending_seek_ms = ms
+        QMetaObject.invokeMethod(self._worker, "_drain_seek", Qt.QueuedConnection)
         return True
 
     def seek_with_retry(self, position_ms: int, retries: int = 3) -> bool:
