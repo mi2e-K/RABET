@@ -14,16 +14,17 @@ from models.project_model import ProjectModel
 from views.main_window import MainWindow
 from views.project_view import ProjectView
 from views.log_viewer_dialog import LogViewerDialog
-from views.visualization_view import VisualizationView  # Add visualization view import
-from views.reliability_view import ReliabilityView  # 1.3.2: Reliability tab
+# NOTE (PR-STARTUP-02): VisualizationView / ReliabilityView are imported lazily
+# inside _ensure_visualization / _ensure_reliability so matplotlib (and the
+# reliability stats stack) do not load at startup -- Annotation-first shell.
 
 from controllers.video_controller import VideoController
 from controllers.annotation_controller import AnnotationController
 from controllers.action_map_controller import ActionMapController
 from controllers.analysis_controller import AnalysisController
 from controllers.project_controller import ProjectController
-from controllers.visualization_controller import VisualizationController  # Add visualization controller import
-from controllers.reliability_controller import ReliabilityController  # 1.3.2
+# VisualizationController / ReliabilityController: lazily imported in
+# _ensure_visualization / _ensure_reliability (see note above).
 
 from utils.file_manager import FileManager
 from utils.log_manager import LogManager
@@ -238,6 +239,9 @@ class AppController(QObject):
         """
         if self.visualization_view is not None:
             return
+        # Lazy import (PR-STARTUP-02): matplotlib loads only on first open.
+        from controllers.visualization_controller import VisualizationController
+        from views.visualization_view import VisualizationView
         self.visualization_view = VisualizationView()
         self._visualization_container.layout().addWidget(self.visualization_view)
         self.visualization_controller = VisualizationController(
@@ -253,6 +257,9 @@ class AppController(QObject):
         """Lazily construct the Reliability view + controller (Phase 5-2)."""
         if self.reliability_view is not None:
             return
+        # Lazy import (PR-STARTUP-02): pingouin/scipy load only on first open.
+        from controllers.reliability_controller import ReliabilityController
+        from views.reliability_view import ReliabilityView
         self.reliability_view = ReliabilityView()
         self._reliability_container.layout().addWidget(self.reliability_view)
         self.reliability_controller = ReliabilityController(
