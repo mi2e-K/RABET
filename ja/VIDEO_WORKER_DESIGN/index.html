@@ -1,0 +1,1090 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time Animal Behavior Event Tagger — a self-contained desktop app for video-based behavioural annotation, analysis, and reliability assessment.">
+      
+      
+        <meta name="author" content="Koshiro Mitsui">
+      
+      
+        <link rel="canonical" href="https://mi2e-k.github.io/RABET/ja/VIDEO_WORKER_DESIGN/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="/RABET/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ja">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>動画デコードの worker スレッド化 設計（NEXT_TASKS A-1） - RABET</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#worker-next_tasks-a-1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../" title="RABET" class="md-header__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RABET
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              動画デコードの worker スレッド化 設計（NEXT_TASKS A-1）
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="言語切り替え">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/RABET/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ja" class="md-select__link">
+              日本語
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="共有" aria-label="共有" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../USER_GUIDE/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ユーザーガイド
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../CSV_FORMAT/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  リファレンス
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="RABET" class="md-nav__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    RABET
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../USER_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ユーザーガイド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../reliability/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リファレンス
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    リファレンス
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CSV_FORMAT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSV 形式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BUILD_MACOS_LINUX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ソースからビルド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 目的
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 現状（実装前に理解すること）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 現状（実装前に理解すること）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 公開 API（壊してはいけない契約）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-controller-controllersvideo_controllerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Controller 連携（controllers/video_controller.py）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 制約
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-workermovetothread" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 設計: ファサード + worker（moveToThread）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. 設計: ファサード + worker（moveToThread）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-seek-coalescing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 seek の最新優先（coalescing）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-qimage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 QImage の受け渡し
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 安全な停止
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-prpoc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 段階実装（単独 PR、PoC から）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. リスク
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. テスト計画
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 変えてはいけないもの
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 実装計画（確定版・ファサード分離）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. 実装計画（確定版・ファサード分離）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-worker-videomodel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1 worker = いまの VideoModel をリネーム
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-videomodel-qobjectui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2 ファサード = 新 VideoModel（薄い QObject、UI スレッド）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3 ライフサイクル
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-controller-loader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.4 Controller / loader を無改修にできる根拠
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#95" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5 テスト
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="worker-next_tasks-a-1">動画デコードの worker スレッド化 設計（NEXT_TASKS A-1）<a class="headerlink" href="#worker-next_tasks-a-1" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>ステータス</strong>: <strong>実装済み（v1.3.4、PR-V1/V2/V3）</strong>。実機で worker 化を確認済み
+（seek/tick が UI スレッド外＝QThread で実行、エラー・終了時警告なし）。PoC→計測→
+ファサード分離→seek coalescing の順で実施し、各段階 pytest 緑 + 実機確認を経た。</p>
+</blockquote>
+<h2 id="1">1. 目的<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<p>動画のシーク・デコード・フレーム変換（libswscale）を <strong>UI スレッドから worker
+スレッドへ</strong>移し、再生中のカクつき・シーク時の固まりを解消する。RABET の応答性で
+最大の伸びしろ。</p>
+<h2 id="2">2. 現状（実装前に理解すること）<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p><code>models/video_model.py</code>（<code>VideoModel(QObject)</code>, PyAV backend）:</p>
+<ul>
+<li><code>_container</code> / <code>_stream</code> を開いたまま保持。</li>
+<li>再生は <strong>UI スレッドの <code>QTimer</code></strong>（<code>_playback_timer</code>, PreciseTimer）。
+  <code>_on_playback_tick</code> が毎回 <code>_decode_next_frame</code> →（<code>_reformat_to_rgb</code> →
+  <code>_frame_to_qimage</code>）→ <code>frame_ready.emit(QImage)</code> を<strong>同期実行</strong>。</li>
+<li><code>seek(position_ms)</code> も UI スレッドで <code>container.seek(..., backward=True)</code> +
+  複数フレーム decode して「target_pts に最も近いフレーム」を選び emit。</li>
+<li><code>_operation_in_progress</code> は常に False（全 decode が main thread 同期）。</li>
+<li><code>_decode_lock = threading.Lock()</code> は <strong>将来の worker 化を見越して既設</strong>
+  （line 191-194 のコメント）。</li>
+</ul>
+<h3 id="21-api">2.1 公開 API（壊してはいけない契約）<a class="headerlink" href="#21-api" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Signals</strong>: <code>playback_state_changed(bool)</code> / <code>position_changed(int)</code> /
+  <code>duration_changed(int)</code> / <code>video_loaded(str)</code> / <code>error_occurred(str)</code> /
+  <code>frame_ready(QImage)</code> / <code>render_load_changed(bool)</code>。</li>
+<li><strong>メソッド</strong>: <code>load_video</code> / <code>play</code> / <code>pause</code> / <code>stop</code> / <code>seek</code> /
+  <code>seek_with_retry</code> / <code>step_forward</code> / <code>step_backward</code> / <code>toggle_play</code> /
+  <code>set_playback_rate</code> / <code>set_target_display_size</code> / <code>get_duration</code> /
+  <code>get_position</code> / <code>get_frame_rate</code> / <code>is_playing</code> / <code>close</code>。</li>
+<li><strong>内部属性で外部が読むもの</strong>: <code>_frame_duration_ms</code>（<code>annotation_controller.py</code>,
+  <code>annotation_model.py</code> が参照）、<code>_video_path</code> / <code>_duration</code> /
+  <code>_last_seek_position</code>（<code>video_controller.py</code> が参照）。</li>
+</ul>
+<h3 id="22-controller-controllersvideo_controllerpy">2.2 Controller 連携（<code>controllers/video_controller.py</code>）<a class="headerlink" href="#22-controller-controllersvideo_controllerpy" title="Permanent link">&para;</a></h3>
+<ul>
+<li>view → model: <code>play_clicked→play</code> / <code>pause_clicked→pause</code> /
+  <code>seek_requested→handle_seek→seek</code> / <code>step_*</code> / <code>rate_changed→set_playback_rate</code> /
+  <code>display_size_changed→set_target_display_size</code>。</li>
+<li>model → view: <code>frame_ready→view.display_frame</code> /
+  <code>position_changed→view.set_position</code> / <code>duration_changed→set_duration</code> /
+  <code>playback_state_changed→set_playing_state</code> / <code>render_load_changed→</code>(scaling)。</li>
+<li>seek-intent モデル（user/step/loader）が <code>handle_seek</code> / <code>notify_seek_intent</code>
+  と連動。worker 化後も intent の発火タイミング（seek 前に origin をタグ）を保つ。</li>
+</ul>
+<h2 id="3">3. 制約<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>PyAV の <code>container</code> / <code>stream</code> はスレッドセーフでない</strong>。全 av 操作
+  （open/decode/seek/close）を<strong>単一 worker スレッド</strong>に集約する。UI スレッドは
+  一切 av に触れない。</li>
+<li>上記 API（signals・メソッド名・内部属性）を維持し、View/Controller は原則無改修。</li>
+<li><code>frame_ready(QImage)</code> は cross-thread emit になる（queued connection）。</li>
+</ul>
+<h2 id="4-workermovetothread">4. 設計: ファサード + worker（moveToThread）<a class="headerlink" href="#4-workermovetothread" title="Permanent link">&para;</a></h2>
+<p><code>VideoModel</code> を <strong>UI スレッド側のファサード</strong>に保ち、内部に
+<code>VideoDecodeWorker(QObject)</code> を新設して <strong><code>QThread</code> に <code>moveToThread</code></strong> する。</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>[UI thread]                         [worker thread]
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>VideoModel (facade, QObject)        VideoDecodeWorker (QObject)
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  play()/pause()/seek()/...  ---&gt;     _container / _stream (PyAV)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    (queued invoke)                   _playback_timer (lives here)
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  frame_ready/position_changed &lt;---   decode/reformat/QImage
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    (queued signal)                   emits results
+</span></code></pre></div>
+<ul>
+<li><strong>UI→worker</strong>: ファサードの各メソッドは <code>QMetaObject.invokeMethod(worker,
+  "...", Qt.QueuedConnection, ...)</code>（または worker の slot に繋いだ内部 signal）で
+  worker スレッドへ委譲。ファサードは<strong>即座に返る</strong>（UI を待たせない）。</li>
+<li><strong>worker→UI</strong>: worker が <code>frame_ready</code> / <code>position_changed</code> /
+  <code>playback_state_changed</code> / <code>render_load_changed</code> / <code>error_occurred</code> を emit。
+  ファサードはこれを<strong>そのまま再 emit</strong>（または worker の signal を直接 View に接続）
+  して既存の接続を生かす。</li>
+<li><strong><code>_playback_timer</code> は worker スレッドで生成・start</strong>。<code>moveToThread</code> 後に
+  worker 内で QTimer を作れば tick は worker スレッドで発火する。</li>
+</ul>
+<h3 id="41-seek-coalescing">4.1 seek の最新優先（coalescing）<a class="headerlink" href="#41-seek-coalescing" title="Permanent link">&para;</a></h3>
+<p>スライダードラッグ中の大量 seek で worker が詰まらないよう、worker に
+<code>_pending_seek_ms</code>（最新値1つ）を持たせ、処理直前に最新だけを実行、中間 seek は捨てる。
+<code>invokeMethod</code> の queue に積むのではなく「最新値を上書き + wake」する方式。</p>
+<h3 id="42-qimage">4.2 QImage の受け渡し<a class="headerlink" href="#42-qimage" title="Permanent link">&para;</a></h3>
+<p><code>_frame_to_qimage</code> は worker で<strong>毎回新規 QImage</strong>を生成して emit
+（現状も新規生成）。implicitly shared だが worker は以後そのバッファを触らないため
+read-only な受信側と競合しない。安全側に倒すなら emit 直前に <code>.copy()</code>。</p>
+<h3 id="43">4.3 安全な停止<a class="headerlink" href="#43" title="Permanent link">&para;</a></h3>
+<p><code>close()</code> / アプリ終了で worker に stop を投げ、<code>_playback_timer.stop()</code> →
+<code>container</code> close → <code>QThread.quit()</code> → <code>wait(timeout)</code>。進行中 decode は
+<code>_decode_lock</code> で保護。<code>__del__</code> / <code>closeEvent</code> 経路でも join を保証。</p>
+<h2 id="5-prpoc">5. 段階実装（単独 PR、PoC から）<a class="headerlink" href="#5-prpoc" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>PR-V1（PoC・計測）</strong>: <code>VideoDecodeWorker</code> + <code>QThread</code> スケルトン。<code>load_video</code> と
+  <strong>単発 seek のみ</strong> worker 化し、シーク応答（要求→<code>frame_ready</code>）の前後を計測。
+  再生は現状のまま。最小リスクで効果検証 → 本実装の Go/No-Go 判断。</li>
+<li><strong>PR-V2（再生 worker 化）</strong>: <code>_playback_timer</code> と <code>_on_playback_tick</code> を worker へ。
+  <code>render_load_changed</code>（負荷適応）の計測も worker 基準に。</li>
+<li><strong>PR-V3（仕上げ）</strong>: seek coalescing（§4.1）、<code>step_forward/backward</code>、FBF、
+  <code>close</code> 時の安全停止（§4.3）、エッジケース（load 中 seek、EOF、rate 変更）。</li>
+</ul>
+<h2 id="6">6. リスク<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>高</strong>: PyAV スレッド安全性 → 全 av を1スレッドに集約しないとクラッシュ/破損。</li>
+<li><strong>中</strong>: <code>QTimer</code> の moveToThread 後挙動、queued connection の1フレーム遅延、
+  QImage の cross-thread 共有、seek-intent の発火順序。</li>
+<li><strong>回帰</strong>: 再生 / シーク / step / FBF / annotation 連携。各段階で pytest（offscreen）</li>
+<li>実動画での手動再生・シーク確認。</li>
+</ul>
+<h2 id="7">7. テスト計画<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<ul>
+<li>worker のコマンド委譲（play/pause/seek が worker slot に届く）。</li>
+<li><code>frame_ready</code> が UI スレッドで受信される（queued connection）。</li>
+<li>seek coalescing（連続 seek で最新だけ処理、中間は捨てる）。</li>
+<li><code>close</code> 時にスレッドが join し container が閉じる（リーク/クラッシュなし）。</li>
+<li>既存 API の後方互換（signals・メソッド・<code>_frame_duration_ms</code> 等の属性）。</li>
+<li>実デコードは CI で重く不安定 → <strong>モック container</strong> か数フレームの極小テスト動画で。</li>
+</ul>
+<h2 id="8">8. 変えてはいけないもの<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
+<ul>
+<li>§2.1 の signals / メソッド名 / 内部属性。</li>
+<li>seek-intent（user/step/loader）の発火タイミングと、preserve-on-rewind の挙動。</li>
+<li>フレーム精度シーク（closest-frame 選択）の結果。</li>
+</ul>
+<h2 id="9">9. 実装計画（確定版・ファサード分離）<a class="headerlink" href="#9" title="Permanent link">&para;</a></h2>
+<p>VideoModel 全体を読み切った結果、ファサード方式を以下で確定する。Controller /
+loader は <strong>原則無改修</strong>（理由は 9.4）。</p>
+<h3 id="91-worker-videomodel">9.1 worker = いまの VideoModel をリネーム<a class="headerlink" href="#91-worker-videomodel" title="Permanent link">&para;</a></h3>
+<p><code>class VideoModel</code> → <code>class _VideoDecodeWorker(QObject)</code>（av ロジックは丸ごと
+据え置き）。コマンドメソッドの <code>@Slot</code> 状況:</p>
+<ul>
+<li><strong>既に @Slot</strong>: <code>load_video(str)</code> / <code>play()</code> / <code>pause()</code> / <code>stop()</code> /
+  <code>toggle_play()</code> / <code>set_target_display_size(int,int)</code>（設計者の地ならし）。</li>
+<li><strong>@Slot を追加</strong>: <code>seek(int)</code> / <code>seek_with_retry(int)</code> / <code>step_forward(int)</code> /
+  <code>step_backward(int)</code> / <code>set_playback_rate(float)</code> / <code>close()</code>。</li>
+<li>新 signal <code>frame_rate_changed(float, int)</code> を追加し、<code>_populate_stream_metadata</code>
+  の末尾で <code>emit(self._frame_rate, self._frame_duration_ms)</code>。</li>
+</ul>
+<h3 id="92-videomodel-qobjectui">9.2 ファサード = 新 VideoModel（薄い QObject、UI スレッド）<a class="headerlink" href="#92-videomodel-qobjectui" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>__init__</code>: <code>_VideoDecodeWorker</code> を生成 → <code>QThread</code> に <code>moveToThread</code> →
+  <code>thread.start()</code>。worker の全 signal を中継スロットへ接続。</li>
+<li><strong>commands（非同期）</strong>: <code>play/pause/stop/toggle_play/seek/seek_with_retry/
+  step_forward/step_backward/set_playback_rate/set_target_display_size</code> は
+  <code>QMetaObject.invokeMethod(worker, name, Qt.QueuedConnection, Q_ARG(...))</code>。
+  戻り値は使われていない（<code>video_controller</code> は seek/step の戻り値を破棄）。</li>
+<li><strong>同期が要るもの</strong>: <code>load_video(str)-&gt;bool</code> と <code>close()</code> は
+  <code>Qt.BlockingQueuedConnection</code>（load は成否を <code>ThreadedVideoLoader</code> が受けるため、
+  close はスレッド停止前に container を確実に閉じるため）。load の同期待ちは
+  現状（UI スレッド load）と同じブロック特性なので許容（A-1 の主目的は再生/シーク）。</li>
+<li><strong>state reads（同期・スレッド安全）</strong>: <code>get_position/get_duration/
+  get_frame_rate/is_playing</code> と属性 <code>_video_path/_duration/_last_seek_position/
+  _frame_duration_ms</code> は <strong>UI 側キャッシュ</strong>を返す。</li>
+<li><strong>signal 中継</strong>: <code>position_changed/duration_changed/playback_state_changed/
+  video_loaded/frame_rate_changed</code> を受けてキャッシュ更新 + 自身の同名 signal を
+  再 emit。<code>frame_ready/render_load_changed/error_occurred</code> は素通し。</li>
+</ul>
+<h3 id="93">9.3 ライフサイクル<a class="headerlink" href="#93" title="Permanent link">&para;</a></h3>
+<p><code>close()</code> → worker.close（Blocking）→ <code>thread.quit()</code> → <code>thread.wait(timeout)</code>。
+ファサードが <code>QThread</code> を内包するので、<code>app_controller</code>（<code>VideoModel()</code>）と
+<code>disagreement_review_view</code>（別インスタンス）の生成箇所は<strong>無改修</strong>。</p>
+<h3 id="94-controller-loader">9.4 Controller / loader を無改修にできる根拠<a class="headerlink" href="#94-controller-loader" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>view.play_clicked.connect(model.play)</code> 等の <strong>signal→slot 接続は、ファサードが
+  内部で worker に invoke するので、ファサード側は通常メソッドのまま</strong>。</li>
+<li>直接呼び出し（<code>model.seek(...)</code> / <code>stop()</code> / <code>close()</code> / <code>step_*</code>）も、ファサードの
+  メソッド内で invoke するため、呼び出し側は不変。</li>
+<li><code>ThreadedVideoLoader._perform_load</code> の <code>success = model.load_video(...)</code> は
+  BlockingQueued で同期 bool が返るため不変。</li>
+</ul>
+<h3 id="95">9.5 テスト<a class="headerlink" href="#95" title="Permanent link">&para;</a></h3>
+<ul>
+<li>ファサード: commands が worker slot に届く（QSignalSpy / フラグ）、frame_ready 等が
+  中継される、get_* がキャッシュを返す、close でスレッド join。</li>
+<li>実 decode はモック worker か極小動画で。既存 video 関連テストの回帰。</li>
+<li>実機: 再生・シーク・step・FBF・annotation 連携の手動確認（必須）。</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mi2e-K/RABET" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://doi.org/10.5281/zenodo.15313025" target="_blank" rel="noopener" title="Zenodo (concept DOI)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.827 11.163a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-1.207.365 2.3 2.3 0 0 0-.495.454c-.06.075-.125.175-.163.236a2.7 2.7 0 0 0-.205.464c.006-.27.046-.672.205-.898V8.522a.43.43 0 0 0-.137-.322.44.44 0 0 0-.317-.132.44.44 0 0 0-.323.132.44.44 0 0 0-.13.322v1.733a2.4 2.4 0 0 0-.592-.299 2.12 2.12 0 0 0-1.5.06 2.16 2.16 0 0 0-1.153 1.147l-.024.06a2.2 2.2 0 0 0-.49-.747 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-.843.167 2.2 2.2 0 0 0-.687.46 2.1 2.1 0 0 0-.465.687l-.023.056-.023-.056a2.155 2.155 0 0 0-1.99-1.314q-.452 0-.842.167a2.2 2.2 0 0 0-.686.46q-.3.293-.467.687l-.02.053-.022-.053a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.523-.627 2.1 2.1 0 0 0-.842.167 2.2 2.2 0 0 0-.642.418v-.072a.463.463 0 0 0-.462-.463H.534a.463.463 0 0 0 0 .926h2.549L.09 14.85a.46.46 0 0 0-.091.275v.302c0 .256.207.463.463.463h3.45a.46.46 0 0 0 .462-.43 2.17 2.17 0 0 0 1.347.472q.669 0 1.195-.36.425-.287.67-.72v.626q0 .191.13.322a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .138-.322v-1.62h-.002l.002-.003H7.36a.44.44 0 0 0-.418.287l-.074.152a1.23 1.23 0 0 1-.46.532 1.23 1.23 0 0 1-.687.197q-.252 0-.485-.095a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477v-.406h4.028V12a1.24 1.24 0 0 1 .365-.878 1.24 1.24 0 0 1 .89-.365q.251 0 .484.095.233.097.4.27t.269.4.102.478v3.477q0 .192.13.323a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .137-.323v-.623a2.14 2.14 0 0 0 1.867 1.078q.442 0 .837-.168.393-.166.693-.46a2.1 2.1 0 0 0 .484-.733l.018.047q.167.392.466.687.3.292.687.46.388.166.843.167a2.15 2.15 0 0 0 1.523-.627q.293-.294.467-.687l.024-.06.024.06q.172.392.466.687a2.14 2.14 0 0 0 1.524.627q.442 0 .837-.168a2.2 2.2 0 0 0 .693-.46A2.12 2.12 0 0 0 24 13.782V12a2.1 2.1 0 0 0-.173-.837M1.16 14.965l2.42-3.259q-.019.144-.02.294v1.78q0 .443.174.838.081.185.19.347zm5.818-2.5h-2.51V12a1.24 1.24 0 0 1 .765-1.147q.228-.096.49-.096.253 0 .484.095.235.097.4.27.167.173.27.4.101.227.1.478zm8.057 1.316a1.25 1.25 0 0 1-1.254 1.243q-.252 0-.485-.096a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.269-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .482.095.235.097.4.27.167.173.27.4.1.228.101.478zm4.028 0q0 .25-.1.478a1.4 1.4 0 0 1-.27.4 1.2 1.2 0 0 1-.4.27 1.3 1.3 0 0 1-.484.094 1.23 1.23 0 0 1-.89-.364 1.24 1.24 0 0 1-.366-.878V12q0-.25.102-.478a1.4 1.4 0 0 1 .27-.4 1.2 1.2 0 0 1 .4-.27 1.3 1.3 0 0 1 .484-.095 1.25 1.25 0 0 1 .89.365 1.25 1.25 0 0 1 .364.878zm4.028 0a1.22 1.22 0 0 1-.364.878q-.175.173-.4.27a1.3 1.3 0 0 1-.49.094 1.3 1.3 0 0 1-.485-.095 1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .483.095.234.097.4.27.167.173.27.4.1.228.1.478v1.78z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.tooltips"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

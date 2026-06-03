@@ -1,0 +1,2734 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Real-time Animal Behavior Event Tagger — a self-contained desktop app for video-based behavioural annotation, analysis, and reliability assessment.">
+      
+      
+        <meta name="author" content="Koshiro Mitsui">
+      
+      
+        <link rel="canonical" href="https://mi2e-k.github.io/RABET/ja/PERFORMANCE_OPTIMIZATION_PLAN/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="/RABET/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="ja">
+        
+      
+      
+      <link rel="icon" href="../../assets/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>RABET パフォーマンス・保守性最適化計画 - RABET</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rabet" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../" title="RABET" class="md-header__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RABET
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              RABET パフォーマンス・保守性最適化計画
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-orange" data-md-color-accent="orange"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="言語切り替え">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/RABET/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="ja" class="md-select__link">
+              日本語
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="共有" aria-label="共有" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="タブ" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ホーム
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../USER_GUIDE/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  ユーザーガイド
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../CSV_FORMAT/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  リファレンス
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="RABET" class="md-nav__button md-logo" aria-label="RABET" data-md-component="logo">
+      
+  <img src="../../assets/logo.png" alt="logo">
+
+    </a>
+    RABET
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mi2e-K/RABET" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mi2e-K/RABET
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../USER_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ユーザーガイド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../reliability/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リファレンス
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    リファレンス
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CSV_FORMAT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CSV 形式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BUILD_MACOS_LINUX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ソースからビルド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 目的
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 現状の要約
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 現状の要約">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 強み
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 主なボトルネック候補
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 [統合追補] 性能最適化と正しさバグの交差点
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2.3 [統合追補] 性能最適化と正しさバグの交差点">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-video-workerphase-3-rewind" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        交差点A: Video worker化（Phase 3）⊗ rewind誤検出
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-analysisphase-13-dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        交差点B: Analysis正規化一回化（Phase 1.3）⊗ DataFrame破壊的変更
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-timeline-cullingphase-11-event-onset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        交差点C: Timeline culling（Phase 1.1）⊗ event の onset非整列
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 最適化の原則
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 計測基盤
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. 計測基盤">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-benchmark-fixture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 追加するbenchmark fixture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 計測項目
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 計測コードの配置案
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 [統合追補] 計測条件の固定
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 実装ロードマップ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-0-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0: Baseline固定
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 0: Baseline固定">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#00-pr-00-test-foundation-versioning-pytest-ciphase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.0 [統合追補] PR-00: test foundation の versioning と pytest CI（全Phaseの前提）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        作業
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#golden-codex-medium-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [統合追補] golden の二層化（Codexレビュー Medium-4）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        完了条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: 低リスク改善
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 1: 低リスク改善">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-timelinesort-cacheculling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Timelineのsort cacheと可視範囲culling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-visualization-redraw-debounce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Visualization redraw debounce
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-analysis-dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Analysis DataFrame正規化の一回化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-atomic-save" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Atomic save共通化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 [統合追補] ログレベルの是正
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-action_map-active-event-bug-012" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 [統合追補] action_map 編集と active event の整合（BUG-012）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-2-visualization-renderer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Visualization renderer改善
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 2: Visualization renderer改善">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-axesplot-linecollection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Axes.plot() 反復を LineCollection へ置換
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-precompute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 非同期precompute
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-25-seek-intent-hotfix-phase-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2.5: [統合追補] seek intent の明示化（最優先 hotfix / Phase 3 の前提）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-3-loadpipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: 動画loadと再生pipeline
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 3: 動画loadと再生pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-threadedvideoloader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 ThreadedVideoLoader の再設計
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-decode-workerlatest-frame-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Decode workerとlatest-frame queue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-processevents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 processEvents() の削減
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-4-reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: Reliability最適化
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 4: Reliability最適化">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 不一致候補生成の近傍探索化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-reliabilityworker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Reliability計算のworker化
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: 起動時間と配布サイズ
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 5: 起動時間と配布サイズ">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-splash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 splashの早期表示
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-lazy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 重いタブのlazy初期化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 bundleサイズ調査
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6: 保守性改善
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 6: 保守性改善">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-visualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Visualization分割
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-video-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Video command境界の明確化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 型と例外境界
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 優先順位付き作業一覧
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. 優先順位付き作業一覧">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 [統合追補] バグ修正を畳み込んだ改訂優先順位
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. テスト戦略
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. テスト戦略">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 常時CIで回すテスト
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 release前に回すテスト
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 変更を分割するPR案
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. リスクと対策
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 最初の2週間で実施する内容
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. 最初の2週間で実施する内容">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#week-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#week-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Week 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 完了の定義
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. [統合追補] セキュリティ / 脆弱性監査
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. [統合追補] セキュリティ / 脆弱性監査">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#125-csv-formula-injection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.5 CSV formula injection（出力時のエスケープ欠如）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#126-projectjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.6 外部 project.json からの任意ファイル起動
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#127-bug-013" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12.7 メトリクス検証のバイパス（BUG-013 の補強）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rabet">RABET パフォーマンス・保守性最適化計画<a class="headerlink" href="#rabet" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>この版について（統合レビュー追補 / 2026-06 / rev.2）</strong>
+本文書は Codex が起草した性能・保守性の最適化計画を骨格とし、別途実施した
+コードレビュー（バグ点検・最適化点検）の結果を重ね合わせた統合版です。
+追補箇所は <strong>「[統合追補]」</strong> で明示しています。統合の核心は、
+<em>性能最適化が触る3つの箇所（Timeline index / Analysis正規化 / Video position）
+には正しさバグが同居しているため、同じPRで畳み込んで解消する</em> という交差視点
+（§2.3 を参照）です。Codexの原則「研究上の意味を変えない」は維持します。</p>
+<p><strong>rev.2 での変更（Codexレビューフィードバックの反映）</strong>:
+- tests/・tools/ が <code>.gitignore</code> 対象で CI が ruff のみという計画矛盾を受け、
+  <strong>PR-00「test foundation の versioning と pytest CI」を全ての前提として新設</strong>（§Phase 0）。
+- データ保全バグである seek intent 修正を <strong>Timeline最適化より前の最優先 hotfix</strong> へ繰上げ（§Phase 2.5 / §6.4）。
+- action map 修正案から <strong>Model間直接依存を除去</strong>し、signal + Controller調停へ（§Phase 1.6）。
+- atomic save 周辺を <strong>PR分割</strong>（§Phase 1.4 / §8）。
+- Timeline cache の <strong>所有境界</strong>、Video worker の <strong>ADR</strong>、<strong>計測条件の固定</strong> を明文化。
+- <strong>セキュリティ/脆弱性の節（§12.5）を新設</strong>（CSV formula injection、外部 project.json からの open）。</p>
+<p><strong>関連文書</strong>: 正しさバグの詳細・再現・修正方針は <code>docs/BUG_AUDIT_REPORT.ja.md</code>
+（Codex作成、27件）に集約。本書は <em>性能PRが触る箇所で同居するバグ</em> のみを交差参照し、
+純粋なデータ保全バグの一次情報はそちらを参照する。実装者は両文書を併読すること。</p>
+</blockquote>
+<h2 id="1">1. 目的<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<p>この文書は、RABET 1.3.3 の現在の実装を前提に、性能、応答性、
+保守性、配布サイズを段階的に改善するための実装計画をまとめたものです。</p>
+<p>最優先の目標は、研究者が長時間動画や多数の行動イベントを扱うときに、
+GUIが固まったように見える時間を減らすことです。単純な高速化だけでなく、
+計測可能性、回帰テスト、責務分離も改善対象に含めます。</p>
+<p>この計画は機能追加よりも既存挙動の維持を重視します。CSVの意味、
+フレーム境界、録画中の状態遷移、Reliabilityの統計定義は変更しません。</p>
+<h2 id="2">2. 現状の要約<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<h3 id="21">2.1 強み<a class="headerlink" href="#21" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>models/video_model.py</code> はPyAVを使用し、Fractionベースのseek、
+  decode時の縮小、container解放を実装しています。</li>
+<li><code>models/analysis_model.py</code> のtotal-time metricは、重複区間を二重加算せず、
+  NumPy配列によるsweepで集計します。</li>
+<li>interval analysisの基本行動指標は、behaviorごとの配列を事前生成しており、
+  古い <code>interval x behavior x iterrows</code> 構造から改善されています。</li>
+<li><code>views/disagreement_review_view.py</code> はQPainterベースのrasterを使用し、
+  playhead更新ごとのMatplotlib figure再構築を避けています。</li>
+<li>PyInstallerスクリプトは不要なQt moduleやoptional dependencyを除外し、
+  配布サイズを抑える工夫を持っています。</li>
+</ul>
+<h3 id="22">2.2 主なボトルネック候補<a class="headerlink" href="#22" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>領域</th>
+<th>現状</th>
+<th>懸念</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>起動</td>
+<td><code>main.py</code> がsplash表示前に <code>AppController</code> をimport</td>
+<td>Visualization、Reliability、Matplotlibのimportコストが初期表示を遅らせる</td>
+</tr>
+<tr>
+<td>動画load</td>
+<td><code>utils/threaded_loader.py</code> が <code>QTimer</code> で段階表示し、実loadはGUI threadで実行</td>
+<td><code>av.open()</code> と最初のdecode中はevent loopが止まる</td>
+</tr>
+<tr>
+<td>動画再生</td>
+<td><code>VideoModel</code> のdecode、RGB変換、QImage生成がGUI thread上</td>
+<td>高解像度・重いcodecで操作応答が落ちる</td>
+</tr>
+<tr>
+<td>Timeline</td>
+<td>repaintごとに全イベントをsortし、全イベントを走査</td>
+<td>長時間動画・大量eventで再生中負荷が増える</td>
+</tr>
+<tr>
+<td>Visualization</td>
+<td>設定変更ごとにFigureをclearし、event単位で <code>Axes.plot()</code></td>
+<td>大量CSVで操作ごとの再描画が重い</td>
+</tr>
+<tr>
+<td>Analysis</td>
+<td>intervalごとにDataFrameをcopy・clipし、custom metricを再計算</td>
+<td>interval数とCSV数に比例して不要な処理が増える</td>
+</tr>
+<tr>
+<td>Reliability</td>
+<td>不一致レビュー候補を同一behavior内の全組合せで生成</td>
+<td>密な反復行動でO(N x M)になる</td>
+</tr>
+<tr>
+<td>保存</td>
+<td>settingsとproject manifestを直接上書き</td>
+<td>性能より堅牢性の問題だが、保存処理の一元化が必要</td>
+</tr>
+<tr>
+<td>ログ</td>
+<td>Analysisがmetric詳細をINFOで出力</td>
+<td>大量CSVでI/Oとログ肥大化が発生する</td>
+</tr>
+<tr>
+<td>配布</td>
+<td>ReliabilityのためSciPy全submodule収集が必要</td>
+<td>bundleサイズとonefile起動時間が増える</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 [統合追補] 性能最適化と正しさバグの交差点<a class="headerlink" href="#23" title="Permanent link">&para;</a></h3>
+<p>コードレビューで見つかった潜在バグのうち3件は、上表の性能ボトルネックと
+<strong>同じコード箇所に同居</strong>しています。性能PRがこれらの挙動を偶発的に変えると
+回帰を生むため、最適化と同じPRで畳み込んで解消する方針とします。</p>
+<blockquote>
+<p><strong>バグ監査レポートとの対応</strong>: 交差点A は <code>BUG_AUDIT_REPORT.ja.md</code> の
+<strong>BUG-027（rewind guard の寿命）</strong> および本書の seek intent 修正に対応。
+交差点B（df破壊的変更）・交差点C（onset非整列）は監査レポートに独立項目が
+無い本書固有の指摘で、性能PRと同時に解消する。なお監査レポートの
+<strong>BUG-002（FBF active残留）/ BUG-010（未割当key tracking）/ BUG-022
+（focus loss）</strong> は active-event lifecycle のデータ保全バグであり、性能PRとは
+独立に Patch 1 で先行修正する（本書の最適化対象ではないが、Timeline/Annotation を
+触るPRと衝突するため実装順序の調整が必要）。</p>
+</blockquote>
+<h4 id="a-video-workerphase-3-rewind">交差点A: Video worker化（Phase 3）⊗ rewind誤検出<a class="headerlink" href="#a-video-workerphase-3-rewind" title="Permanent link">&para;</a></h4>
+<p>現状の rewind 検出は「<code>position_changed</code> の値が前回より減った」という <em>暗黙の
+連続性</em> に依存します（<code>controllers/annotation_controller.py</code> の
+<code>on_position_changed</code> と <code>handle_seek</code>）。<code>_skip_next_seek_rewind</code> という
+one-shot guard が loader 由来の seek=0 を辛うじて除外しているだけです。</p>
+<p>Video を worker 化すると <code>position_changed</code> の発火順序・粒度が変わり、
+latest-frame queue で間引かれた position が来た瞬間にこのロジックは誤爆します。
+さらに現状でも、録画中・FBFモードで <code>step_backward</code> すると <code>handle_seek</code> 経由で
+rewind 判定が走り、<code>preserve_on_rewind</code> が無効だと既存アノテーションが消えます
+（重大度 High の既知バグ）。</p>
+<blockquote>
+<p><strong>必須前提</strong>: Phase 3 の前に rewind 検出を「position の連続性」ではなく
+<strong>「ユーザーの明示的 seek intent」ベース</strong> に作り直す。再生中の
+<code>position_changed</code> では rewind 判定しない。これを独立PR
+<strong>「Phase 2.5: seek intent の明示化」</strong> として先行実施する（§Phase 2.5）。</p>
+</blockquote>
+<h4 id="b-analysisphase-13-dataframe">交差点B: Analysis正規化一回化（Phase 1.3）⊗ DataFrame破壊的変更<a class="headerlink" href="#b-analysisphase-13-dataframe" title="Permanent link">&para;</a></h4>
+<p>Phase 1.3 の「load直後に正規化済みDataFrameを保持」は正しい方向ですが、現状
+<code>_calculate_behavior_latency()</code> が<strong>引数の df を破壊的に書き換えています</strong>
+（<code>df['Onset'] = pd.to_numeric(...)</code>）。後続メトリックに副作用が伝播します。</p>
+<blockquote>
+<p><strong>統合方針</strong>: 「正規化を一回化する」=「以降の analyze 関数は df を <em>read-only</em>
+として扱う」と設計原則を明文化する。これで重複変換削減（性能）と副作用除去
+（正しさ）が同じ設計判断で解決し、golden CSV test が不変条件を保証する。</p>
+</blockquote>
+<h4 id="c-timeline-cullingphase-11-event-onset">交差点C: Timeline culling（Phase 1.1）⊗ event の onset非整列<a class="headerlink" href="#c-timeline-cullingphase-11-event-onset" title="Permanent link">&para;</a></h4>
+<p>Phase 1.1 の「<code>set_events()</code> 時に onset順 index を更新」は、別の既知バグも解きます。
+現状 <code>AnnotationModel._events</code> は終了順（=挿入順）に積まれるため、FBFで先に開いた
+イベントが後に閉じると export CSV が onset 順になりません。</p>
+<blockquote>
+<p><strong>統合方針</strong>: culling 用 onset順 index と <code>export_to_csv</code> の onset sort を
+<strong>1つの「正規化済み event view」に集約</strong>する。性能とデータ整合を一度に解決する。</p>
+</blockquote>
+<h2 id="3">3. 最適化の原則<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>計測してから変更する。</strong>
+   改善前後で同一fixtureを実行し、時間、メモリ、GUI停止時間を比較します。</li>
+<li><strong>研究上の意味を変えない。</strong>
+   CSV値、seek位置、interval境界、Reliability結果をgolden fixtureで固定します。</li>
+<li><strong>GUI threadを短時間で返す。</strong>
+   目安として、通常操作のGUI thread占有は50ms未満、重い操作でも
+   進捗表示とcancel導線を提供します。</li>
+<li><strong>段階導入する。</strong>
+   最初に低リスクの計測・cache・debounceを入れ、worker化はその後に行います。</li>
+<li><strong>最適化と責務分離を同時に進める。</strong>
+   特にVisualizationはViewからrendererとplot stateを分離します。</li>
+</ol>
+<h2 id="4">4. 計測基盤<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<h3 id="41-benchmark-fixture">4.1 追加するbenchmark fixture<a class="headerlink" href="#41-benchmark-fixture" title="Permanent link">&para;</a></h3>
+<p><code>tests/performance/fixtures/</code> に生成スクリプトと小さなmanifestを置きます。
+巨大fixture本体はGit管理せず、決定的に再生成できる形にします。</p>
+<table>
+<thead>
+<tr>
+<th>Fixture</th>
+<th>内容</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>video_short_cfr_30fps.mp4</code></td>
+<td>30秒、720p、CFR</td>
+<td>seekとloadの基準</td>
+</tr>
+<tr>
+<td><code>video_long_cfr_30fps.mp4</code></td>
+<td>60分、1080p、CFR</td>
+<td>長時間seek</td>
+</tr>
+<tr>
+<td><code>video_vfr_sample.mp4</code></td>
+<td>VFR</td>
+<td>フレーム境界回帰</td>
+</tr>
+<tr>
+<td><code>events_1k.csv</code></td>
+<td>10 behaviors、1,000 events</td>
+<td>通常規模</td>
+</tr>
+<tr>
+<td><code>events_10k.csv</code></td>
+<td>20 behaviors、10,000 events</td>
+<td>中規模</td>
+</tr>
+<tr>
+<td><code>events_100k.csv</code></td>
+<td>30 behaviors、100,000 events</td>
+<td>stress</td>
+</tr>
+<tr>
+<td><code>batch_100x10k/</code></td>
+<td>100 CSV、各10,000 events</td>
+<td>Analysis batch</td>
+</tr>
+<tr>
+<td><code>dense_reliability_pair/</code></td>
+<td>同一behaviorの短い反復event多数</td>
+<td>不一致matching</td>
+</tr>
+</tbody>
+</table>
+<p>動画fixtureがCIに重すぎる場合は、ローカルperformance suiteとrelease前QAに限定し、
+CIでは短いfixtureまたはmock decoderを使用します。</p>
+<h3 id="42">4.2 計測項目<a class="headerlink" href="#42" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>測定方法</th>
+<th>初期目標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cold start</td>
+<td>process開始からmain window表示まで</td>
+<td>開発環境でbaseline比30%以上短縮</td>
+</tr>
+<tr>
+<td>first useful paint</td>
+<td>splash表示、main window表示、最初の操作可能時刻を記録</td>
+<td>splashを早期表示</td>
+</tr>
+<tr>
+<td>video load</td>
+<td>load開始から最初のframe表示まで</td>
+<td>720p短編で1秒以内を目標</td>
+</tr>
+<tr>
+<td>GUI停止時間</td>
+<td>50ms超のevent-loop遅延を記録</td>
+<td>通常操作で100ms超を原則ゼロ</td>
+</tr>
+<tr>
+<td>seek latency</td>
+<td>seek要求からframe表示まで</td>
+<td>95 percentileを記録し継続監視</td>
+</tr>
+<tr>
+<td>playback dropped frame</td>
+<td>目標frame数と表示frame数の差</td>
+<td>codec別にbaseline改善</td>
+</tr>
+<tr>
+<td>Timeline repaint</td>
+<td>1k / 10k / 100k eventのpaint時間</td>
+<td>10k eventで16-33ms範囲を目標</td>
+</tr>
+<tr>
+<td>raster redraw</td>
+<td>CSV数、event数、mode別の描画時間</td>
+<td>10k eventで操作可能な範囲へ</td>
+</tr>
+<tr>
+<td>batch analysis</td>
+<td>CSV数、interval設定別の完了時間</td>
+<td>baseline比50%以上短縮を狙う</td>
+</tr>
+<tr>
+<td>Reliability review build</td>
+<td>event密度別の候補生成時間</td>
+<td>高密度fixtureで線形に近づける</td>
+</tr>
+<tr>
+<td>RSS</td>
+<td>起動後、動画load後、plot後、繰り返し操作後</td>
+<td>反復操作で増加し続けない</td>
+</tr>
+<tr>
+<td>package size</td>
+<td>OS別archiveと展開後サイズ</td>
+<td>baselineを記録し増分をレビュー</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43">4.3 計測コードの配置案<a class="headerlink" href="#43" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tests/
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  performance/
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    conftest.py
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    test_analysis_performance.py
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    test_reliability_performance.py
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    test_timeline_performance.py
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>tools/
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  generate_performance_fixtures.py
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  benchmark_startup.py
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  benchmark_video_pipeline.py
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  benchmark_visualization.py
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  report_bundle_size.py
+</span></code></pre></div>
+<p><code>pytest-benchmark</code> の結果はJSONで保存し、release前に前回releaseと比較します。
+GUI停止時間は <code>QElapsedTimer</code> と短周期 <code>QTimer</code> の遅延から観測します。</p>
+<h3 id="44">4.4 [統合追補] 計測条件の固定<a class="headerlink" href="#44" title="Permanent link">&para;</a></h3>
+<p>時間系の数値は環境依存が大きいため、各 baseline reportに以下を必ず併記する。
+これが無いと「速くなった」の判定が再現できない。</p>
+<ul>
+<li>参照マシン: CPU / 物理コア数 / RAM / ストレージ種別（SSD/HDD）</li>
+<li><strong>ストレージ位置の区別</strong>: ローカルディスク vs OneDrive/クラウド同期配下
+  （RABET の既定パスは OneDrive 配下になりがちで I/O 特性が大きく変わる）</li>
+<li>OS とバージョン、Python / PyAV / FFmpeg / PySide6 / pandas / matplotlib のバージョン</li>
+<li>動画 fixture の codec・解像度・fps・CFR/VFR</li>
+<li>warm-up 回数（最低1回は破棄）、計測反復回数、報告は <strong>median と p95</strong>（平均値単独は禁止）</li>
+<li>電源プロファイル（ノートPCは「高パフォーマンス」固定）、他プロセス影響の最小化</li>
+</ul>
+<blockquote>
+<p><strong>CIでの扱い</strong>: 共有CIランナーは時間が不安定なため、<strong>時間系メトリクスは当面
+report-only（fail判定に使わない）</strong> とする。回帰 fail 判定は管理された参照マシンで
+行う。CIでは「正しさ（golden / semantic invariant）」と「明らかな計算量退行
+（例: event数に対し O(N^2) になっていないかの相対比較）」のみを fail 条件とする。</p>
+</blockquote>
+<h2 id="5">5. 実装ロードマップ<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<h2 id="phase-0-baseline">Phase 0: Baseline固定<a class="headerlink" href="#phase-0-baseline" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 1-2日<br />
+<strong>優先度:</strong> P0<br />
+<strong>狙い:</strong> 改善前の数値と研究上の出力を固定する。</p>
+<h3 id="00-pr-00-test-foundation-versioning-pytest-ciphase">0.0 [統合追補] PR-00: test foundation の versioning と pytest CI（全Phaseの前提）<a class="headerlink" href="#00-pr-00-test-foundation-versioning-pytest-ciphase" title="Permanent link">&para;</a></h3>
+<p><strong>背景（Codexレビュー High-1）</strong>: 現状 <code>.gitignore</code> は <code>tests/</code>（53行目）と
+<code>tools/</code>（56行目）を除外し、CI（<code>.github/workflows/ci.yml</code>）は <strong>ruff のみ</strong>。
+<code>pytest</code> / <code>pytest-benchmark</code> は <code>pyproject.toml</code> の dev extras に既にあり、
+ruff も <code>tests/*</code> の per-file-ignore を持つため、<strong>基盤はほぼ整っており blocker は
+2点だけ</strong>:（a）tests/ が gitignore、（b）pytest job が無い。これを最初に解消しないと、
+本計画が前提とする「CIで回す golden / regression テスト」が成立しない。</p>
+<p><strong>作業</strong></p>
+<ul>
+<li>小型 fixture と pytest スイートを<strong>追跡対象</strong>にする。<strong>決定済み（2026-06）</strong>:
+  <strong><code>tests/</code> を公開リポジトリに含める</strong>（ignore を解除）。これにより公開CIで
+  全テストが回り、再現性と外部貢献の容易さが最大化される。巨大な生成物のみ ignore 継続。</li>
+<li>巨大な生成物（長時間動画など）のみ ignore し、生成スクリプト（<code>tools/</code>）と
+  manifest は追跡する。<code>tools/</code> の ignore も見直す。</li>
+<li>CI に pytest job を追加（ruff job と並列）。時間系 benchmark は <strong>report-only</strong>
+  （§4.4）、正しさ系は fail 条件。</li>
+<li><code>jsonschema</code> を導入する場合は dev/runtime いずれの依存にするか決め、bundle 影響を
+  §5.3 で計測（Phase 1.4 と連動）。</li>
+</ul>
+<p><strong>完了条件</strong></p>
+<ul>
+<li>公開CIで pytest が緑になる（最小でも既存43件 + 本計画で足す回帰テスト）。</li>
+<li>巨大 fixture を含めずにスイートが再生成・実行できる。</li>
+</ul>
+<h3 id="_1">作業<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<ol>
+<li>fixture生成ツールを追加する。</li>
+<li>cold start、動画load、seek、Timeline、Analysis、Visualization、
+   Reliability、RSS、bundleサイズのbaselineを記録する（<strong>§4.4 の計測条件を併記</strong>）。</li>
+<li>Analysis summary、interval CSV、Reliability結果をgolden fixture化する。</li>
+<li>Windowsを必須環境とし、macOS / Linuxはrelease前QAで同じ表を埋める。</li>
+</ol>
+<h3 id="golden-codex-medium-4">[統合追補] golden の二層化（Codexレビュー Medium-4）<a class="headerlink" href="#golden-codex-medium-4" title="Permanent link">&para;</a></h3>
+<p>golden fixture を作る際、<strong>「旧挙動の性能 baseline」と「正しい挙動を示す
+semantic invariant」を必ず分離する</strong>。既知の誤動作（例: FBF時の CSV onset順の乱れ、
+RecordingStart の round-trip で 1フレーム化、shallow-copy された config 既定値）を
+そのまま golden に焼き込むと、後の正しさ修正が「golden を壊す変更」に見えて修正しづらくなる。</p>
+<ul>
+<li><strong>性能 baseline</strong>: 現行の出力バイト列をそのまま固定（差分検知用）。既知バグを含んでよいが、
+  該当行に「これは BUG-xxx の既知挙動」と注記する。</li>
+<li><strong>semantic invariant</strong>: 「あるべき正しい不変条件」をテストで表現（例: 「export CSV は
+  常に onset 昇順」「RecordingStart は zero-duration を保つ」）。<strong>既知バグはここでは
+  xfail/skip として登録</strong>し、修正PRで pass に昇格させる。</li>
+<li>バグ監査レポート（<code>BUG_AUDIT_REPORT.ja.md</code>）の BUG-ID を各 invariant にリンクする。</li>
+</ul>
+<h3 id="_2">完了条件<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>baseline reportが <code>docs/performance/baseline-&lt;version&gt;.md</code> に残る（計測条件込み）。</li>
+<li>最適化PRで比較対象となる固定fixtureがある。</li>
+<li>統計値とCSV出力のgolden testが通る。</li>
+<li><strong>semantic invariant テストが存在し、既知バグは xfail として明示登録されている。</strong></li>
+</ul>
+<h2 id="phase-1">Phase 1: 低リスク改善<a class="headerlink" href="#phase-1" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 3-5日<br />
+<strong>優先度:</strong> P0<br />
+<strong>狙い:</strong> worker設計に入る前に、不要な再処理と保存リスクを減らす。</p>
+<h3 id="11-timelinesort-cacheculling">1.1 Timelineのsort cacheと可視範囲culling<a class="headerlink" href="#11-timelinesort-cacheculling" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>views/timeline_view.py</code></p>
+<p>現状は <code>TimelineCanvas.paintEvent()</code> ごとに <code>_compute_event_levels()</code> と
+<code>draw_order = sorted(...)</code> を実行し、画面外イベントも描画候補として走査します。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li><code>TimelineView.set_events()</code> 時にonset順indexを更新する。</li>
+<li>overlap levelもイベント変更時に計算し、active eventだけ必要時に差分更新する。</li>
+<li>viewportの左右端から可視時間範囲を求め、<code>bisect</code> で候補を絞る。</li>
+<li><code>RecordingStart</code> markerも同じindexで管理する。</li>
+<li>zoom、duration、event追加・削除・更新時だけcacheをinvalidateする。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>既存描画と選択hit-testが一致する。</li>
+<li>10k eventで再生中paint時間をbaseline比50%以上削減する。</li>
+<li>100k eventでも操作不能にならない。</li>
+</ul>
+<blockquote>
+<p><strong>[統合追補] 交差点C を畳み込む</strong>: ここで作る onset順 index を
+<code>AnnotationModel</code> 側の「正規化済み event view」として共有し、
+<code>export_to_csv</code> も同じ順序で出力する。受け入れ条件に
+「export CSV が常に onset 昇順（FBFで終了順が乱れても）」を追加する。
+regression: FBFで2イベントを開始順と逆順に閉じても CSV が onset 順になること。</p>
+<p><strong>[統合追補] 所有境界の明文化（Codexレビュー Medium-6）</strong>: Model と View が
+cache を共有しすぎると結合が強くなる。所有を次のように分ける。
+- <strong>Model（<code>AnnotationModel</code>）が持つもの</strong>: 完了イベントの <em>onset順 snapshot</em>
+  と単調増加する <em>revision 番号</em> のみ。<code>get_events_snapshot() -&gt; (events, revision)</code>。
+  Model は viewport も overlap level も hit-test も知らない。
+- <strong>Timeline（View）が持つもの</strong>: viewport（可視時間範囲）、overlap level、
+  hit-test cache。revision が変わったときだけ再計算する。
+- <strong>active event overlay は completed event と分離</strong>して保持・描画する。active は
+  毎フレーム動く（offset=None で playhead 追従）が、completed snapshot は revision
+  が変わるまで不変。両者を混ぜると毎フレーム全再計算に戻ってしまう。
+- export は Model の onset順 snapshot を使い、Timeline 描画キャッシュには依存しない。</p>
+</blockquote>
+<h3 id="12-visualization-redraw-debounce">1.2 Visualization redraw debounce<a class="headerlink" href="#12-visualization-redraw-debounce" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>views/visualization_view.py</code></p>
+<p>各spinbox、checkbox、選択変更が即座に <code>update_plot()</code> を呼びます。
+連続操作では古い描画が無駄になります。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li><code>schedule_plot_update(reason)</code> を追加する。</li>
+<li>100-200msのsingle-shot <code>QTimer</code> で最後の変更だけ描画する。</li>
+<li>明示的Refresh、export直前、初回loadは即時描画可能にする。</li>
+<li>status labelに <code>Updating plot...</code> を表示する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>slider連続変更で描画回数が大幅に減る。</li>
+<li>export時は最新状態が必ず反映される。</li>
+<li>通常操作で表示内容が変わらない。</li>
+</ul>
+<h3 id="13-analysis-dataframe">1.3 Analysis DataFrame正規化の一回化<a class="headerlink" href="#13-analysis-dataframe" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>models/analysis_model.py</code></p>
+<p>intervalごとに <code>_filter_events_for_interval()</code> がDataFrame全体をcopyし、
+<code>Onset</code> / <code>Offset</code> を再度numeric変換します。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>CSV load直後に正規化済みDataFrameを保持する。</li>
+<li>custom total-time metric用にbehavior別の区間配列を事前生成する。</li>
+<li>intervalごとは配列clipとunion計算だけにする。</li>
+<li>summary-only入力は近似値であることを結果metadataに保持する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>batch fixtureのinterval analysisがbaseline比50%以上短縮する。</li>
+<li>golden CSVが一致する。</li>
+<li>invalid timestampのskip件数が従来と一致する。</li>
+</ul>
+<blockquote>
+<p><strong>[統合追補] 交差点B を畳み込む</strong>: 設計原則として
+「正規化後の analyze 関数は受け取った DataFrame を変更しない（read-only）」を
+明文化する。特に <code>_calculate_behavior_latency()</code> の破壊的 <code>pd.to_numeric</code> 代入を
+除去する。受け入れ条件に「同一 df に latency→total_aggression を連続適用しても
+結果が不変」を追加する。</p>
+</blockquote>
+<h3 id="14-atomic-save">1.4 Atomic save共通化<a class="headerlink" href="#14-atomic-save" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>utils/file_manager.py</code>, <code>models/project_model.py</code>,
+<code>utils/config_manager.py</code></p>
+<p><strong>設計案</strong></p>
+<ul>
+<li><code>save_json_atomic(data, path, backup=True)</code> を追加する。</li>
+<li>同一directoryへtemporary fileを書き、flush、可能なら <code>fsync()</code>、
+  <code>os.replace()</code> で置換する。</li>
+<li><code>project.json</code> は直前版を <code>.bak</code> として保持する。</li>
+<li>settingsはbackup optionalとする。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>write失敗時に既存manifestが壊れない。</li>
+<li>project新規作成時にmanifest保存失敗を成功扱いしない。</li>
+<li>Windows / macOS / Linuxで置換が通る。</li>
+</ul>
+<blockquote>
+<p><strong>[統合追補] PR分割（Codexレビュー Medium-5）</strong>: 当初 atomic save に複数項目を
+同梱する案だったが、レビューとロールバックを容易にするため <strong>別PRに分割</strong>する。
+| PR | 内容 | 補足 |
+| --- | --- | --- |
+| atomic save | <code>save_json_atomic()</code> の導入のみ | temp file + <code>os.replace</code> + <code>.bak</code> |
+| config schema validation | <code>ConfigManager.load_config()</code> の検証 | 壊れた settings.json を明示エラー化 |
+| annotation session reset | <code>clear_events()</code> で <code>_test_duration=None</code> | import→export での test_duration 引き継ぎ解消 |
+| logging是正（→ Phase 1.5） | INFO/DEBUG 整理 | 独立PR |</p>
+<p><strong>jsonschema 導入の注意</strong>: <code>jsonschema</code> は現状 <code>pyproject.toml</code> の依存に <strong>無い</strong>。
+導入するなら（a）runtime 依存にするか dev のみか、（b）PyInstaller bundle サイズへの
+影響、を §5.3 の枠で計測してから決める。軽量で済むなら手書きの型チェックでも可。</p>
+</blockquote>
+<h3 id="15">1.5 [統合追補] ログレベルの是正<a class="headerlink" href="#15" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>models/analysis_model.py</code></p>
+<p>§2.2 の「ログ肥大化」をPhase化する。現状 <code>_analyze_file</code> 等が 1ファイルあたり
+数十行を INFO で出力し、batch analysis で I/O とログ肥大化を招く。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>per-file の metric 明細は DEBUG に格下げし、ファイル単位の集約結果のみ INFO とする。</li>
+<li>latency 計算の逐次トレース（<code>LATENCY CALCULATION DETAILS</code> など）も DEBUG へ。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>100 CSV batch のログ行数がbaseline比で大幅に減る。</li>
+<li><code>--dev</code> の DEBUG ログでは従来同等の情報が得られる。</li>
+</ul>
+<h3 id="16-action_map-active-event-bug-012">1.6 [統合追補] action_map 編集と active event の整合（BUG-012）<a class="headerlink" href="#16-action_map-active-event-bug-012" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>controllers/annotation_controller.py</code>（調停役）, <code>models/action_map_model.py</code>,
+<code>models/annotation_model.py</code></p>
+<p>録画中に action_map から mapping を削除すると、<code>ActionMapModel</code> は
+<code>_active_behaviors</code> を <code>discard</code> する一方、<code>AnnotationModel._active_events</code> には
+残骸イベントが残る（タイムラインに stranded bar が出る）。</p>
+<p><strong>設計方針（Codexレビュー High-3 を反映 — Model間直接依存を作らない）</strong></p>
+<p>当初案「<code>ActionMapModel.remove_mapping()</code> から <code>AnnotationModel.discard_active_event()</code>
+を直接呼ぶ」は <strong>却下</strong>。Model 同士に依存を張ると責務分離が崩れ、テストもしづらくなる。
+<code>ActionMapModel</code> には既に <strong><code>mapping_removed</code> signal</strong>（<code>models/action_map_model.py:267</code>）
+があるので、これを <strong>Controller（または application service）で調停</strong>する。</p>
+<p>さらに、研究用途では <strong>active event の暗黙 discard 自体が危険</strong>（記録途中の行動が
+無言で消える）。<strong>決定済み（2026-06）: (A) 録画中は action map 編集を禁止する</strong>。</p>
+<ul>
+<li>session 開始時に action map の snapshot を固定し、<strong>編集UI（Add/Edit/Remove）は
+  録画停止までロック</strong>する。これが最もシンプルで、進行中イベントの取り違えが原理的に起きない。</li>
+<li>ロック中はボタンを無効化し、ツールチップで「録画中は行動マップを編集できません」と示す。</li>
+<li>（不採用とした代替案: 削除時に現在位置で finalize する案。確認フローとエッジケースが
+  増えるため、まずは編集禁止で運用し、要望があれば将来再検討する。）</li>
+</ul>
+<p>調停は Controller が行い、Model 間の直接呼び出しは作らない（<code>mapping_removed</code> signal は
+保持。録画中ロックにより録画中に発火しなくなるため、残骸 active event の問題も解消する）。</p>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>録画中に active な key の mapping を削除しても <code>_active_events</code> に残骸が残らない。</li>
+<li>確定したイベント（方針B）は export に正しく含まれ、暗黙に消えない。</li>
+<li>Model 間の直接依存が増えていない（<code>ActionMapModel</code> は <code>AnnotationModel</code> を import しない）。</li>
+</ul>
+<h2 id="phase-2-visualization-renderer">Phase 2: Visualization renderer改善<a class="headerlink" href="#phase-2-visualization-renderer" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 4-7日<br />
+<strong>優先度:</strong> P1<br />
+<strong>狙い:</strong> 大量eventのraster redrawを高速化し、Viewの責務を減らす。</p>
+<h3 id="21-axesplot-linecollection">2.1 <code>Axes.plot()</code> 反復を <code>LineCollection</code> へ置換<a class="headerlink" href="#21-axesplot-linecollection" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>views/visualization_view.py</code></p>
+<p>現在はeventごとに <code>Axes.plot()</code> を呼びます。Matplotlib object数がevent数に比例し、
+再描画とメモリ使用量が増えます。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>behavior、file、styleごとに線分配列を作る。</li>
+<li><code>matplotlib.collections.LineCollection</code> を使用する。</li>
+<li>overlay、separate、grouped modeのrendererを分離する。</li>
+<li>event filteringとstyle決定をplot state層へ移す。</li>
+</ul>
+<p><strong>分割案</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>views/
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  visualization_view.py
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  visualization_renderer.py
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>models/
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  visualization_plot_state.py
+</span></code></pre></div>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>PNG / SVG / PDF出力が既存見た目と同等。</li>
+<li>10k event redrawをbaseline比60%以上短縮する。</li>
+<li>redraw反復後にRSSが増加し続けない。</li>
+</ul>
+<h3 id="22-precompute">2.2 非同期precompute<a class="headerlink" href="#22-precompute" title="Permanent link">&para;</a></h3>
+<p><strong>設計案</strong></p>
+<ul>
+<li>CSV load後のevent grouping、recording start抽出、max time計算をworkerへ移す。</li>
+<li>workerはQt widgetやMatplotlib objectに触れない。</li>
+<li>UI threadは完成済みplot payloadを受け取って描画する。</li>
+<li>新しい操作が来たら古いgenerationの結果を捨てる。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>大量CSV load中もcancelと画面切替が反応する。</li>
+<li>stale worker結果で表示が巻き戻らない。</li>
+</ul>
+<h2 id="phase-25-seek-intent-hotfix-phase-3">Phase 2.5: [統合追補] seek intent の明示化（<strong>最優先 hotfix</strong> / Phase 3 の前提）<a class="headerlink" href="#phase-25-seek-intent-hotfix-phase-3" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 2-4日
+<strong>優先度:</strong> P0（<strong>データ保全 hotfix。Timeline最適化 Phase 1.1 より前に実施</strong>）
+<strong>狙い:</strong> rewind 検出を position の連続性依存から切り離し、(1) 録画中の step_backward での
+アノテーション消失を止め、(2) Video worker化を安全にする。</p>
+<blockquote>
+<p><strong>[統合追補] 順序の訂正（Codexレビュー High-2）</strong>: 当初これを優先順位9位/Week2 に
+置いていたが、<strong>録画中・FBF中の step_backward で既存アノテーションが消えるのは
+性能課題ではなくデータ保全バグ</strong>であり、本書自身が「重大」と評価している。よって
+<strong>最小限の回帰テストを添えた独立 hotfix として、Timeline最適化（Phase 1.1）より前に
+着手</strong>する。性能改善のどのPRよりも優先する。</p>
+</blockquote>
+<p>§2.3 交差点A の通り、現状の rewind 検出は <code>controllers/annotation_controller.py:1220</code>
+の <code>handle_seek()</code> で <code>position_changed</code> が減少したことを根拠にしている。Video worker化で
+発火順序・粒度が変わると誤爆する。さらに録画中・FBFモードの <code>step_backward</code> で既存
+アノテーションが消える重大バグも同根（<code>preserve_on_rewind</code> が無効な場合）。</p>
+<p><strong>対象:</strong> <code>controllers/video_controller.py</code>, <code>controllers/annotation_controller.py</code></p>
+<p><strong>設計案</strong></p>
+<ul>
+<li><code>VideoController.handle_seek()</code> / <code>handle_step_backward()</code> が、ユーザー起点の
+  シーク操作を <strong>明示的な seek intent イベント</strong> として annotation_controller に通知する。</li>
+<li><code>annotation_controller</code> は再生中の <code>position_changed</code> では rewind 判定をしない。
+  rewind 判定は seek intent を受けたときだけ行う。</li>
+<li>これにより <code>_skip_next_seek_rewind</code> の one-shot guard は不要化を目指す。</li>
+<li>FBFモードの step は明示 seek だが、preserve を意図する操作として扱い、
+  「巻き戻しただけでアノテーションが消える」挙動を止める。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>録画中・FBF中の step_backward で既存アノテーションが消えない。</li>
+<li>動画切替時の loader 由来 seek=0 が rewind 扱いされない（既存 regression を維持）。</li>
+<li><code>preserve_on_rewind</code> トグルの明示的 rewind 時の挙動は従来通り。</li>
+<li>Phase 3 の worker化後も同じ regression test が通る。</li>
+</ul>
+<h2 id="phase-3-loadpipeline">Phase 3: 動画loadと再生pipeline<a class="headerlink" href="#phase-3-loadpipeline" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 1-2週間<br />
+<strong>優先度:</strong> P1<br />
+<strong>狙い:</strong> 動画を開く瞬間と高解像度再生時のGUI停止を減らす。</p>
+<h3 id="31-threadedvideoloader">3.1 <code>ThreadedVideoLoader</code> の再設計<a class="headerlink" href="#31-threadedvideoloader" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>utils/threaded_loader.py</code>, <code>models/video_model.py</code>,
+<code>controllers/video_controller.py</code></p>
+<p>現状の <code>ThreadedVideoLoader</code> は実threadを作りません。<code>QTimer</code> による段階表示後、
+GUI thread上で <code>VideoModel.load_video()</code> を呼びます。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>worker側でread-only probeを行う。</li>
+<li>probe結果はduration、stream index、fps、time base、最初のframe、
+  error情報を含むDTOとして返す。</li>
+<li>GUI thread側でModel stateをcommitする。</li>
+<li>workerがcontainerを保持する設計にする場合は、以後のdecodeも同じworkerへ寄せる。</li>
+<li>cancel時はgeneration tokenを無効化し、返却結果をcommitしない。</li>
+</ul>
+<p><strong>重要な判断点</strong></p>
+<p>PyAV containerをGUI threadへhandoffするよりも、decode workerがcontainerを所有し続ける
+設計の方がthread ownershipを明確にできます。Phase 3.2とまとめて設計する方が安全です。</p>
+<blockquote>
+<p><strong>[統合追補] エラー細分化を同梱</strong>: worker化で decode エラー処理を書き直す機会に、
+現状一括 catch している <code>(av.error.FFmpegError, OSError)</code> を「codec非対応 /
+ファイル破損 / 権限なし / ストリーム無し」に分解し、研究者向けに <em>次の操作を示す</em>
+メッセージを出す（§6.3 の error/log 分離方針と整合）。</p>
+</blockquote>
+<h3 id="32-decode-workerlatest-frame-queue">3.2 Decode workerとlatest-frame queue<a class="headerlink" href="#32-decode-workerlatest-frame-queue" title="Permanent link">&para;</a></h3>
+<p><strong>設計案</strong></p>
+<ul>
+<li>decode workerがPyAV containerとstreamを所有する。</li>
+<li>UI threadはplay、pause、seek、close、target display sizeをcommandとして送る。</li>
+<li>workerはframeをRGB bufferまたは安全に所有権移譲できる画像DTOとして返す。</li>
+<li>queueは上限を持ち、遅れたframeを溜め込まず最新frameを優先する。</li>
+<li>seekにはgeneration IDを付け、古いdecode結果を破棄する。</li>
+<li>annotation timestampの基準は従来どおりvideo positionとする。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>load中、seek中、4K再生中でもmain windowを移動できる。</li>
+<li>pause後に古いframeが表示されない。</li>
+<li>frame stepが従来のフレーム境界と一致する。</li>
+<li>CFR、VFR、29.97fps fixtureで回帰テストが通る。</li>
+<li>closeと動画切替を100回繰り返してRSSが増加し続けない。</li>
+</ul>
+<blockquote>
+<p><strong>[統合追補] 実装前に ADR を書く（Codexレビュー Medium-8）</strong>: container ownership と
+generation ID の方針は妥当だが、worker 化は状態が複雑なので <strong>着手前に
+<code>docs/adr/</code> に状態遷移図付きの設計判断記録（ADR）を1枚置く</strong>。最低限、次の境界条件を
+図と表で固定してから実装する:
+- <strong><code>av.open()</code> がブロックした場合の cancel</strong>: probe 中のキャンセルでどう抜けるか
+  （worker 終了 vs 放置 + token無効化）。
+- <strong>shutdown timeout</strong>: アプリ終了時に worker が decode 中の場合の待機上限と強制終了。
+- <strong>reload 競合</strong>: 連続で別動画を開いたときの旧 worker / container の解放順序。
+- <strong>queue 上限と drop ポリシー</strong>: latest-frame 優先で何フレームまで保持するか。
+- <strong>annotation timestamp の基準</strong>: 従来どおり video position を真とする（worker の
+  wall-clock ではない）ことを明記。
+- 状態: <code>Idle / Probing / Ready / Playing / Seeking / Closing</code> の遷移と、各状態で
+  受理する command（play/pause/seek/close/resize）を表にする。</p>
+</blockquote>
+<h3 id="33-processevents">3.3 <code>processEvents()</code> の削減<a class="headerlink" href="#33-processevents" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>controllers/video_controller.py</code>, <code>views/visualization_view.py</code>,
+<code>views/reliability_view.py</code></p>
+<p>明示的な <code>processEvents()</code> はre-entrantなsignal処理を招きやすいため、
+worker化とsingle-shot timerで不要になる箇所を削減します。</p>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>overlay、progress bar、cancel操作が正常。</li>
+<li>同一操作の二重実行や状態競合がない。</li>
+</ul>
+<h2 id="phase-4-reliability">Phase 4: Reliability最適化<a class="headerlink" href="#phase-4-reliability" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 3-5日<br />
+<strong>優先度:</strong> P2<br />
+<strong>狙い:</strong> dense eventと複数file比較を扱いやすくする。</p>
+<h3 id="41">4.1 不一致候補生成の近傍探索化<a class="headerlink" href="#41" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>models/reliability_model.py</code></p>
+<p><code>_candidate_pairs_for_behavior()</code> は同一behaviorのreferenceとtraineeを
+全組合せ比較します。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>onset順にsortする。</li>
+<li>two-pointerまたはsliding windowで、overlapまたはmatching window内の候補だけを生成する。</li>
+<li>greedy selectionのsort keyは維持し、既存結果を変えない。</li>
+<li>dense fixtureで既存アルゴリズムとの差分を検証する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>既存43件を含むReliability testが通る。</li>
+<li>通常fixtureのpair結果が一致する。</li>
+<li>dense fixtureで処理時間とpeak memoryが改善する。</li>
+</ul>
+<h3 id="42-reliabilityworker">4.2 Reliability計算のworker化<a class="headerlink" href="#42-reliabilityworker" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>controllers/reliability_controller.py</code></p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>summary解析とdetailed解析をQt workerへ移す。</li>
+<li>progress、cancel、error、resultをsignalで返す。</li>
+<li>pure function部分はQt非依存のまま維持する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>計算中もタブ移動とcancelが機能する。</li>
+<li>cancel後に古い結果が画面へ反映されない。</li>
+</ul>
+<h2 id="phase-5">Phase 5: 起動時間と配布サイズ<a class="headerlink" href="#phase-5" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 3-6日<br />
+<strong>優先度:</strong> P2<br />
+<strong>狙い:</strong> 通常利用者がAnnotation画面を使い始めるまでの時間を短縮する。</p>
+<h3 id="51-splash">5.1 splashの早期表示<a class="headerlink" href="#51-splash" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>main.py</code>, <code>controllers/app_controller.py</code></p>
+<p>現状は <code>main.py</code> が <code>AppController</code> をmodule top-levelでimportし、
+その先でVisualizationとReliabilityのViewをimportします。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>QApplicationとsplashを先に作る。</li>
+<li><code>AppController</code> importをsplash表示後へ移す。</li>
+<li>import段階ごとにprogress messageを更新する。</li>
+</ul>
+<h3 id="52-lazy">5.2 重いタブのlazy初期化<a class="headerlink" href="#52-lazy" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>controllers/app_controller.py</code>, <code>views/main_window.py</code></p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>Annotation、Projectを先に生成する。</li>
+<li>VisualizationとReliabilityはplaceholder tabを置き、初回選択時に生成する。</li>
+<li>Analysisのpandas importも必要性と効果を計測する。</li>
+<li>lazy初期化失敗時はタブ内でerrorを表示する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>cold startをbaseline比30%以上短縮する。</li>
+<li>各タブの初回表示が正常。</li>
+<li>lazy tabを開かないAnnotation-only利用では不要moduleをimportしない。</li>
+</ul>
+<h3 id="53-bundle">5.3 bundleサイズ調査<a class="headerlink" href="#53-bundle" title="Permanent link">&para;</a></h3>
+<p><strong>対象:</strong> <code>packaging/</code></p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>OS別にmodule size reportを出す。</li>
+<li>SciPy、statsmodels、seaborn、pingouinの寄与を可視化する。</li>
+<li>ICC(2,1)の結果互換を維持できる軽量backendまたは局所実装の feasibilityを調査する。</li>
+<li>Reliabilityをoptional plugin化する案はv2候補として比較する。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>archive、展開後、onefile起動時展開時間をreleaseごとに記録する。</li>
+<li>サイズ削減を行う場合、ReliabilityのR参照値cross-validationが通る。</li>
+</ul>
+<h2 id="phase-6">Phase 6: 保守性改善<a class="headerlink" href="#phase-6" title="Permanent link">&para;</a></h2>
+<p><strong>期間目安:</strong> 継続<br />
+<strong>優先度:</strong> P2<br />
+<strong>狙い:</strong> 次の最適化を安全に行える構造へ整える。</p>
+<h3 id="61-visualization">6.1 Visualization分割<a class="headerlink" href="#61-visualization" title="Permanent link">&para;</a></h3>
+<p><code>views/visualization_view.py</code> は約4,000行あり、dialog、状態、描画、exportが集中しています。</p>
+<p><strong>分離候補</strong></p>
+<ul>
+<li><code>VisualizationPlotState</code>: 選択、表示mode、色、group、表示範囲</li>
+<li><code>VisualizationRenderer</code>: Matplotlib payload生成と描画</li>
+<li><code>VisualizationExportService</code>: PNG / SVG / PDF保存</li>
+<li><code>VisualizationDialogs</code>: color map、overlay group編集</li>
+</ul>
+<h3 id="62-video-command">6.2 Video command境界の明確化<a class="headerlink" href="#62-video-command" title="Permanent link">&para;</a></h3>
+<p><code>VideoController</code> が一部で <code>VideoModel</code> のprivate属性を直接変更しています。
+worker化に合わせて <code>close_video()</code>, <code>reset()</code>, <code>seek()</code>, <code>set_target_size()</code> を
+public APIとして整理します。</p>
+<h3 id="63">6.3 型と例外境界<a class="headerlink" href="#63" title="Permanent link">&para;</a></h3>
+<ul>
+<li>worker DTO、plot payload、project manifestに型を付ける。</li>
+<li><code>except Exception</code> はUI境界では維持しつつ、内部処理では狭い例外へ分解する。</li>
+<li>error通知とlogを分け、研究者向けmessageは次の操作を示す。</li>
+</ul>
+<h2 id="6">6. 優先順位付き作業一覧<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>順位</th>
+<th>作業</th>
+<th>期待効果</th>
+<th>難度</th>
+<th>依存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>baseline fixtureと計測スクリプト</td>
+<td>改善判断を可能にする</td>
+<td>M</td>
+<td>なし</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Timeline sort cache + culling</td>
+<td>再生中負荷を低減</td>
+<td>M</td>
+<td>baseline</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Visualization debounce</td>
+<td>小さい変更で体感改善</td>
+<td>S</td>
+<td>baseline</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Analysis正規化一回化</td>
+<td>batch処理短縮</td>
+<td>M</td>
+<td>golden CSV</td>
+</tr>
+<tr>
+<td>5</td>
+<td>atomic save共通化</td>
+<td>保存の堅牢性向上</td>
+<td>S</td>
+<td>保存回帰test</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Visualization <code>LineCollection</code> 化</td>
+<td>raster描画を大幅改善</td>
+<td>M</td>
+<td>debounce</td>
+</tr>
+<tr>
+<td>7</td>
+<td>splash早期表示 + lazy tab</td>
+<td>起動時間短縮</td>
+<td>M</td>
+<td>cold start計測</td>
+</tr>
+<tr>
+<td>8</td>
+<td>video decode worker</td>
+<td>GUI停止を根本改善</td>
+<td>L</td>
+<td>video fixture</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Reliability候補近傍探索</td>
+<td>dense event改善</td>
+<td>M</td>
+<td>dense fixture</td>
+</tr>
+<tr>
+<td>10</td>
+<td>bundle backend調査</td>
+<td>配布サイズ改善余地を定量化</td>
+<td>M</td>
+<td>size report</td>
+</tr>
+</tbody>
+</table>
+<h3 id="64">6.4 [統合追補] バグ修正を畳み込んだ改訂優先順位<a class="headerlink" href="#64" title="Permanent link">&para;</a></h3>
+<p>上表に、コードレビューで見つかった正しさバグ（§2.3 交差点 + バグ監査レポート）を交差させ、
+依存関係で再編した版。<strong>rev.2 の構造変更（Codexレビュー反映）</strong>:
+- <strong>PR-00（test foundation）を最上位の前提</strong>に（High-1）。
+- <strong>seek intent hotfix を順位3へ繰上げ</strong>、Timeline最適化より前に（High-2、データ保全）。
+- データ保全バグ（BUG-001/002/003/004 等）は性能とは別トラックの <strong>Patch 1</strong>
+  （<code>BUG_AUDIT_REPORT.ja.md</code> §10）として並行進行。本表は性能トラック主体で示す。</p>
+<table>
+<thead>
+<tr>
+<th>順位</th>
+<th>作業</th>
+<th>起点</th>
+<th>効果</th>
+<th>難度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><strong>PR-00: tests/・tools/ 追跡 + pytest CI</strong></td>
+<td>High-1</td>
+<td>計画全体の前提</td>
+<td>S-M</td>
+</tr>
+<tr>
+<td>1</td>
+<td>baseline fixture + 計測（条件固定）+ golden 二層化</td>
+<td>Phase 0 + Medium-4/7</td>
+<td>判断基盤</td>
+<td>M</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>AnnotationModel/AnalysisModel の unit test 整備</strong></td>
+<td>統合追補</td>
+<td>リファクタ前の安全網</td>
+<td>M</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>seek intent明示化（hotfix）</strong></td>
+<td>Phase 2.5 + 交差点A</td>
+<td>データ保全 + worker化前提</td>
+<td>M</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Timeline cache+culling + onset順index共有（所有境界明文化）</td>
+<td>Phase 1.1 + 交差点C + Medium-6</td>
+<td>再生中負荷↓ + CSV整合</td>
+<td>M</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Visualization debounce</td>
+<td>Phase 1.2</td>
+<td>体感改善</td>
+<td>S</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Analysis正規化一回化（df read-only化）</td>
+<td>Phase 1.3 + 交差点B</td>
+<td>batch↓ + 副作用解消</td>
+<td>M</td>
+</tr>
+<tr>
+<td>7</td>
+<td>atomic save（分割PR）</td>
+<td>Phase 1.4</td>
+<td>保存堅牢化</td>
+<td>S</td>
+</tr>
+<tr>
+<td>8</td>
+<td>config schema validation（分割PR）</td>
+<td>Phase 1.4 + 追補</td>
+<td>設定堅牢化</td>
+<td>S</td>
+</tr>
+<tr>
+<td>9</td>
+<td>ログレベル是正 / action_map整合（signal調停）</td>
+<td>Phase 1.5/1.6</td>
+<td>I/O↓ + データ整合</td>
+<td>S</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>CSV出力の硬化（formula injection + UTF-8）</strong></td>
+<td>§12.5 + BUG-005</td>
+<td>データ共有安全性</td>
+<td>S</td>
+</tr>
+<tr>
+<td>11</td>
+<td>LineCollection化 + renderer分離 + 非同期precompute</td>
+<td>Phase 2</td>
+<td>raster描画↓</td>
+<td>M</td>
+</tr>
+<tr>
+<td>12</td>
+<td>splash早期 + lazy tab</td>
+<td>Phase 5.&#8533;.2</td>
+<td>起動時間↓</td>
+<td>M</td>
+</tr>
+<tr>
+<td>13</td>
+<td>video worker（ADR先行）+ processEvents削減 + PyAVエラー細分化</td>
+<td>Phase 3 + Medium-8</td>
+<td>GUI停止根治</td>
+<td>L</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Reliability近傍探索 + worker化</td>
+<td>Phase 4</td>
+<td>dense event↓ / UI応答</td>
+<td>M</td>
+</tr>
+<tr>
+<td>15</td>
+<td>bundle調査（jsonschema影響含む）</td>
+<td>Phase 5.3</td>
+<td>配布サイズ</td>
+<td>M</td>
+</tr>
+<tr>
+<td>16</td>
+<td>保守性（型 / 例外 / magic number / Visualization分割）</td>
+<td>Phase 6</td>
+<td>継続</td>
+<td>継続</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. テスト戦略<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<h3 id="71-ci">7.1 常時CIで回すテスト<a class="headerlink" href="#71-ci" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Analysis golden CSV round-trip</li>
+<li>interval境界、重複event、空interval</li>
+<li>Reliability既存testとdense matching小規模fixture</li>
+<li>Timeline cache invalidationとhit-test</li>
+<li>atomic save失敗時の旧manifest維持</li>
+<li>lazy tab初期化</li>
+<li>worker command順序: load、pause、seek、close、reload</li>
+</ul>
+<p><strong>[統合追補] CIに追加するテスト</strong>（現状 tests/ は Reliability のみで annotation 中核が未カバー）</p>
+<ul>
+<li>AnnotationModel ライフサイクル: start/end、同一キー重複press、release欠落、
+  重複release、最小1フレーム補正、offset&lt;onset の clamp</li>
+<li>end_event の <code>try/finally</code> で active_events が必ず空になる（"FBF won't stop" 回帰）</li>
+<li>action_map の mapping 削除時に active event が残らない（Phase 1.6 回帰）</li>
+<li>CSV round-trip で onset 昇順が保証される（交差点C 回帰）</li>
+<li>seek intent: 録画中・FBF中の step_backward でアノテーションが消えない（Phase 2.5 回帰）</li>
+<li>同一 df への latency→total_aggression 連続適用で結果不変（交差点B 回帰）</li>
+</ul>
+<h3 id="72-release">7.2 release前に回すテスト<a class="headerlink" href="#72-release" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Windows / macOS / Linuxの実動画loadとseek</li>
+<li>日本語、空白、OneDrive配下path</li>
+<li><strong>[統合追補] 日本語IME ON 状態での behavior キー入力</strong>（<code>QKeyEvent.text()</code> が
+  空になり全キーが取りこぼされる懸念。<code>event.key()</code> からの ASCII フォールバック要検証）</li>
+<li><strong>[統合追補] 録画中の action_map 編集 / 複数 RecordingStart の latency 計算</strong></li>
+<li>4K動画、60分動画、VFR動画</li>
+<li>100k event Timeline</li>
+<li>100 CSV batch analysis</li>
+<li>Visualization mode別10k / 100k event export</li>
+<li>Reliability dense event pair</li>
+<li>動画切替100回、plot redraw100回、Reliability dialog open/close100回のRSS推移</li>
+<li>PyInstaller成果物の起動時間とサイズ</li>
+</ul>
+<h2 id="8-pr">8. 変更を分割するPR案<a class="headerlink" href="#8-pr" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>PR</th>
+<th>内容</th>
+<th>変更範囲</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PR-01</td>
+<td>performance fixture、benchmark script、baseline report</td>
+<td><code>tests/performance/</code>, <code>tools/</code>, <code>docs/performance/</code></td>
+</tr>
+<tr>
+<td>PR-02</td>
+<td>Timeline cacheと可視範囲culling</td>
+<td><code>views/timeline_view.py</code></td>
+</tr>
+<tr>
+<td>PR-03</td>
+<td>Visualization debounce</td>
+<td><code>views/visualization_view.py</code></td>
+</tr>
+<tr>
+<td>PR-04</td>
+<td>Analysis正規化一回化</td>
+<td><code>models/analysis_model.py</code></td>
+</tr>
+<tr>
+<td>PR-05</td>
+<td>atomic JSON save</td>
+<td><code>utils/file_manager.py</code>, Project、Config</td>
+</tr>
+<tr>
+<td>PR-06</td>
+<td>Visualization renderer分離と <code>LineCollection</code></td>
+<td>Visualization関連</td>
+</tr>
+<tr>
+<td>PR-07</td>
+<td>splash早期化、Visualization / Reliability lazy tab</td>
+<td>startup関連</td>
+</tr>
+<tr>
+<td>PR-08</td>
+<td>Video worker prototype</td>
+<td>Video関連</td>
+</tr>
+<tr>
+<td>PR-09</td>
+<td>Video worker本導入と回帰test</td>
+<td>Video関連</td>
+</tr>
+<tr>
+<td>PR-10</td>
+<td>Reliability近傍探索とworker化</td>
+<td>Reliability関連</td>
+</tr>
+<tr>
+<td>PR-11</td>
+<td>bundle size reportと採否判断</td>
+<td><code>packaging/</code>, <code>tools/</code></td>
+</tr>
+</tbody>
+</table>
+<p>各PRは、対象領域以外の挙動変更を含めないようにします。特にVideo workerは、
+Timeline、Annotation、Project修正と同じPRへ混ぜません。</p>
+<blockquote>
+<p><strong>[統合追補] PR分割の補足（rev.2）</strong>
+| PR | 内容 | 変更範囲 |
+| --- | --- | --- |
+| <strong>PR-00</strong> | <strong>tests/・tools/ の追跡 + pytest CI job</strong>（全PRの前提・最初にマージ） | <code>.gitignore</code>, <code>.github/workflows/ci.yml</code>, <code>pyproject.toml</code> |
+| PR-01b | AnnotationModel/AnalysisModel unit test 整備 | <code>tests/</code> |
+| <strong>PR-02a</strong> | <strong>seek intent明示化（hotfix・Timeline最適化より前）</strong> | Video、Annotation |
+| PR-05b1 | atomic save | FileManager、Project、Config |
+| PR-05b2 | config schema validation | Config |
+| PR-05b3 | test_durationリセット / ログレベル是正 | Annotation、Analysis |
+| PR-05c | action_map整合（signal調停・Model間依存を作らない） | AnnotationController、ActionMap |
+| PR-10a | <strong>CSV出力硬化（formula injection + UTF-8）</strong> | Annotation、Analysis export |</p>
+<p>Codexレビュー反映: PR-00 を最初に。PR-05b 系は <strong>3つに分割</strong>（atomic / schema /
+reset+log）してレビューとロールバックを容易に。seek intent（PR-02a）は video worker
+（PR-08/09）の <strong>前</strong>、かつ Timeline 最適化（PR-02）よりも <strong>前</strong>にマージする。
+action_map 整合（PR-05c）は Model 間直接依存を作らず Controller で調停する。</p>
+</blockquote>
+<h2 id="9">9. リスクと対策<a class="headerlink" href="#9" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>リスク</th>
+<th>対策</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>worker化でseek後に古いframeが表示される</td>
+<td>generation IDでstale frameを破棄</td>
+</tr>
+<tr>
+<td>thread終了時にPyAV containerが残る</td>
+<td>owner worker内でcloseし、終了待ちをtest</td>
+</tr>
+<tr>
+<td>Timeline cacheがイベント更新に追従しない</td>
+<td>mutationごとのinvalidate test</td>
+</tr>
+<tr>
+<td>Visualization高速化で見た目が変わる</td>
+<td>mode別golden imageとSVG構造のsmoke test</td>
+</tr>
+<tr>
+<td>Analysis高速化でinterval境界が変わる</td>
+<td>closed-open境界のfixtureを固定</td>
+</tr>
+<tr>
+<td>Reliability高速化でpair選択が変わる</td>
+<td>現行pair一覧をgolden化し、変更は明示レビュー</td>
+</tr>
+<tr>
+<td>lazy importで初回タブ表示だけ失敗する</td>
+<td>placeholder、error表示、初回表示test</td>
+</tr>
+<tr>
+<td>bundle削減でReliabilityだけ壊れる</td>
+<td>packaged executableでICC / alpha smoke test</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-2">10. 最初の2週間で実施する内容<a class="headerlink" href="#10-2" title="Permanent link">&para;</a></h2>
+<h3 id="week-1">Week 1<a class="headerlink" href="#week-1" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>[統合追補・最優先] PR-00 を出す</strong>: <code>tests/</code>・<code>tools/</code> を追跡対象にし、CI に
+   pytest job を追加（既存43件を緑に）。これが無いと以降の golden / regression が
+   CI で保証されない（Codexレビュー High-1）。</li>
+<li>benchmark fixture生成スクリプトを作る（<strong>§4.4 の計測条件を report に固定</strong>）。</li>
+<li>startup、Timeline、Analysis、Visualization、Reliability、bundleサイズのbaselineを取る。</li>
+<li><strong>golden を二層化</strong>: 性能baseline（既知バグ込み・注記付き）と semantic invariant
+   （あるべき不変条件・既知バグは xfail）を分離する（Codexレビュー Medium-4）。</li>
+<li><strong>[統合追補] AnnotationModel/AnalysisModel の unit test を書く</strong>
+   （リファクタ前の安全網。現状 annotation 中核が未カバーのため最優先）。</li>
+<li><strong>[統合追補・hotfix] seek intent明示化（Phase 2.5）を実装する</strong>
+   （録画中 step_backward のアノテーション消失を止める。<strong>Timeline最適化より前</strong>。
+   Codexレビュー High-2）。</li>
+</ol>
+<h3 id="week-2">Week 2<a class="headerlink" href="#week-2" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Timeline cache + culling を実装する（<strong>onset順index共有で交差点Cも解消</strong>、
+   <strong>所有境界を Model=snapshot+revision / View=viewport+overlap+hit-test に分離</strong>）。</li>
+<li>Visualization debounceを実装する。</li>
+<li>Analysisの正規化一回化とinterval custom metric最適化を行う
+   （<strong>df read-only化で交差点B = 破壊的変更バグも同時解消</strong>）。</li>
+<li>atomic JSON save を導入する（<strong>schema validation・reset+log は別PRに分割</strong>）。</li>
+<li>action_map整合（<strong>signal + Controller調停</strong>で。Model間直接依存は作らない）。</li>
+<li><strong>Video worker の ADR（状態遷移図 + 境界条件）を書く</strong>（実装は次スプリント）。</li>
+<li>Visualization <code>LineCollection</code> prototypeを作り、描画差分を確認する。</li>
+<li>2週間時点のbefore / after reportを残す。</li>
+</ol>
+<blockquote>
+<p>Codexレビュー反映: (1) PR-00 を最初に置き CI 基盤を先に整える。(2) seek intent
+明示化を <strong>Week1 の hotfix</strong> へ繰上げ（データ保全のため Timeline 最適化より前）。
+(3) Video worker は実装前に ADR を Week2 で固める（着手は次スプリント）。</p>
+</blockquote>
+<h2 id="11">11. 完了の定義<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<p>最適化は「コードが速そうに見える」時点では完了としません。次を満たしたときに
+対象Phaseを完了とします。</p>
+<ul>
+<li>fixtureと計測方法が再現可能である。</li>
+<li>baselineとの比較値が文書に残っている。</li>
+<li>CSV、統計値、フレーム境界の回帰テストが通る。</li>
+<li>GUI停止時間とRSSが悪化していない。</li>
+<li>Windowsで動作確認し、release対象ならmacOS / Linuxでもsmoke testが通る。</li>
+<li>新しい複雑性が責務分離またはコメントで説明されている。</li>
+<li><strong>[統合追補] 正しさ回帰がない</strong>: 性能PRが偶発的に既存の正しさ挙動を変えて
+  いないことを、annotation lifecycle / rewind(seek intent) / onset順 の
+  regression test で保証する（§2.3 交差点A・B・C への対応）。</li>
+</ul>
+<h2 id="12">12. [統合追補] セキュリティ / 脆弱性監査<a class="headerlink" href="#12" title="Permanent link">&para;</a></h2>
+<p>追加監査で見つかった、性能・正しさとは別軸の <strong>脆弱性</strong> 候補。研究データの
+共有（CSV・project フォルダの受け渡し）を前提とすると無視できない。Codex の
+バグ監査レポートにも本書 rev.1 にも無かった新規発見。</p>
+<h3 id="125-csv-formula-injection">12.5 CSV formula injection（出力時のエスケープ欠如）<a class="headerlink" href="#125-csv-formula-injection" title="Permanent link">&para;</a></h3>
+<p><strong>重要度:</strong> Medium（研究データ共有時）
+<strong>対象:</strong> <code>models/annotation_model.py::export_to_csv</code>,
+<code>models/analysis_model.py::_export_standard_summary / _export_interval_summary</code></p>
+<p>behavior 名は ActionMapDialog の behavior フィールドで <strong>無制限入力</strong>できる
+（<code>views/action_map_view.py</code> の validator は <em>key</em> のみ単一英数字に制限し、
+behavior ラベルは制約なし）。animal_id は CSV ファイル名由来。これらが export 時に
+<strong>エスケープなしでそのまま書き込まれる</strong>。</p>
+<p>セル値が <code>=</code> / <code>+</code> / <code>-</code> / <code>@</code> / TAB / CR で始まると、Excel・LibreOffice・
+Google Sheets で開いた瞬間に <strong>数式として評価</strong>される（CSV injection / formula
+injection）。研究室間で annotation/summary CSV を共有する文脈では、悪意ある（または
+事故的な）behavior 名 <code>=HYPERLINK(...)</code> や <code>=cmd|...</code> が他者の端末で実行され得る。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>export 時、セル先頭が危険文字（<code>= + - @</code> TAB CR）なら <strong>先頭にシングルクォート
+  <code>'</code> を付与</strong>するか、セル全体をクォートして無害化する。</li>
+<li>behavior 名・animal_id・metric 名・project description など <strong>ユーザー入力由来の
+  文字列セル全て</strong>に適用する。数値セルは対象外。</li>
+<li>§Phase 1.4 / 順位10 の「CSV出力硬化」PR で、BUG-005（UTF-8 統一）と同じ
+  export 経路の硬化として <strong>同時に</strong>実施する。</li>
+<li>ラウンドトリップ時にクォートを正しく剥がせること（<code>csv.reader</code> 前提）を回帰テスト化。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li><code>=cmd</code> で始まる behavior 名を含む CSV を Excel で開いても数式評価されない。</li>
+<li>import→export→import で behavior 名が変化しない（クォートが二重化しない）。</li>
+</ul>
+<h3 id="126-projectjson">12.6 外部 project.json からの任意ファイル起動<a class="headerlink" href="#126-projectjson" title="Permanent link">&para;</a></h3>
+<p><strong>重要度:</strong> Low-Medium
+<strong>対象:</strong> <code>controllers/project_controller.py::_open_with_default_application</code></p>
+<p>プロジェクトの「ファイルを開く」は <code>os.startfile()</code> / <code>subprocess.run(['open'|'xdg-open', path])</code>
+に <strong>project.json 由来のパスをそのまま渡す</strong>。<code>_open_video</code> / <code>_open_annotation</code> /
+<code>_open_action_map</code> / <code>_open_analysis</code> が全て同じヘルパに集約され、<strong>拡張子・種別検証が無い</strong>。</p>
+<p>共有された（あるいは改ざんされた）project.json が実行ファイルや <code>.desktop</code> / <code>.lnk</code> を
+指していると、ユーザーの「開く」操作で OS ハンドラ経由で起動され得る。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>開く前に <strong>file_type と拡張子の整合</strong>を検証（videos なら動画拡張子、annotations なら
+  <code>.csv</code> 等）。想定外の拡張子は警告ダイアログ + 続行確認。</li>
+<li>解決パスが <strong>プロジェクト配下 or 既知の許可ディレクトリ</strong>にあることを確認。</li>
+<li>実行可能拡張子（<code>.exe</code> <code>.bat</code> <code>.cmd</code> <code>.sh</code> <code>.desktop</code> <code>.lnk</code> など）は既定で拒否。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>project.json に仕込んだ実行ファイルパスが「開く」で起動されない。</li>
+<li>正規の動画/CSV/JSON は従来通り開ける。</li>
+</ul>
+<h3 id="127-bug-013">12.7 メトリクス検証のバイパス（BUG-013 の補強）<a class="headerlink" href="#127-bug-013" title="Permanent link">&para;</a></h3>
+<p><strong>重要度:</strong> Medium
+<strong>対象:</strong> <code>models/analysis_config.py::replace_metrics</code></p>
+<p><code>add_latency_metric</code> / <code>add_total_time_metric</code> は各リスト内の名前重複のみ検査するが、
+<strong>メトリクス設定ダイアログのコミット経路 <code>replace_metrics()</code> は検証を一切行わない</strong>
+（docstring は「将来ここに不変条件を集約」とあるが未実装）。このため latency と
+total-time に同名メトリクスを設定でき、<code>_analyze_file</code> の
+<code>name.lower().replace(' ', '_')</code> で生成される slug が衝突し、結果 dict が上書きされる
+（<code>BUG_AUDIT_REPORT.ja.md</code> BUG-013）。</p>
+<p><strong>設計案</strong></p>
+<ul>
+<li>修正は <code>add_*</code> ではなく <strong><code>replace_metrics()</code> に置く</strong>（全コミット経路がここを通る）。</li>
+<li>全カテゴリ横断で <strong>正規化後 slug の一意制約</strong>を検証し、衝突時はエラーを返してダイアログで通知。</li>
+</ul>
+<p><strong>受け入れ条件</strong></p>
+<ul>
+<li>latency と total-time に同名（または同一 slug 化される名前）を設定するとコミットが拒否される。</li>
+<li>既存の正当な設定は影響を受けない。</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/mi2e-K/RABET" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://doi.org/10.5281/zenodo.15313025" target="_blank" rel="noopener" title="Zenodo (concept DOI)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.827 11.163a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-1.207.365 2.3 2.3 0 0 0-.495.454c-.06.075-.125.175-.163.236a2.7 2.7 0 0 0-.205.464c.006-.27.046-.672.205-.898V8.522a.43.43 0 0 0-.137-.322.44.44 0 0 0-.317-.132.44.44 0 0 0-.323.132.44.44 0 0 0-.13.322v1.733a2.4 2.4 0 0 0-.592-.299 2.12 2.12 0 0 0-1.5.06 2.16 2.16 0 0 0-1.153 1.147l-.024.06a2.2 2.2 0 0 0-.49-.747 2.15 2.15 0 0 0-1.524-.627 2.1 2.1 0 0 0-.843.167 2.2 2.2 0 0 0-.687.46 2.1 2.1 0 0 0-.465.687l-.023.056-.023-.056a2.155 2.155 0 0 0-1.99-1.314q-.452 0-.842.167a2.2 2.2 0 0 0-.686.46q-.3.293-.467.687l-.02.053-.022-.053a2.2 2.2 0 0 0-.467-.687 2.15 2.15 0 0 0-1.523-.627 2.1 2.1 0 0 0-.842.167 2.2 2.2 0 0 0-.642.418v-.072a.463.463 0 0 0-.462-.463H.534a.463.463 0 0 0 0 .926h2.549L.09 14.85a.46.46 0 0 0-.091.275v.302c0 .256.207.463.463.463h3.45a.46.46 0 0 0 .462-.43 2.17 2.17 0 0 0 1.347.472q.669 0 1.195-.36.425-.287.67-.72v.626q0 .191.13.322a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .138-.322v-1.62h-.002l.002-.003H7.36a.44.44 0 0 0-.418.287l-.074.152a1.23 1.23 0 0 1-.46.532 1.23 1.23 0 0 1-.687.197q-.252 0-.485-.095a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477v-.406h4.028V12a1.24 1.24 0 0 1 .365-.878 1.24 1.24 0 0 1 .89-.365q.251 0 .484.095.233.097.4.27t.269.4.102.478v3.477q0 .192.13.323a.44.44 0 0 0 .324.132q.179 0 .316-.132a.43.43 0 0 0 .137-.323v-.623a2.14 2.14 0 0 0 1.867 1.078q.442 0 .837-.168.393-.166.693-.46a2.1 2.1 0 0 0 .484-.733l.018.047q.167.392.466.687.3.292.687.46.388.166.843.167a2.15 2.15 0 0 0 1.523-.627q.293-.294.467-.687l.024-.06.024.06q.172.392.466.687a2.14 2.14 0 0 0 1.524.627q.442 0 .837-.168a2.2 2.2 0 0 0 .693-.46A2.12 2.12 0 0 0 24 13.782V12a2.1 2.1 0 0 0-.173-.837M1.16 14.965l2.42-3.259q-.019.144-.02.294v1.78q0 .443.174.838.081.185.19.347zm5.818-2.5h-2.51V12a1.24 1.24 0 0 1 .765-1.147q.228-.096.49-.096.253 0 .484.095.235.097.4.27.167.173.27.4.101.227.1.478zm8.057 1.316a1.25 1.25 0 0 1-1.254 1.243q-.252 0-.485-.096a1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.269-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .482.095.235.097.4.27.167.173.27.4.1.228.101.478zm4.028 0q0 .25-.1.478a1.4 1.4 0 0 1-.27.4 1.2 1.2 0 0 1-.4.27 1.3 1.3 0 0 1-.484.094 1.23 1.23 0 0 1-.89-.364 1.24 1.24 0 0 1-.366-.878V12q0-.25.102-.478a1.4 1.4 0 0 1 .27-.4 1.2 1.2 0 0 1 .4-.27 1.3 1.3 0 0 1 .484-.095 1.25 1.25 0 0 1 .89.365 1.25 1.25 0 0 1 .364.878zm4.028 0a1.22 1.22 0 0 1-.364.878q-.175.173-.4.27a1.3 1.3 0 0 1-.49.094 1.3 1.3 0 0 1-.485-.095 1.2 1.2 0 0 1-.4-.27 1.4 1.4 0 0 1-.27-.4 1.2 1.2 0 0 1-.1-.477V12a1.24 1.24 0 0 1 1.255-1.243q.25 0 .483.095.234.097.4.27.167.173.27.4.1.228.1.478v1.78z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.tooltips"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
