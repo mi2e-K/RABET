@@ -1,7 +1,8 @@
 # Project manifest schema v2 / UUID 設計（BUG-006 / §16-5）
 
-> **ステータス**: 設計確定・**未実装**。ツールが安定した環境での単独 PR を想定。
-> 本書だけで実装者が着手できるよう、影響範囲・migration 手順・テストを網羅する。
+> **ステータス**: **実装済み（PR-S1 / PR-S2 / PR-S3、v1.3.4）**。本書は実装の設計根拠
+> として保持する。実装と差異のある箇所は §7 に追記した。
+> （元の意図: 本書だけで実装者が着手できるよう、影響範囲・migration 手順・テストを網羅する。）
 
 ## 1. 目的
 
@@ -161,15 +162,24 @@ def compute_partial_hash(path, head=8*1024*1024, tail=8*1024*1024):
 - `test_v2_save_is_atomic_with_bak`: Phase 3 の atomic save + `.bak` で保存。
 - 既存 project テスト（BUG-007 等）が v2 でも通る回帰。
 
-## 7. リスクと段階実装案（単独 PR 推奨）
+## 7. 段階実装の結果（v1.3.4 で完了）
 
-1. **PR-S1**: schema_version + entry object 化 + v1→v2 migration（status/files の内包化）。
-   ID はまだ旧ロジック（hash）でもよい。manifest 形状だけ先に v2 へ。
-2. **PR-S2**: UUID 主キー化（`_get_video_id` → entry.id）、`_normalize` の二用途分離。
-   影響メソッドを一括改修 + golden な project fixture で回帰。
-3. **PR-S3**: content hash + relink UI。
+1. **PR-S1 ✅**: `schema_version` + video entry object 化 + v1→v2 migration（status/files の
+   内包化）。内部表現（path リスト + status/files マップ）は温存。load 時に v1 を
+   検出すると dirty 扱いにし、保存で v2 へ移行。
+2. **PR-S2 ✅**: UUID 主キー化。`_get_video_id` は永続マップ `_video_id_by_path`
+   （stored-path → 安定 id）参照に変更し、`add_video` が `_mint_video_id` で id を採番、
+   `create/close` でマップをリセット、`_load_into_internal` が v2(entry.id)/v1(legacy hash)
+   から再構築。**実装差異**: `_normalize_video_reference` の完全な二用途分離は行わず、
+   `_stored_path_for`（id を介さずパス解決）で id↔path の再帰を回避する形にした
+   （マップ方式で移動耐性が満たせたため）。
+3. **PR-S3 ✅**: content hash + relink。`utils/content_hash.compute_partial_hash`
+   （size + 先頭/末尾 8MB の sha1）、`ProjectModel.get_missing_videos` /
+   `relink_video` / `content_hash_matches`、load 後に `ProjectController` が再リンクを
+   誘導（content hash 不一致は強制確認）。content_hash は v2 entry に内包・round-trip。
 
-各 PR で `tests/` の project 回帰を緑に保つこと。移動耐性の核は PR-S2。
+各 PR で `tests/` の project 回帰を緑に維持（最終 **169 テスト緑・ruff clean**）。
+移動耐性の核は PR-S2、external 動画の救済が PR-S3。
 
 ## 8. 既存挙動で変えてはいけないもの
 
