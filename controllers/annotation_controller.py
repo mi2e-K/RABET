@@ -1389,11 +1389,13 @@ class AnnotationController(QObject):
     def notify_seek_intent(self, origin):
         """Record the *intent* behind an imminent seek (seek-intent model).
 
-        Called by ``VideoController`` immediately before it issues a seek/step
-        on the video model, so that the ``position_changed`` signal that fires
-        synchronously during the seek can decide whether a backward jump should
-        delete annotations. Only ``"user"`` (an explicit slider drag) may;
-        ``"step"`` (frame stepping) and ``"loader"`` never do.
+        Called by ``VideoController`` immediately before it issues a seek/step on
+        the video model. The intent is consumed one-shot in
+        ``on_position_changed`` when the worker's ``position_changed`` arrives
+        (asynchronous under the A-1 worker model), so a backward jump can decide
+        whether to delete future annotations. ``"user"`` (slider drag) and
+        ``"step"`` (frame stepping) both delete when *Preserve on rewind* is OFF;
+        ``"loader"`` (video switch) and ordinary playback never delete.
 
         Args:
             origin (str): one of ``"user"``, ``"step"``, ``"loader"``.
@@ -1404,13 +1406,14 @@ class AnnotationController(QObject):
         """
         Handle a seek operation's bookkeeping.
 
-        Rewind-driven annotation deletion now lives entirely in
-        ``on_position_changed`` (the seek-intent model): that slot fires
-        synchronously *during* the seek, while ``_last_position`` still holds
-        the pre-seek value, so it is the correct place to detect a user rewind.
-        ``handle_seek`` runs *after* the seek and is therefore reduced to state
-        bookkeeping. An explicit ``origin`` may still be supplied for callers
-        that route intent only through here.
+        Rewind-driven annotation deletion lives entirely in
+        ``on_position_changed`` (the seek-intent model). Under the worker-thread
+        video model (A-1) ``seek`` is asynchronous, so ``handle_seek`` runs
+        *before* the worker's ``position_changed``; it must NOT touch
+        ``_last_position`` on the normal path (that would zero out the rewind
+        delta the later ``on_position_changed`` checks). ``on_position_changed``
+        is the single owner of ``_last_position``. An explicit ``origin`` may
+        still be supplied for callers that route intent only through here.
 
         Args:
             position (int): New position in milliseconds.
@@ -1429,9 +1432,11 @@ class AnnotationController(QObject):
             self._last_position = position
             return
 
-        # Update last position; deletion (if any) already happened in
-        # on_position_changed during the seek.
-        self._last_position = position
+        # Do NOT update _last_position here. With the worker-thread video model
+        # (A-1) seek() is asynchronous, so handle_seek runs *before* the worker's
+        # position_changed. on_position_changed is the single owner of
+        # _last_position; updating it here would make that later slot see a zero
+        # rewind delta and skip deletion (the Preserve-OFF data-loss regression).
 
         # If recording is active, update the time display
         if self._is_recording:

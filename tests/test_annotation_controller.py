@@ -193,6 +193,72 @@ def test_user_rewind_with_preserve_on_keeps_events():
 
 
 # -------------------------------------------------------------------- #
+# Async seek (A-1 worker model): handle_seek runs BEFORE the worker's
+# position_changed, so it must not pre-set _last_position — otherwise the later
+# on_position_changed sees a zero rewind delta and deletion is skipped.
+# -------------------------------------------------------------------- #
+
+
+def test_async_handle_seek_keeps_last_position_until_position_changed():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)
+    ctrl._update_recording_time_display = lambda: None
+
+    ctrl.notify_seek_intent("user")
+    # Async order: handle_seek runs before position_changed and must leave the
+    # pre-seek value (7000) in place for the later rewind check.
+    ctrl.handle_seek(3000)
+    assert ctrl._last_position == 7000
+
+
+def test_async_user_rewind_deletes_future_after_position_changed():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)  # preserve OFF
+    ctrl._update_recording_time_display = lambda: None
+
+    # Real async order: intent -> handle_seek (bookkeeping) -> the worker's
+    # position_changed arrives later. The future event (onset 5000) is removed.
+    ctrl.notify_seek_intent("user")
+    ctrl.handle_seek(3000)
+    ctrl.on_position_changed(3000)
+
+    remaining = ctrl._annotation_model.get_all_events()
+    assert len(remaining) == 1
+    assert remaining[0].onset == 1000
+
+
+def test_async_user_rewind_preserve_on_keeps():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)
+    ctrl._preserve_annotations_on_rewind = True
+    ctrl._update_recording_time_display = lambda: None
+
+    ctrl.notify_seek_intent("user")
+    ctrl.handle_seek(3000)
+    ctrl.on_position_changed(3000)
+
+    assert len(ctrl._annotation_model.get_all_events()) == 2
+
+
+def test_async_step_rewind_deletes_when_preserve_off():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)  # preserve OFF
+    ctrl._update_recording_time_display = lambda: None
+
+    ctrl.notify_seek_intent("step")
+    ctrl.handle_seek(3000)
+    ctrl.on_position_changed(3000)
+
+    remaining = ctrl._annotation_model.get_all_events()
+    assert len(remaining) == 1
+    assert remaining[0].onset == 1000
+
+
+# -------------------------------------------------------------------- #
 # Unified active-event cleanup (BUG-002 / BUG-008)
 # -------------------------------------------------------------------- #
 

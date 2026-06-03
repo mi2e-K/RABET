@@ -334,11 +334,12 @@ class VideoController(QObject):
             
         self.logger.debug(f"Handling seek to position: {position_ms}ms")
 
-        # Seek-intent model (1.3.4): tag this as an explicit *user* seek
-        # BEFORE issuing it, so the position_changed signal that fires
-        # synchronously inside ``seek`` knows a backward jump here may delete
-        # annotations (subject to the preserve-on-rewind toggle). This is the
-        # ONLY path allowed to delete; frame steps tag "step" instead.
+        # Seek-intent model (1.3.4): tag this as an explicit *user* seek BEFORE
+        # issuing it. seek() is asynchronous under the A-1 worker model, so the
+        # worker's later position_changed -> on_position_changed consumes this
+        # intent and may delete future annotations on a backward jump (when
+        # Preserve-on-rewind is OFF). Frame steps tag "step" (also deletable);
+        # loader/playback never delete.
         annotation_controller = self._get_annotation_controller()
         if annotation_controller is not None and hasattr(
             annotation_controller, "notify_seek_intent"
@@ -348,8 +349,9 @@ class VideoController(QObject):
         # Update the model (which now handles frame refreshing internally)
         self._video_model.seek(position_ms)
 
-        # Notify annotation controller about the seek operation (bookkeeping;
-        # any deletion already happened in on_position_changed during the seek).
+        # Bookkeeping only. Deletion happens later in on_position_changed when
+        # the worker's position_changed lands (async); handle_seek must NOT
+        # touch _last_position (see AnnotationController.handle_seek).
         if annotation_controller is not None:
             annotation_controller.handle_seek(position_ms)
 

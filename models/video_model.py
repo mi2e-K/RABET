@@ -1079,6 +1079,9 @@ class VideoModel(QObject):
         self._last_seek_position = ms
         # Coalesce rapid seeks (slider drag): publish the latest target and ping
         # the worker to drain it; intermediate targets are superseded (PR-V3).
+        # _pending_seek_ms is an int; this cross-thread write is atomic under the
+        # GIL and is deliberate -- routing it through a queued slot would re-queue
+        # every intermediate target and defeat the coalescing.
         self._worker._pending_seek_ms = ms
         QMetaObject.invokeMethod(self._worker, "_drain_seek", Qt.QueuedConnection)
         return True
@@ -1137,7 +1140,11 @@ class VideoModel(QObject):
                 self._worker, "close", Qt.BlockingQueuedConnection
             )
             self._thread.quit()
-            self._thread.wait(3000)
+            if not self._thread.wait(3000):
+                self.logger.warning(
+                    "VideoDecodeWorker thread did not stop within 3s; the "
+                    "worker may be stuck (investigate if shutdown hangs)."
+                )
 
     def __del__(self):
         try:
