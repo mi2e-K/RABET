@@ -115,3 +115,18 @@ def test_facade_seek_publishes_latest_target(qt_app):
         assert vm._last_seek_position == 7480
     finally:
         vm.shutdown()
+
+
+def test_step_always_emits_step_finished(qt_app):
+    # step_finished must fire on every step (the worker emits it in a finally),
+    # even with no container loaded, so the controller's step never gets stuck
+    # waiting for a completion that never comes (A-1, Codex Medium).
+    vm = VideoModel()
+    try:
+        seen = []
+        vm.step_finished.connect(lambda pos: seen.append(pos))
+        vm._worker.step_forward(0)
+        vm._worker.step_backward(0)
+        assert len(seen) == 2
+    finally:
+        vm.shutdown()

@@ -244,6 +244,11 @@ class VideoController(QObject):
             self._video_model.render_load_changed.connect(
                 self._view.set_low_quality_mode
             )
+        # Step completion (A-1): the worker reports the landed position when a
+        # frame step finishes, so we close the step on the real position rather
+        # than a 50 ms timer guess. The timer stays as a fallback.
+        if hasattr(self._video_model, "step_finished"):
+            self._video_model.step_finished.connect(self._on_step_finished)
 
     def _update_frame_rate(self, video_path):
         """Update frame rate info when a video is loaded."""
@@ -257,13 +262,24 @@ class VideoController(QObject):
             self._frame_duration_ms = 40
             self.logger.debug(f"Using default frame duration of {self._frame_duration_ms}ms (25 fps)")
     
-    def _finalize_step_operation(self):
-        """Finalize a step operation after everything is complete."""
+    def _on_step_finished(self, position):
+        """Worker reported a frame step landed; close the step on the real
+        position (not the 50 ms timer's possibly-stale get_position)."""
+        self._finalize_step_operation(position)
+
+    def _finalize_step_operation(self, position=None):
+        """Finalize a step operation after everything is complete.
+
+        ``position`` is the worker-reported landed position (preferred). The
+        fallback 50 ms timer calls this with None and reads get_position(); by
+        then step_finished has usually already cleared _stepping_in_progress, so
+        this becomes a no-op via the guard below."""
         if not self._stepping_in_progress:
             return
 
         # Update position to ensure UI is in sync
-        position = self._video_model.get_position()
+        if position is None:
+            position = self._video_model.get_position()
         self._view.set_position(position)
 
         self.logger.debug(f"Step operation finalized at position {position}ms")

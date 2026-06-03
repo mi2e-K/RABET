@@ -125,6 +125,11 @@ class _VideoDecodeWorker(QObject):
     # _frame_duration_ms attribute (read by annotation_controller).
     frame_rate_changed = Signal(float, int)
 
+    # Worker -> facade: a frame step finished (decoded + emitted its frame).
+    # Carries the landed position (ms) so the controller closes the step on the
+    # real position instead of a 50 ms timer guess.
+    step_finished = Signal(int)
+
     # Reasonable defaults for codecs that don't report a frame rate.
     _DEFAULT_FRAME_RATE = 30.0
     _DEFAULT_FRAME_DURATION_MS = 33
@@ -845,6 +850,14 @@ class _VideoDecodeWorker(QObject):
 
     @Slot(int)
     def step_forward(self, time_ms: Optional[int] = None) -> bool:
+        """Step forward, then emit step_finished so the controller closes the
+        step on the actually-landed position (not a 50 ms timer guess)."""
+        try:
+            return self._do_step_forward(time_ms)
+        finally:
+            self.step_finished.emit(self._current_ms)
+
+    def _do_step_forward(self, time_ms: Optional[int] = None) -> bool:
         """Decode one or more frames forward without resuming playback.
 
         Args:
@@ -882,6 +895,13 @@ class _VideoDecodeWorker(QObject):
 
     @Slot(int)
     def step_backward(self, time_ms: Optional[int] = None) -> bool:
+        """Step backward, then emit step_finished (see step_forward)."""
+        try:
+            return self._do_step_backward(time_ms)
+        finally:
+            self.step_finished.emit(self._current_ms)
+
+    def _do_step_backward(self, time_ms: Optional[int] = None) -> bool:
         """Step backward by seeking to (current - step_ms).
 
         PyAV has no native "step back" so we seek + decode. Because
@@ -1003,6 +1023,7 @@ class VideoModel(QObject):
     error_occurred = Signal(str)
     frame_ready = Signal(QImage)
     render_load_changed = Signal(bool)
+    step_finished = Signal(int)  # landed position after a frame step (A-1)
 
     def __init__(self):
         super().__init__()
@@ -1034,6 +1055,7 @@ class VideoModel(QObject):
         self._worker.duration_changed.connect(self._on_worker_duration)
         self._worker.video_loaded.connect(self._on_worker_loaded)
         self._worker.frame_rate_changed.connect(self._on_worker_frame_rate)
+        self._worker.step_finished.connect(self.step_finished)
 
     # ----- relay slots (run on the UI thread: refresh cache + re-emit) -----
     @Slot(bool)
