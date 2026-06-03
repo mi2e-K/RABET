@@ -217,10 +217,16 @@ def main():
     parser = argparse.ArgumentParser(description='RABET - Real-time Animal Behavior Event Tagger')
     parser.add_argument('--dev', action='store_true', help='Run in development mode with file logging')
     args = parser.parse_args()
-    
+
+    # Startup profiling (PR-STARTUP-01): perf_counter milestones. Enable per-mark
+    # logs with RABET_STARTUP_PROFILE=1; a one-line summary is always emitted.
+    from utils.startup_profiler import StartupProfiler
+    profiler = StartupProfiler()
+
     # Set up logging based on mode
     # In distribution mode, logs are kept in memory only
     setup_logger(use_file_logging=args.dev)
+    profiler.mark("logger")
     logger = logging.getLogger(__name__)
     logger.info("Starting RABET application")
     
@@ -232,14 +238,17 @@ def main():
     # Initialize the configuration system
     if not initialize_configuration():
         logger.warning("Failed to initialize configuration system - using defaults")
-    
+    profiler.mark("config")
+
     try:
         # Create Qt application
         app = QApplication(sys.argv)
         app.setApplicationName("RABET")
+        profiler.mark("qapplication")
 
         # Set application icon (crucial for taskbar and window icon)
         setup_application_icon(app)
+        profiler.mark("icon")
 
         # Show the splash screen as early as possible so the user sees
         # something the moment the process starts. The progress is
@@ -247,16 +256,19 @@ def main():
         splash = RabetSplash()
         splash.show()
         splash.set_progress(5, "Loading theme...")
+        profiler.mark("splash")
 
         # Apply dark theme
         logger.info("Available styles: " + str(QStyleFactory.keys()))
         theme_manager = ThemeManager()
         theme_manager.apply_dark_theme(app)
         splash.set_progress(25, "Initialising controllers...")
+        profiler.mark("theme")
 
         # Lazy import (Phase 4-C): pull in the heavy view/model/matplotlib stack
         # only now, after the splash is already on screen.
         from controllers.app_controller import AppController
+        profiler.mark("appctrl_import")
 
         # Initialize main controller
         # Pass development mode flag if the app_controller accepts it
@@ -265,10 +277,12 @@ def main():
         except TypeError:
             # Fall back to standard initialization if the controller doesn't accept the parameter
             controller = AppController()
+        profiler.mark("appctrl_init")
         splash.set_progress(80, "Preparing main window...")
 
         # Show main window
         controller.show_main_window()
+        profiler.mark("mainwindow_shown")
         splash.set_progress(100, "Ready.")
         
         # After window is shown, set its icon explicitly
@@ -288,6 +302,7 @@ def main():
 
         # Hide splash now that the main window is up.
         splash.finish(controller.main_window)
+        profiler.summary()
 
         # Start application event loop
         sys.exit(app.exec())
