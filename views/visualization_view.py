@@ -14,6 +14,7 @@ except (ImportError, ValueError):
     matplotlib.use('Qt5Agg')
     from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.collections import LineCollection
 import matplotlib.colors as mcolors
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -3027,6 +3028,53 @@ class RasterPlotWidget(QWidget):
                     )
         return file_recording_starts, max_time
 
+    def _add_event_segments(
+        self,
+        ax,
+        behavior_events,
+        recording_start,
+        y_pos,
+        color,
+        alpha,
+        zorder,
+    ):
+        """Draw all events of one behavior as a single LineCollection.
+
+        Replaces a per-event ``ax.plot`` loop with one matplotlib artist per
+        behavior row instead of one per event - dramatically faster to build and
+        render for dense data (perf 4-B). Per-event parsing and the warning on
+        bad timestamps are unchanged. Returns the number of event bars drawn.
+
+        Axis limits are set explicitly by the callers (``_configure_plot_axes``
+        / ``_configure_individual_frame``), so ``add_collection`` not
+        autoscaling is fine.
+        """
+        segments = []
+        for _, event in behavior_events.iterrows():
+            if 'Onset' not in event or 'Offset' not in event:
+                continue
+            try:
+                onset = float(event['Onset']) - recording_start
+                offset = float(event['Offset']) - recording_start
+                if onset >= 0:
+                    segments.append([(onset, y_pos), (offset, y_pos)])
+            except (ValueError, TypeError) as e:
+                self.logger.warning(
+                    f"Invalid timestamp in event: {event}, error: {str(e)}"
+                )
+        if not segments:
+            return 0
+        collection = LineCollection(
+            segments,
+            linewidths=self._bar_height,
+            colors=[tuple(color)],
+            alpha=alpha,
+            zorder=zorder,
+        )
+        collection.set_capstyle('butt')
+        ax.add_collection(collection)
+        return len(segments)
+
     def _plot_behavior_events_on_axis(
         self,
         ax,
@@ -3048,29 +3096,9 @@ class RasterPlotWidget(QWidget):
         color_rgb = self._behavior_colors.get(behavior, (0, 0, 0))
         color = [c / 255 for c in color_rgb]
         alpha = self._behavior_alpha(behavior, base_alpha)
-        event_count = 0
-        for _, event in behavior_events.iterrows():
-            if 'Onset' not in event or 'Offset' not in event:
-                continue
-            try:
-                onset = float(event['Onset']) - recording_start
-                offset = float(event['Offset']) - recording_start
-                if onset >= 0:
-                    ax.plot(
-                        [onset, offset],
-                        [y_pos, y_pos],
-                        linewidth=self._bar_height,
-                        solid_capstyle='butt',
-                        color=color,
-                        alpha=alpha,
-                        zorder=zorder,
-                    )
-                    event_count += 1
-            except (ValueError, TypeError) as e:
-                self.logger.warning(
-                    f"Invalid timestamp in event: {event}, error: {str(e)}"
-                )
-        return event_count
+        return self._add_event_segments(
+            ax, behavior_events, recording_start, y_pos, color, alpha, zorder
+        )
 
     def _plot_grouped_rows_single_axes(
         self,
@@ -3236,21 +3264,10 @@ class RasterPlotWidget(QWidget):
                 y_pos = behavior_positions[behavior]
                 
                 # Plot each event
-                for _, event in behavior_events.iterrows():
-                    if 'Onset' in event and 'Offset' in event:
-                        try:
-                            onset = float(event['Onset']) - recording_start
-                            offset = float(event['Offset']) - recording_start
-                            
-                            if onset >= 0:
-                                self.canvas.axes.plot(
-                                    [onset, offset], [y_pos, y_pos], 
-                                    linewidth=self._bar_height, solid_capstyle='butt',
-                                    color=color, alpha=0.8, zorder=10
-                                )
-                                event_count += 1
-                        except (ValueError, TypeError) as e:
-                            self.logger.warning(f"Invalid timestamp in event: {event}, error: {str(e)}")
+                event_count += self._add_event_segments(
+                    self.canvas.axes, behavior_events, recording_start,
+                    y_pos, color, 0.8, 10,
+                )
             
             file_count += 1
         
@@ -3318,23 +3335,10 @@ class RasterPlotWidget(QWidget):
                 color = [c / 255 for c in color_rgb]
                 y_pos = row_positions[(file_path, behavior)]
 
-                for _, event in behavior_events.iterrows():
-                    if 'Onset' in event and 'Offset' in event:
-                        try:
-                            onset = float(event['Onset']) - recording_start
-                            offset = float(event['Offset']) - recording_start
-
-                            if onset >= 0:
-                                self.canvas.axes.plot(
-                                    [onset, offset], [y_pos, y_pos],
-                                    linewidth=self._bar_height, solid_capstyle='butt',
-                                    color=color, alpha=0.8, zorder=10
-                                )
-                                event_count += 1
-                        except (ValueError, TypeError) as e:
-                            self.logger.warning(
-                                f"Invalid timestamp in event: {event}, error: {str(e)}"
-                            )
+                event_count += self._add_event_segments(
+                    self.canvas.axes, behavior_events, recording_start,
+                    y_pos, color, 0.8, 10,
+                )
 
         # Add subtle separators between files/individuals.
         rows_per_file = len(visible_behaviors)
@@ -3460,22 +3464,10 @@ class RasterPlotWidget(QWidget):
                     color_rgb = self._behavior_colors.get(behavior, (0, 0, 0))
                     color = [c/255 for c in color_rgb]
                     
-                    for _, event in behavior_events.iterrows():
-                        if 'Onset' in event and 'Offset' in event:
-                            try:
-                                onset = float(event['Onset']) - recording_start
-                                offset = float(event['Offset']) - recording_start
-                                
-                                if onset >= 0:
-                                    self.canvas.axes.plot(
-                                        [onset, offset], [y_pos, y_pos], 
-                                        linewidth=self._bar_height, solid_capstyle='butt',
-                                        color=color, alpha=0.9,
-                                        zorder=10 + z_order
-                                    )
-                                    event_count += 1
-                            except (ValueError, TypeError) as e:
-                                self.logger.warning(f"Invalid timestamp in event: {event}, error: {str(e)}")
+                    event_count += self._add_event_segments(
+                        self.canvas.axes, behavior_events, recording_start,
+                        y_pos, color, 0.9, 10 + z_order,
+                    )
         
         # Set y-axis
         ordered_by_position = sorted(selected_files, key=lambda path: file_positions[path])
@@ -3695,22 +3687,10 @@ class RasterPlotWidget(QWidget):
                     color_rgb = self._behavior_colors.get(behavior, (0, 0, 0))
                     color = [c/255 for c in color_rgb]
                     
-                    for _, event in behavior_events.iterrows():
-                        if 'Onset' in event and 'Offset' in event:
-                            try:
-                                onset = float(event['Onset']) - recording_start
-                                offset = float(event['Offset']) - recording_start
-                                
-                                if onset >= 0:
-                                    ax.plot(
-                                        [onset, offset], [0, 0], 
-                                        linewidth=self._bar_height, solid_capstyle='butt',
-                                        color=color, alpha=0.9,
-                                        zorder=10 + z_order
-                                    )
-                                    event_count += 1
-                            except (ValueError, TypeError) as e:
-                                self.logger.warning(f"Invalid timestamp in event: {event}, error: {str(e)}")
+                    event_count += self._add_event_segments(
+                        ax, behavior_events, recording_start,
+                        0, color, 0.9, 10 + z_order,
+                    )
             
             total_event_count += event_count
             
