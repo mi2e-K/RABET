@@ -468,7 +468,7 @@ class _VideoDecodeWorker(QObject):
     # Loading / teardown
     # ------------------------------------------------------------------ #
 
-    @Slot(str)
+    @Slot(str, result=bool)
     def load_video(self, video_path: str) -> bool:
         """Open a video file and decode the first frame.
 

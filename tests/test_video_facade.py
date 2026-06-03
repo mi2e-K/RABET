@@ -76,3 +76,16 @@ def test_shutdown_stops_thread(qt_app):
     assert vm._thread.isRunning()
     vm.shutdown()
     assert not vm._thread.isRunning()
+
+
+def test_load_video_returns_bool_via_blocking_invoke(qt_app, tmp_path):
+    vm = VideoModel()
+    try:
+        # A nonexistent file makes the worker return False, but the point is
+        # that the BlockingQueued invoke with result=bool resolves at all: the
+        # worker's @Slot must declare result=bool, otherwise this raises
+        # "QMetaMethod invocation failed" (the bug seen on first device test).
+        result = vm.load_video(str(tmp_path / "nope.mp4"))
+        assert result is False
+    finally:
+        vm.shutdown()
