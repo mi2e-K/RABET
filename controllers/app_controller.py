@@ -69,6 +69,12 @@ class AppController(QObject):
 
         # Initialize models
         self.video_model = VideoModel()
+        # Stop the video decode worker thread cleanly on application exit (the
+        # model runs PyAV on its own QThread, A-1).
+        from PySide6.QtWidgets import QApplication
+        _app = QApplication.instance()
+        if _app is not None:
+            _app.aboutToQuit.connect(self.video_model.shutdown)
         self.action_map_model = ActionMapModel()
         self.annotation_model = AnnotationModel(self.action_map_model, self.video_model)
         self.analysis_model = AnalysisModel()

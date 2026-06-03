@@ -1529,7 +1529,9 @@ class DisagreementReviewDialog(QDialog):
         # handle (or ~50MB of codec context) until Python GCs the dialog.
         try:
             if self._video_model is not None:
-                self._video_model.close()
+                # shutdown() (not close()) so the dedicated worker thread is
+                # stopped too - the dialog is going away (A-1).
+                self._video_model.shutdown()
         except Exception:
             self.logger.exception("DisagreementReviewDialog: video model close failed")
         finally:

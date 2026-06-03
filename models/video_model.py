@@ -71,13 +71,29 @@ from typing import Optional
 import av
 import av.error
 import numpy as np
-from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import (
+    Q_ARG,
+    Q_RETURN_ARG,
+    QMetaObject,
+    QObject,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QImage
 
 
-class VideoModel(QObject):
+class _VideoDecodeWorker(QObject):
     """
-    PyAV-backed playback model.
+    PyAV-backed decode worker. Runs on its own QThread; every av/container
+    interaction (open, decode, seek, the playback QTimer) happens here. The
+    UI-facing ``VideoModel`` facade (bottom of this file) owns the thread,
+    queues commands to these slots, and relays the signals below.
+
+    This was the public playback model until decode moved off the UI thread
+    (A-1); the signal/method contract is preserved by the facade.
 
     Signals:
         playback_state_changed (bool): True=playing, False=paused.
@@ -103,6 +119,11 @@ class VideoModel(QObject):
     # (render cheaply); False = keeping up (render at full quality). The
     # view connects this to switch its scaling between Fast and Smooth.
     render_load_changed = Signal(bool)
+
+    # Worker -> facade: stream frame rate + per-frame duration (ms), emitted
+    # once per load so the facade can cache them for get_frame_rate() and the
+    # _frame_duration_ms attribute (read by annotation_controller).
+    frame_rate_changed = Signal(float, int)
 
     # Reasonable defaults for codecs that don't report a frame rate.
     _DEFAULT_FRAME_RATE = 30.0
@@ -361,6 +382,7 @@ class VideoModel(QObject):
             self._frame_rate, self._frame_duration_ms, self._time_base,
             self._stream_start_pts, self._duration,
         )
+        self.frame_rate_changed.emit(self._frame_rate, self._frame_duration_ms)
 
     def _close_container(self) -> None:
         """Tear down the current PyAV container if any.
@@ -512,6 +534,7 @@ class VideoModel(QObject):
             self._close_container()
             return False
 
+    @Slot()
     def close(self) -> None:
         """Public teardown — called by callers that need explicit shutdown."""
         self._close_container()
@@ -672,6 +695,7 @@ class VideoModel(QObject):
     # Seek / step
     # ------------------------------------------------------------------ #
 
+    @Slot(int)
     def seek(self, position_ms: int) -> bool:
         """Frame-accurate seek to ``position_ms``.
 
@@ -783,6 +807,7 @@ class VideoModel(QObject):
             self.play()
         return True
 
+    @Slot(int)
     def seek_with_retry(self, position_ms: int, retries: int = 3) -> bool:
         """Compatibility wrapper.
 
@@ -796,6 +821,7 @@ class VideoModel(QObject):
         _ = retries
         return self.seek(position_ms)
 
+    @Slot(int)
     def step_forward(self, time_ms: Optional[int] = None) -> bool:
         """Decode one or more frames forward without resuming playback.
 
@@ -832,6 +858,7 @@ class VideoModel(QObject):
         self._emit_frame(last_frame)
         return True
 
+    @Slot(int)
     def step_backward(self, time_ms: Optional[int] = None) -> bool:
         """Step backward by seeking to (current - step_ms).
 
@@ -865,6 +892,7 @@ class VideoModel(QObject):
     def get_frame_rate(self) -> float:
         return self._frame_rate
 
+    @Slot(float)
     def set_playback_rate(self, rate: float) -> None:
         """Change the playback rate (0.25 .. 4.0 is sensible).
 
@@ -933,4 +961,187 @@ class VideoModel(QObject):
 
     def pulse_frame_for_refresh(self) -> None:
         """No-op under PyAV — see :meth:`refresh_frame`."""
+        return None
+
+
+class VideoModel(QObject):
+    """UI-thread facade over :class:`_VideoDecodeWorker`.
+
+    The worker runs all PyAV/decode work on its own QThread (A-1). This facade
+    preserves the original signal / method / attribute contract: it queues
+    commands to the worker, relays the worker's signals, and caches state so the
+    synchronous ``get_*`` reads and the ``_frame_duration_ms`` attribute stay on
+    the UI thread (it never reads worker state across the thread boundary).
+    """
+
+    playback_state_changed = Signal(bool)
+    position_changed = Signal(int)
+    duration_changed = Signal(int)
+    video_loaded = Signal(str)
+    error_occurred = Signal(str)
+    frame_ready = Signal(QImage)
+    render_load_changed = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
+
+        # UI-side cached state (the synchronous reads below return these).
+        self._video_path: Optional[str] = None
+        self._duration: int = 0
+        self._current_ms: int = 0
+        self._is_playing: bool = False
+        self._frame_rate: float = _VideoDecodeWorker._DEFAULT_FRAME_RATE
+        self._frame_duration_ms: int = _VideoDecodeWorker._DEFAULT_FRAME_DURATION_MS
+        self._last_seek_position: int = 0
+        self._operation_in_progress: bool = False
+
+        # Worker on its own thread.
+        self._thread = QThread()
+        self._thread.setObjectName("VideoDecodeWorker")
+        self._worker = _VideoDecodeWorker()
+        self._worker.moveToThread(self._thread)
+        self._thread.start()
+
+        # Relay worker signals (queued across the thread boundary).
+        self._worker.frame_ready.connect(self.frame_ready)
+        self._worker.render_load_changed.connect(self.render_load_changed)
+        self._worker.error_occurred.connect(self.error_occurred)
+        self._worker.playback_state_changed.connect(self._on_worker_state)
+        self._worker.position_changed.connect(self._on_worker_position)
+        self._worker.duration_changed.connect(self._on_worker_duration)
+        self._worker.video_loaded.connect(self._on_worker_loaded)
+        self._worker.frame_rate_changed.connect(self._on_worker_frame_rate)
+
+    # ----- relay slots (run on the UI thread: refresh cache + re-emit) -----
+    @Slot(bool)
+    def _on_worker_state(self, playing: bool) -> None:
+        self._is_playing = playing
+        self.playback_state_changed.emit(playing)
+
+    @Slot(int)
+    def _on_worker_position(self, ms: int) -> None:
+        self._current_ms = ms
+        self.position_changed.emit(ms)
+
+    @Slot(int)
+    def _on_worker_duration(self, ms: int) -> None:
+        self._duration = ms
+        self.duration_changed.emit(ms)
+
+    @Slot(str)
+    def _on_worker_loaded(self, path: str) -> None:
+        self._video_path = path
+        self.video_loaded.emit(path)
+
+    @Slot(float, int)
+    def _on_worker_frame_rate(self, rate: float, frame_duration_ms: int) -> None:
+        self._frame_rate = rate
+        self._frame_duration_ms = frame_duration_ms
+
+    # ----- commands queued to the worker (non-blocking) -----
+    def play(self) -> None:
+        QMetaObject.invokeMethod(self._worker, "play", Qt.QueuedConnection)
+
+    def pause(self) -> None:
+        QMetaObject.invokeMethod(self._worker, "pause", Qt.QueuedConnection)
+
+    def stop(self) -> None:
+        QMetaObject.invokeMethod(self._worker, "stop", Qt.QueuedConnection)
+
+    def toggle_play(self) -> None:
+        QMetaObject.invokeMethod(self._worker, "toggle_play", Qt.QueuedConnection)
+
+    def seek(self, position_ms: int) -> bool:
+        self._last_seek_position = int(position_ms)
+        QMetaObject.invokeMethod(
+            self._worker, "seek", Qt.QueuedConnection,
+            Q_ARG(int, int(position_ms)),
+        )
+        return True
+
+    def seek_with_retry(self, position_ms: int, retries: int = 3) -> bool:
+        return self.seek(position_ms)
+
+    def step_forward(self, time_ms: Optional[int] = None) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "step_forward", Qt.QueuedConnection,
+            Q_ARG(int, int(time_ms) if time_ms is not None else 0),
+        )
+
+    def step_backward(self, time_ms: Optional[int] = None) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "step_backward", Qt.QueuedConnection,
+            Q_ARG(int, int(time_ms) if time_ms is not None else 0),
+        )
+
+    def set_playback_rate(self, rate: float) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "set_playback_rate", Qt.QueuedConnection,
+            Q_ARG(float, float(rate)),
+        )
+
+    def set_target_display_size(self, width: int, height: int) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "set_target_display_size", Qt.QueuedConnection,
+            Q_ARG(int, int(width)), Q_ARG(int, int(height)),
+        )
+
+    # ----- load / teardown -----
+    def load_video(self, video_path: str) -> bool:
+        """Synchronous: ThreadedVideoLoader expects a bool. Blocks the caller
+        until the worker has opened the file and decoded the first frame (same
+        blocking characteristic as before; the win is in playback/seek)."""
+        self._last_seek_position = 0
+        ok = QMetaObject.invokeMethod(
+            self._worker, "load_video", Qt.BlockingQueuedConnection,
+            Q_RETURN_ARG(bool), Q_ARG(str, str(video_path)),
+        )
+        return bool(ok)
+
+    def close(self) -> None:
+        """Close the current video (container). The worker thread stays alive so
+        a subsequent load_video reuses it. Use shutdown() to stop the thread."""
+        if self._thread.isRunning():
+            QMetaObject.invokeMethod(
+                self._worker, "close", Qt.BlockingQueuedConnection
+            )
+
+    def shutdown(self) -> None:
+        """Stop the worker thread. Call on application teardown."""
+        if self._thread.isRunning():
+            QMetaObject.invokeMethod(
+                self._worker, "close", Qt.BlockingQueuedConnection
+            )
+            self._thread.quit()
+            self._thread.wait(3000)
+
+    def __del__(self):
+        try:
+            self.shutdown()
+        except Exception:
+            pass
+
+    # ----- synchronous state reads (UI-side cache) -----
+    def is_playing(self) -> bool:
+        return self._is_playing
+
+    def get_position(self) -> int:
+        return self._current_ms
+
+    def get_duration(self) -> int:
+        return self._duration
+
+    def get_frame_rate(self) -> float:
+        return self._frame_rate
+
+    # ----- compatibility no-ops (mirror the worker) -----
+    def set_window_handle(self, handle) -> bool:
+        _ = handle
+        return True
+
+    def refresh_frame(self) -> None:
+        return None
+
+    def pulse_frame_for_refresh(self) -> None:
         return None
