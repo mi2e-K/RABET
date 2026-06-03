@@ -408,11 +408,14 @@ class VideoController(QObject):
             self._stepping_in_progress = False
             return False
         finally:
-            # Finalise after a short delay so the view's position slider /
-            # annotation_controller.handle_seek call still get a chance to
-            # reflect the new ms. 50 ms is enough — the actual decode
-            # already finished synchronously inside step_forward.
-            self._step_complete_timer.start(50)
+            # Fallback only: the worker's step_finished signal normally closes
+            # the step (clearing _stepping_in_progress on the real landed
+            # position). This timer just guards against a step_finished that
+            # never arrives, so it must NOT fire before a slow step completes
+            # (step_backward is a seek). A short 50 ms timer released the flag
+            # early and let key-repeat queue steps on the worker, so a held
+            # "<<" kept rewinding for seconds after the key was released.
+            self._step_complete_timer.start(2000)
 
     def _tag_step_intent(self):
         """Mark the imminent model step as a frame step (never deletes)."""
@@ -444,7 +447,7 @@ class VideoController(QObject):
             self._stepping_in_progress = False
             return False
         finally:
-            self._step_complete_timer.start(50)
+            self._step_complete_timer.start(2000)  # fallback; see step_forward
     
     @Slot()
     def open_video_dialog(self):
