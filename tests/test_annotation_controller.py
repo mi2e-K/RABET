@@ -259,6 +259,42 @@ def test_async_step_rewind_deletes_when_preserve_off():
 
 
 # -------------------------------------------------------------------- #
+# FBF coma-step-back: a 1-frame backward step must delete (origin-aware gate)
+# -------------------------------------------------------------------- #
+
+
+def test_fbf_single_frame_step_back_deletes_future():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)  # preserve OFF
+    ctrl._frame_duration_ms = 33
+    # Stepping one frame back (~33 ms) just past the future event's onset (5000)
+    # used to fall under the 100 ms gate and skip deletion (the FBF bug). The
+    # step-only sub-frame threshold (16 ms) now deletes it.
+    ctrl._last_position = 5020
+    ctrl.notify_seek_intent("step")
+    ctrl.on_position_changed(4990)  # 30 ms back, > half a frame (16 ms)
+
+    remaining = ctrl._annotation_model.get_all_events()
+    assert len(remaining) == 1
+    assert remaining[0].onset == 1000
+
+
+def test_user_small_jitter_below_gate_does_not_delete():
+    action_map = ActionMapModel()
+    action_map.add_mapping("z", "Test behavior")
+    ctrl = _make_recording_controller_with_events(action_map)  # preserve OFF
+    ctrl._frame_duration_ms = 33
+    # A slider ("user") move of only 30 ms is below the 100 ms noise gate and
+    # must NOT delete — the sub-frame threshold is step-only.
+    ctrl._last_position = 5020
+    ctrl.notify_seek_intent("user")
+    ctrl.on_position_changed(4990)
+
+    assert len(ctrl._annotation_model.get_all_events()) == 2
+
+
+# -------------------------------------------------------------------- #
 # Unified active-event cleanup (BUG-002 / BUG-008)
 # -------------------------------------------------------------------- #
 

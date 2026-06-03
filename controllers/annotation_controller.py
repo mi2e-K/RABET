@@ -410,13 +410,21 @@ class AnnotationController(QObject):
             self._skip_next_seek_rewind = False
             origin = "loader"
 
+        # Noise gate: a tiny backward jitter is not a rewind. A frame step is an
+        # intentional rewind even though its delta is only ~1 frame, so for
+        # "step" use a sub-frame threshold (FBF coma-step-back must delete);
+        # the slider ("user") keeps the 100 ms gate that filters playback jitter.
+        rewind_threshold = (
+            max(1, self._frame_duration_ms // 2) if origin == "step" else 100
+        )
         if (
             self._is_recording
             and origin in ("user", "step")
-            and self._last_position - position > 100
+            and self._last_position - position > rewind_threshold
         ):
             self.logger.debug(
-                f"User-initiated rewind ({origin}): {self._last_position}ms -> {position}ms"
+                f"User-initiated rewind ({origin}): {self._last_position}ms -> "
+                f"{position}ms (threshold {rewind_threshold}ms)"
             )
             if not self._preserve_annotations_on_rewind:
                 self.remove_future_annotations(position)
