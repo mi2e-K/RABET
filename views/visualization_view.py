@@ -1492,6 +1492,7 @@ class RasterPlotWidget(QWidget):
         
         self.behavior_list = ReorderableListWidget()
         self.behavior_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.behavior_list.setMinimumHeight(220)
         self.behavior_list.itemDoubleClicked.connect(self.on_behavior_double_clicked)
         self.behavior_list.itemChanged.connect(self.on_behavior_selection_changed)
         self.behavior_list.model().rowsMoved.connect(self.on_behaviors_reordered)
@@ -1512,6 +1513,7 @@ class RasterPlotWidget(QWidget):
         
         self.file_list = ReorderableListWidget()
         self.file_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.file_list.setMinimumHeight(180)
         self.file_list.itemChanged.connect(self.on_file_selection_changed)
         self.file_list.model().rowsMoved.connect(self.on_files_reordered)
         self.file_layout.addWidget(self.file_list)
