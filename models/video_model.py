@@ -596,6 +596,7 @@ class VideoModel(QObject):
         if self._container is None:
             self.pause()
             return
+        tick_t0 = time.monotonic()
         # Cheap load detection: measure how late this tick fired relative to
         # the timer interval. Must run before the decode work so the gap we
         # measure is the *inter-tick* gap, capturing both OS starvation
@@ -610,6 +611,7 @@ class VideoModel(QObject):
                 return
             self._update_current_position(frame)
             self._emit_frame(frame, for_playback=True)
+            self._log_decode_timing("tick", tick_t0, level=logging.DEBUG)
         except Exception as exc:
             self.logger.error("Playback tick failed: %s", exc, exc_info=True)
             self.pause()
@@ -652,6 +654,20 @@ class VideoModel(QObject):
             self.logger.debug("Playback caught up: restoring full-quality rendering")
             self.render_load_changed.emit(False)
 
+    def _log_decode_timing(self, op: str, t0: float, level: int = logging.INFO) -> None:
+        """Measure how long an av decode op blocked its thread (PR-V1).
+
+        Under the current main-thread backend this is time the UI is blocked;
+        after the worker move the same work should run off the UI thread. Logs
+        the elapsed ms and the executing thread name so before/after compares.
+        """
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+        self.logger.log(
+            level,
+            "[video-timing] %s decode=%.1fms thread=%s",
+            op, elapsed_ms, threading.current_thread().name,
+        )
+
     # ------------------------------------------------------------------ #
     # Seek / step
     # ------------------------------------------------------------------ #
@@ -676,6 +692,7 @@ class VideoModel(QObject):
         if self._container is None or self._stream is None or self._duration <= 0:
             return False
 
+        seek_t0 = time.monotonic()
         was_playing = self._is_playing
         if was_playing:
             self.pause()
@@ -760,6 +777,7 @@ class VideoModel(QObject):
 
             self._update_current_position(chosen)
             self._emit_frame(chosen)
+            self._log_decode_timing("seek", seek_t0)
 
         if was_playing:
             self.play()
