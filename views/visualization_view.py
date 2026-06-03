@@ -23,7 +23,8 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QMessageBox, QSplitter,
     QSizePolicy, QSpinBox, QStyledItemDelegate, QStyle,
     QStyleOptionViewItem, QDialog, QDialogButtonBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
+    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
+    QApplication,
 )
 from PySide6.QtCore import Qt, Signal, QCoreApplication, QTimer, QPoint, QRect, QEvent
 from PySide6.QtGui import QColor, QBrush, QPainter, QPen
@@ -1086,7 +1087,11 @@ class OverlayGroupsDialog(QDialog):
 
 # Custom reorderable list widget
 class ReorderableListWidget(QListWidget):
-    """List widget that supports drag and drop reordering."""
+    """List widget that supports drag and drop reordering.
+
+    A plain click anywhere on a row (the file/individual name, not only the
+    checkbox indicator) toggles that row's checkbox; dragging still reorders.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1098,6 +1103,8 @@ class ReorderableListWidget(QListWidget):
         # rows regardless of the row's background colour.
         delegate = BehaviorItemDelegate(self)
         self.setItemDelegate(delegate)
+        self._press_pos = None
+        self._press_item = None
         # One-shot INFO log so we can confirm from the log that the delegate
         # was actually attached at construction time. Without this, a
         # silently-missed setItemDelegate (e.g. because an older copy of the
@@ -1106,6 +1113,44 @@ class ReorderableListWidget(QListWidget):
             "ReorderableListWidget: attached BehaviorItemDelegate=%s",
             type(delegate).__name__,
         )
+
+    def mousePressEvent(self, event):
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        self._press_pos = pos
+        self._press_item = self.itemAt(pos)
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        # A plain click anywhere on a checkable, enabled row toggles it - not
+        # only the checkbox indicator. We bypass the base handler on that path
+        # so Qt's own indicator toggle does not double-fire. A drag (movement
+        # beyond the platform drag threshold) falls through to the base class so
+        # InternalMove reordering keeps working.
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        item = self.itemAt(pos)
+        press_item, self._press_item = self._press_item, None
+        press_pos, self._press_pos = self._press_pos, None
+        if (
+            item is not None
+            and item is press_item
+            and bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable)
+            and bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)
+        ):
+            threshold = QApplication.startDragDistance()
+            dragged = press_pos is not None and (
+                (pos - press_pos).manhattanLength() >= threshold
+            )
+            if not dragged:
+                new_state = (
+                    Qt.CheckState.Unchecked
+                    if item.checkState() == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                item.setCheckState(new_state)
+                self.setCurrentItem(item)
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
 
 
 class MatplotlibCanvas(FigureCanvas):
