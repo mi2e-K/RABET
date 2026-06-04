@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Build Windows distribution
+    name: Build Windows installer
     runs-on: windows-latest
     steps:
       - name: Check out release ref
@@ -71,10 +71,9 @@ jobs:
           $content = $content -replace "\s*'vcruntime140_1',\r?\n", ""
           Set-Content -Path $env:BUILD_SCRIPT -Value $content -NoNewline
 
-      - name: Build Windows package
+      - name: Build Windows onedir distribution
         run: >
           python $env:BUILD_SCRIPT
-          --onefile
           --include-module distutils
           --include-module wheel
           --include-module pip
@@ -85,41 +84,32 @@ jobs:
           --include-module lib2to3
           --include-module pkg_resources
 
-      - name: Archive distribution folder
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile Windows installer
         shell: pwsh
         run: |
           $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
-          $zipName = "RABET-Windows-$version.zip"
+          $iscc = Get-ChildItem -Path "${env:ProgramFiles(x86)}","${env:ProgramFiles}" -Recurse -Filter "ISCC.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $iscc) { Write-Error "ISCC.exe not found after installing Inno Setup"; exit 1 }
+          Write-Host "Using ISCC: $iscc"
+          & $iscc "/DAppVersion=$version" "packaging\RABET.iss"
+          if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup compile failed ($LASTEXITCODE)"; exit 1 }
+
+      - name: Stage installer asset
+        shell: pwsh
+        run: |
+          $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
+          $src = "dist/RABET-Setup-$version.exe"
+          if (-not (Test-Path $src)) { Write-Error "Installer not found: $src"; exit 1 }
           $assetDir = "release-assets"
-          $stageDir = "release-staging/RABET-Windows-$version"
           New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
-          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
-
-          if (Test-Path "dist/RABET") {
-            Copy-Item -Path "dist/RABET/*" -Destination $stageDir -Recurse -Force
-          } elseif (Test-Path "dist/RABET.exe") {
-            $items = @(
-              "dist/RABET.exe",
-              "dist/configs",
-              "dist/resources",
-              "dist/logs",
-              "dist/projects",
-              "dist/README.txt",
-              "dist/Launch RABET.bat"
-            )
-            foreach ($item in $items) {
-              if (Test-Path $item) {
-                Copy-Item -Path $item -Destination $stageDir -Recurse -Force
-              }
-            }
-          } else {
-            Write-Error "Expected dist/RABET or dist/RABET.exe not found"
-            exit 1
-          }
-
-          Compress-Archive -Path "$stageDir/*" -DestinationPath "$assetDir/$zipName" -Force
-          "ASSET_PATH=$assetDir/$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "ASSET_NAME=$zipName" | Out-File -Append -FilePath $env:GITHUB_ENV
+          $assetName = "RABET-Windows-$version-Setup.exe"
+          Copy-Item -Path $src -Destination "$assetDir/$assetName" -Force
+          "ASSET_PATH=$assetDir/$assetName" | Out-File -Append -FilePath $env:GITHUB_ENV
+          "ASSET_NAME=$assetName" | Out-File -Append -FilePath $env:GITHUB_ENV
 
       - name: Upload Windows artefact
         uses: actions/upload-artifact@v4
