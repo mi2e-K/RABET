@@ -206,17 +206,19 @@ class MainWindow(QMainWindow):
         self.annotation_layout.setStretchFactor(self.upper_splitter, 10)  # More space for video
         self.annotation_layout.setStretchFactor(self.timeline_view, 0)
         
-        # Create analysis view
+        # Create analysis view (light: no pandas). Its model/controller are built
+        # lazily by AppController on first switch (PR-STARTUP-04). AppController
+        # also adds it to the stack via register_lazy_view (taking index 1), so
+        # we do NOT add it here -- doing both would double-register Analysis.
         self.analysis_view = AnalysisView()
-        
+
         # Add pages to stacked widget
         self.stacked_widget.addWidget(self.annotation_widget)
-        self.stacked_widget.addWidget(self.analysis_view)
-        
-        # Dictionary to store views by name
+
+        # Dictionary to store views by name. "Analysis" is registered right after
+        # by AppController (register_lazy_view), taking index 1.
         self._view_index = {
             "Annotation": 0,
-            "Analysis": 1
         }
         # name -> builder callable for views constructed lazily on first switch
         # (Phase 5-2). The builder populates the placeholder container that was

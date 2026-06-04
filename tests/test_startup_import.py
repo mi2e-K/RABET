@@ -57,6 +57,9 @@ def test_app_controller_import_does_not_pull_visualization_stack():
         [
             "matplotlib",
             "pingouin",
+            "pandas",
+            "models.analysis_model",
+            "controllers.analysis_controller",
             "views.visualization_view",
             "views.reliability_view",
             "models.reliability_model",

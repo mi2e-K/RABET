@@ -8,7 +8,8 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from models.video_model import VideoModel
 from models.action_map_model import ActionMapModel
 from models.annotation_model import AnnotationModel
-from models.analysis_model import AnalysisModel
+# AnalysisModel: lazily imported in _ensure_analysis (PR-STARTUP-04) so pandas
+# stays out of the startup path (Annotation-first shell).
 from models.project_model import ProjectModel
 
 from views.main_window import MainWindow
@@ -21,7 +22,7 @@ from views.log_viewer_dialog import LogViewerDialog
 from controllers.video_controller import VideoController
 from controllers.annotation_controller import AnnotationController
 from controllers.action_map_controller import ActionMapController
-from controllers.analysis_controller import AnalysisController
+# AnalysisController: lazily imported in _ensure_analysis (PR-STARTUP-04).
 from controllers.project_controller import ProjectController
 # VisualizationController / ReliabilityController: lazily imported in
 # _ensure_visualization / _ensure_reliability (see note above).
@@ -78,7 +79,11 @@ class AppController(QObject):
             _app.aboutToQuit.connect(self.video_model.shutdown)
         self.action_map_model = ActionMapModel()
         self.annotation_model = AnnotationModel(self.action_map_model, self.video_model)
-        self.analysis_model = AnalysisModel()
+        # Analysis is lazy (PR-STARTUP-04): AnalysisModel/AnalysisController pull
+        # in pandas, so they are built in _ensure_analysis on first switch to the
+        # Analysis tab. The AnalysisView itself is light and stays eager.
+        self.analysis_model = None
+        self.analysis_controller = None
         self.project_model = ProjectModel(self.file_manager)
         
         # Initialize main window
@@ -87,9 +92,16 @@ class AppController(QObject):
         # Set application window icon
         self.set_application_icon()
         
+        # Register the (eager, light) Analysis view as a lazy tab so its
+        # model/controller (which pull in pandas) build on first switch
+        # (PR-STARTUP-04). MainWindow no longer adds analysis_view to the stack.
+        self.main_window.register_lazy_view(
+            "Analysis", self.main_window.analysis_view, self._ensure_analysis
+        )
+
         # Initialize project view
         self.project_view = ProjectView()
-        
+
         # Add the (lightweight) Project view eagerly.
         self.main_window.add_view("Project", self.project_view)
 
@@ -122,7 +134,8 @@ class AppController(QObject):
             self.main_window,
             self.main_window.timeline_view
         )
-        self.analysis_controller = AnalysisController(self.analysis_model, self.main_window.analysis_view)
+        # analysis_controller is built lazily in _ensure_analysis (None for now);
+        # project_controller only stores the reference and never calls it.
         self.project_controller = ProjectController(
             self.project_model,
             self.project_view,
@@ -221,6 +234,9 @@ class AppController(QObject):
     @Slot()
     def handle_analysis_visualize_requested(self):
         """Load the files currently in Analysis into Visualization."""
+        # The visualize bridge is wired eagerly to the (eager) AnalysisView, so
+        # ensure the lazy Analysis model/controller exist before reading them.
+        self._ensure_analysis()
         file_paths = self.analysis_model.get_file_paths()
         if not file_paths:
             self.main_window.show_info("No annotation files are loaded in Analysis.")
@@ -230,6 +246,29 @@ class AppController(QObject):
         self._ensure_visualization()
         self.visualization_controller.load_files(file_paths)
         self.main_window.switch_to_view("Visualization")
+
+    def _ensure_analysis(self):
+        """Lazily construct the Analysis model + controller (PR-STARTUP-04).
+
+        AnalysisView is built eagerly by MainWindow (it does not import pandas),
+        but AnalysisModel/AnalysisController do, so they are created here on the
+        first switch to the Analysis tab -- keeping pandas off the startup path.
+        Idempotent.
+        """
+        if self.analysis_model is not None:
+            return
+        from controllers.analysis_controller import AnalysisController
+        from models.analysis_model import AnalysisModel
+        self.analysis_model = AnalysisModel()
+        self.analysis_controller = AnalysisController(
+            self.analysis_model, self.main_window.analysis_view
+        )
+        # project_controller kept a None placeholder; keep it consistent (it only
+        # stores the reference today, never calls it).
+        if hasattr(self, "project_controller"):
+            self.project_controller._analysis_controller = self.analysis_controller
+        self.analysis_model.error_occurred.connect(self.main_window.show_error)
+        self.logger.info("Analysis tab constructed lazily")
 
     def _ensure_visualization(self):
         """Lazily construct the Visualization view + controller (Phase 5-2).
@@ -339,7 +378,7 @@ class AppController(QObject):
         self.video_model.error_occurred.connect(self.main_window.show_error)
         self.action_map_model.error_occurred.connect(self.main_window.show_error)
         self.annotation_model.error_occurred.connect(self.main_window.show_error)
-        self.analysis_model.error_occurred.connect(self.main_window.show_error)
+        # analysis_model.error_occurred is connected in _ensure_analysis (lazy).
         self.project_model.error_occurred.connect(self.main_window.show_error)
     
     def toggle_play_pause(self):

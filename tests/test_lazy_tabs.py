@@ -37,6 +37,8 @@ def test_lazy_build_is_idempotent(qt_app):
 def test_analysis_visualize_builds_visualization(qt_app, monkeypatch):
     c = AppController()
     try:
+        # Analysis is lazy now (PR-STARTUP-04): build it before patching.
+        c._ensure_analysis()
         monkeypatch.setattr(
             c.analysis_model, "get_file_paths", lambda: ["nonexistent.csv"]
         )
