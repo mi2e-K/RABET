@@ -267,23 +267,28 @@ jobs:
           fi
           echo "BUILD_SCRIPT=${script}" >> "$GITHUB_ENV"
 
-      - name: Build Linux package
-        run: python "$BUILD_SCRIPT" --onefile
+      - name: Build Linux onedir distribution
+        run: python "$BUILD_SCRIPT"
 
-      - name: Rename Linux archive
+      - name: Build Linux AppImage
+        shell: bash
+        run: |
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+          version="${RELEASE_TAG#v}"
+          bash packaging/build_linux_appimage.sh "$version"
+
+      - name: Stage Linux AppImage
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
           arch="$(uname -m)"
-          asset_name="RABET-Linux-${arch}-${version}.tar.gz"
-          archive_path="$(find dist -maxdepth 1 -name 'RABET-linux-*.tar.gz' -print -quit)"
-          if [ -z "$archive_path" ]; then
-            echo "Expected Linux archive was not found in dist/" >&2
+          asset="dist/RABET-Linux-${arch}-${version}.AppImage"
+          if [ ! -f "$asset" ]; then
+            echo "Expected AppImage was not found: $asset" >&2
             exit 1
           fi
-          mv "$archive_path" "dist/${asset_name}"
-          echo "ASSET_PATH=dist/${asset_name}" >> "$GITHUB_ENV"
-          echo "ASSET_NAME=${asset_name}" >> "$GITHUB_ENV"
+          echo "ASSET_PATH=${asset}" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=$(basename "$asset")" >> "$GITHUB_ENV"
 
       - name: Upload Linux artefact
         uses: actions/upload-artifact@v4
