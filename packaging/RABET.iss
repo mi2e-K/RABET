@@ -46,13 +46,21 @@ SetupIconFile=..\resources\RABET.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Auto-detect the OS UI language and switch the wizard between Japanese and
+; English with no prompt (falls back to English -- the first [Languages]
+; entry -- for any other system language). NOTE: this localizes the installer
+; wizard only; the RABET application UI itself stays English.
+ShowLanguageDialog=no
+LanguageDetectionMethod=uilanguage
 ; Per-user install: no UAC prompt; lands in %LocalAppData%\Programs\RABET.
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
+; English first so it is the fallback for any non-Japanese system language.
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

@@ -87,7 +87,7 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
-      - name: Compile Windows installer
+      - name: Compile Windows installer (onedir)
         shell: pwsh
         run: |
           $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
@@ -104,18 +104,40 @@ jobs:
           $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
           $src = "dist/RABET-Setup-$version.exe"
           if (-not (Test-Path $src)) { Write-Error "Installer not found: $src"; exit 1 }
-          $assetDir = "release-assets"
-          New-Item -ItemType Directory -Path $assetDir -Force | Out-Null
-          $assetName = "RABET-Windows-$version-Setup.exe"
-          Copy-Item -Path $src -Destination "$assetDir/$assetName" -Force
-          "ASSET_PATH=$assetDir/$assetName" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "ASSET_NAME=$assetName" | Out-File -Append -FilePath $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path "release-assets" -Force | Out-Null
+          # Copy the installer out BEFORE the onefile build wipes dist/.
+          Copy-Item -Path $src -Destination "release-assets/RABET-Windows-$version-Setup.exe" -Force
 
-      - name: Upload Windows artefact
+      - name: Build Windows onefile (portable)
+        run: >
+          python $env:BUILD_SCRIPT
+          --onefile
+          --include-module distutils
+          --include-module wheel
+          --include-module pip
+          --include-module easy_install
+          --include-module unittest
+          --include-module venv
+          --include-module ensurepip
+          --include-module lib2to3
+          --include-module pkg_resources
+
+      - name: Stage portable asset
+        shell: pwsh
+        run: |
+          $version = "${{ env.RELEASE_TAG }}".TrimStart("v")
+          $src = "dist/RABET.exe"
+          if (-not (Test-Path $src)) { Write-Error "Portable exe not found: $src"; exit 1 }
+          New-Item -ItemType Directory -Path "release-assets" -Force | Out-Null
+          # Single-file portable: RABET.exe is fully self-contained (configs are
+          # embedded; user data is written to %AppData% at runtime).
+          Copy-Item -Path $src -Destination "release-assets/RABET-Windows-$version-portable.exe" -Force
+
+      - name: Upload Windows artefacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ASSET_NAME }}
-          path: ${{ env.ASSET_PATH }}
+          name: RABET-Windows-${{ env.RELEASE_TAG }}
+          path: release-assets/*
           retention-days: 30
           if-no-files-found: error
 
