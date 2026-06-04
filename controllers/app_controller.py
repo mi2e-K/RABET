@@ -247,6 +247,31 @@ class AppController(QObject):
         self.visualization_controller.load_files(file_paths)
         self.main_window.switch_to_view("Visualization")
 
+    def _warm_up_lazy_tabs(self):
+        """Build the heavy lazy tabs (Visualization / Reliability / Analysis) in
+        the background, one per idle tick, so the first on-screen switch to them
+        is smooth. Runs after the window is shown so it does not slow startup;
+        each builder is idempotent and exception-safe."""
+        builders = [
+            self._ensure_visualization,
+            self._ensure_reliability,
+            self._ensure_analysis,
+        ]
+
+        def _run_next(index):
+            if index >= len(builders):
+                self.logger.info("Lazy tabs warm-up complete")
+                return
+            try:
+                builders[index]()
+            except Exception:
+                self.logger.exception("Background warm-up of a lazy tab failed")
+            # Next builder on a fresh idle tick so we never block the UI in one
+            # chunk (keeps recording/playback responsive during warm-up).
+            QTimer.singleShot(0, lambda: _run_next(index + 1))
+
+        _run_next(0)
+
     def _ensure_analysis(self):
         """Lazily construct the Analysis model + controller (PR-STARTUP-04).
 
@@ -347,6 +372,12 @@ class AppController(QObject):
             self.set_application_icon()
         
         self.logger.info("Main window shown and centered on screen")
+
+        # Warm up the heavy lazy tabs in the background so the first switch to
+        # them is smooth (tab-jank mitigation). This runs AFTER the window is
+        # shown, so startup stays fast; a short delay lets the user's first
+        # action (e.g. loading a video) go first.
+        QTimer.singleShot(1200, self._warm_up_lazy_tabs)
     
     def connect_main_window_signals(self):
         """Connect main window signals to controllers."""

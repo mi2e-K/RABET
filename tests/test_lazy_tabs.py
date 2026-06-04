@@ -49,3 +49,41 @@ def test_analysis_visualize_builds_visualization(qt_app, monkeypatch):
         assert c.visualization_view is not None
     finally:
         c.main_window.deleteLater()
+
+
+def test_warm_up_builds_all_lazy_tabs(qt_app):
+    # Idle pre-warming (tab-jank mitigation): _warm_up_lazy_tabs constructs the
+    # heavy tabs in the background, one per idle tick. Draining the chained
+    # singleShot(0) builders should leave every one of them constructed.
+    c = AppController()
+    try:
+        assert c.visualization_view is None
+        assert c.reliability_view is None
+        assert c.analysis_model is None
+
+        c._warm_up_lazy_tabs()
+        for _ in range(20):  # drain the chained singleShot(0) builders
+            qt_app.processEvents()
+
+        assert c.visualization_view is not None
+        assert c.reliability_view is not None
+        assert c.analysis_model is not None
+    finally:
+        c.main_window.deleteLater()
+
+
+def test_warm_up_does_not_rebuild_an_open_tab(qt_app):
+    # Warm-up must be idempotent with a tab the user already opened: the
+    # _ensure_* guards mean the pre-built instance is reused, not replaced.
+    c = AppController()
+    try:
+        c.main_window.switch_to_view("Visualization")
+        built = c.visualization_view
+
+        c._warm_up_lazy_tabs()
+        for _ in range(20):
+            qt_app.processEvents()
+
+        assert c.visualization_view is built  # same instance, not rebuilt
+    finally:
+        c.main_window.deleteLater()
