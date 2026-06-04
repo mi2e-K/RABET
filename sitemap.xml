@@ -43,12 +43,6 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mi2e-k.github.io/RABET/"/>
     </url>
     <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/BUG_AUDIT_REPORT/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/BUG_AUDIT_REPORT/"/>
-    </url>
-    <url>
         <loc>https://mi2e-k.github.io/RABET/ja/BUILD_MACOS_LINUX/</loc>
         <lastmod>2026-06-04</lastmod>
         <changefreq>daily</changefreq>
@@ -63,41 +57,11 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://mi2e-k.github.io/RABET/CSV_FORMAT/"/>
     </url>
     <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/NEXT_TASKS/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/NEXT_TASKS/"/>
-    </url>
-    <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/PERFORMANCE_OPTIMIZATION_PLAN/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/PERFORMANCE_OPTIMIZATION_PLAN/"/>
-    </url>
-    <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/PROJECT_SCHEMA_V2_DESIGN/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/PROJECT_SCHEMA_V2_DESIGN/"/>
-    </url>
-    <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/STARTUP_OPTIMIZATION_PLAN/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/STARTUP_OPTIMIZATION_PLAN/"/>
-    </url>
-    <url>
         <loc>https://mi2e-k.github.io/RABET/ja/USER_GUIDE/</loc>
         <lastmod>2026-06-04</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/USER_GUIDE/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://mi2e-k.github.io/RABET/USER_GUIDE/"/>
-    </url>
-    <url>
-        <loc>https://mi2e-k.github.io/RABET/ja/VIDEO_WORKER_DESIGN/</loc>
-        <lastmod>2026-06-04</lastmod>
-        <changefreq>daily</changefreq>
-        <xhtml:link rel="alternate" hreflang="ja" href="https://mi2e-k.github.io/RABET/ja/VIDEO_WORKER_DESIGN/"/>
     </url>
     <url>
         <loc>https://mi2e-k.github.io/RABET/ja/reliability/</loc>
