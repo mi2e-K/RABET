@@ -132,6 +132,15 @@ COMMON_EXCLUDED_MODULES = [
     "azure",
     "google",
     "pytest",
+    # _pytest (pytest's implementation package), pluggy (its plugin system)
+    # and the legacy ``py`` library are dev-only test dependencies. They get
+    # dragged into the bundle by collect_submodules() of the scipy / pingouin
+    # test helpers (which ``import _pytest`` / ``pluggy``) even though RABET
+    # never imports them at runtime -- excluding ``pytest`` alone left ~1.2 MB
+    # of dead weight behind. RABET app code imports none of these.
+    "_pytest",
+    "pluggy",
+    "py",
     "nose",
     "sphinx",
     "IPython",
