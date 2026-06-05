@@ -90,7 +90,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Download RABET-Windows-1.3.5-Setup.exe from Zenodo
+    1. Download RABET-Windows-1.3.5-Setup.zip from Zenodo
     2. Run the installer
     3. Launch RABET from the Start Menu
     ```

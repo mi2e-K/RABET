@@ -105,8 +105,13 @@ jobs:
           $src = "dist/RABET-Setup-$version.exe"
           if (-not (Test-Path $src)) { Write-Error "Installer not found: $src"; exit 1 }
           New-Item -ItemType Directory -Path "release-assets" -Force | Out-Null
-          # Copy the installer out BEFORE the onefile build wipes dist/.
-          Copy-Item -Path $src -Destination "release-assets/RABET-Windows-$version-Setup.exe" -Force
+          $stage = "release-assets/RABET-Windows-$version-Setup"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          # Zip the installer so browsers and managed networks are less likely
+          # to block the download solely because the release asset is an .exe.
+          Copy-Item -Path $src -Destination "$stage/RABET-Setup.exe" -Force
+          Compress-Archive -Path "$stage/*" -DestinationPath "release-assets/RABET-Windows-$version-Setup.zip" -Force
+          Remove-Item -Recurse -Force $stage
 
       - name: Build Windows onefile (portable)
         run: >
@@ -333,13 +338,46 @@ jobs:
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
-          cat > release_body.md <<EOF
-          Automated release for RABET $version.
+          cat > release_body.md <<'EOF'
+          ## RABET vVERSION_PLACEHOLDER
 
-          See the assets below for self-contained Windows / macOS / Linux
-          builds. Release notes are maintained directly on this Releases
-          page; edit this description after publish to add the human-
-          readable summary of changes.
+          RABET vVERSION_PLACEHOLDER improves startup and first-tab loading UX,
+          refreshes the release packaging, and trims dev-only test dependencies
+          from bundled distributions.
+
+          ### Highlights
+
+          - **Added a branded startup loader.**
+            The startup splash now reveals the RABET dot-logo cells over a dark
+            background, using randomized fill patterns and a short completed-logo
+            hold before the main window appears.
+
+          - **Added first-load overlays for heavy tabs.**
+            Analysis, Visualization, and Reliability remain lazily constructed,
+            but first access now shows a compact segmented loader instead of a
+            silent pause.
+
+          - **Kept startup responsive.**
+            The previous hidden post-launch warm-up has been removed so early
+            annotation work is not interrupted by background construction of
+            heavier tabs.
+
+          ### Packaging
+
+          - **Windows installer and portable builds are zip-wrapped.**
+            The release assets are `RABET-Windows-VERSION_PLACEHOLDER-Setup.zip`
+            and `RABET-Windows-VERSION_PLACEHOLDER-portable.zip`. The portable
+            zip contains a simple `RABET.exe`.
+
+          - **macOS builds are distributed as DMG images.**
+            Open the DMG, then drag `RABET.app` to Applications.
+
+          - **Linux is distributed as an AppImage.**
+            Make it executable and launch it directly.
+
+          - **Removed dev-only pytest internals from packaged bundles.**
+            PyInstaller builds now exclude pytest implementation modules and
+            related plugin infrastructure that are not used at runtime.
 
           ### macOS first launch
 
@@ -357,6 +395,7 @@ jobs:
           Then open `RABET.app` normally. You only need to do this once for
           each downloaded copy.
           EOF
+          sed -i "s/VERSION_PLACEHOLDER/$version/g" release_body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

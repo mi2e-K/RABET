@@ -93,7 +93,7 @@ platform:
 
 | Platform | Asset |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.3.5-Setup.exe` |
+| Windows installer | `RABET-Windows-1.3.5-Setup.zip` |
 | Windows portable | `RABET-Windows-1.3.5-portable.zip` |
 | macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.5.dmg` |
 | macOS (Intel) | `RABET-macOS-x86_64-1.3.5.dmg` |

@@ -87,7 +87,7 @@ hide:
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Zenodo から RABET-Windows-1.3.5-Setup.exe をダウンロード
+    1. Zenodo から RABET-Windows-1.3.5-Setup.zip をダウンロード
     2. 任意の場所に展開（デスクトップ / Tools フォルダなど）
     3. RABET.exe をダブルクリック
     ```
