@@ -373,11 +373,9 @@ class AppController(QObject):
         
         self.logger.info("Main window shown and centered on screen")
 
-        # Warm up the heavy lazy tabs in the background so the first switch to
-        # them is smooth (tab-jank mitigation). This runs AFTER the window is
-        # shown, so startup stays fast; a short delay lets the user's first
-        # action (e.g. loading a video) go first.
-        QTimer.singleShot(1200, self._warm_up_lazy_tabs)
+        # Heavy tabs stay lazy so startup remains responsive. Their first
+        # access now shows MainWindow's PhaseLoadingOverlay instead of doing a
+        # hidden post-launch warm-up that can freeze the annotation workspace.
     
     def connect_main_window_signals(self):
         """Connect main window signals to controllers."""

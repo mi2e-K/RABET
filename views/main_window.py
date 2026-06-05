@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QToolBar, 
     QMessageBox, QSplitter, QApplication, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QEvent
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QEvent, QEventLoop, QElapsedTimer
 from PySide6.QtGui import QIcon, QAction
 
 from views.video_player_view import VideoPlayerView
@@ -14,6 +14,7 @@ from views.action_map_view import ActionMapView
 from views.recording_control_view import RecordingControlView
 from views.analysis_view import AnalysisView
 from utils.app_icon import find_app_icon_path
+from utils.phase_loading_overlay import PhaseLoadingOverlay
 from utils.video_detection import is_video_file
 
 
@@ -145,6 +146,10 @@ class MainWindow(QMainWindow):
         # Keep the window minimum size tied to the visible page, not hidden pages.
         self.stacked_widget = CurrentPageStackedWidget()
         self.main_layout.addWidget(self.stacked_widget)
+        self._tab_loading_overlay = PhaseLoadingOverlay(self.stacked_widget)
+        self._tab_loading_elapsed = None
+        self._tab_loading_minimum_ms = 650
+        self._tab_loading_completion_hold_ms = 180
         
         # Create annotation view
         self.annotation_widget = QWidget()
@@ -224,6 +229,11 @@ class MainWindow(QMainWindow):
         # (Phase 5-2). The builder populates the placeholder container that was
         # registered via register_lazy_view and wires its controller.
         self._lazy_view_builders = {}
+        self._lazy_view_loader_messages = {
+            "Analysis": "Preparing Analysis",
+            "Visualization": "Preparing Visualization",
+            "Reliability": "Preparing Reliability",
+        }
         
         # Status bar removed - status messages now integrated into timeline view
         
@@ -1154,11 +1164,24 @@ class MainWindow(QMainWindow):
         Args:
             view_name (str): Name of the view to switch to
         """
-        # Build a lazily-registered view the first time it is shown (Phase 5-2).
-        self._ensure_lazy_view_built(view_name)
-
         if view_name in self._view_index:
             index = self._view_index[view_name]
+            show_loader = self._should_show_lazy_view_loader(view_name)
+            if show_loader:
+                # Show the destination page immediately so the user gets
+                # instant feedback, then paint the first-frame overlay before
+                # the synchronous lazy builder starts importing heavy modules.
+                self.stacked_widget.setCurrentIndex(index)
+                self._show_lazy_view_loader(view_name)
+
+            # Build a lazily-registered view the first time it is shown
+            # (Phase 5-2 / PR-STARTUP-04).
+            try:
+                self._ensure_lazy_view_built(view_name)
+            finally:
+                if show_loader:
+                    self._hide_lazy_view_loader()
+
             self.stacked_widget.setCurrentIndex(index)
             self.logger.debug(f"Switched to {view_name} mode")
             self._sync_toolbar_status_for_view(view_name)
@@ -1284,6 +1307,43 @@ class MainWindow(QMainWindow):
         """
         self.add_view(name, placeholder)
         self._lazy_view_builders[name] = builder
+
+    def _should_show_lazy_view_loader(self, name):
+        """Return True when a first-access lazy tab should show the phase loader."""
+        return name in self._lazy_view_builders and name in self._lazy_view_loader_messages
+
+    def _show_lazy_view_loader(self, name):
+        """Display and immediately paint the first frame of the lazy-tab loader."""
+        title = self._lazy_view_loader_messages.get(name, "Preparing")
+        self._tab_loading_overlay.show_loader(title)
+        self._tab_loading_elapsed = QElapsedTimer()
+        self._tab_loading_elapsed.start()
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+    def _hide_lazy_view_loader(self):
+        """Hide the lazy-tab loader after the view has been constructed."""
+        self._tab_loading_overlay.finish_loader()
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+            elapsed = 0
+            if self._tab_loading_elapsed is not None and self._tab_loading_elapsed.isValid():
+                elapsed = self._tab_loading_elapsed.elapsed()
+            remaining = max(0, self._tab_loading_minimum_ms - elapsed)
+            if remaining > 0:
+                wait_loop = QEventLoop(self)
+                QTimer.singleShot(remaining, wait_loop.quit)
+                wait_loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+            completion_loop = QEventLoop(self)
+            QTimer.singleShot(self._tab_loading_completion_hold_ms, completion_loop.quit)
+            completion_loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+        self._tab_loading_overlay.hide_loader()
+        self._tab_loading_elapsed = None
 
     def _ensure_lazy_view_built(self, name):
         """Run a registered lazy builder once, on first access to ``name``."""
@@ -1751,6 +1811,8 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, event):
         """Keep the right annotation column from claiming extra height after resizes."""
         super().resizeEvent(event)
+        if hasattr(self, "_tab_loading_overlay"):
+            self._tab_loading_overlay.resize(self.stacked_widget.size())
         if not getattr(self, '_disable_manual_layout_stabilization', False):
             self.sync_right_column_panel_heights()
         if getattr(self, '_layout_diagnostics_enabled', False):

@@ -5,10 +5,12 @@
 import sys
 import argparse
 import logging
+import os
+import random
 from PySide6.QtWidgets import (
-    QApplication, QStyleFactory, QSplashScreen, QProgressBar,
+    QApplication, QStyleFactory, QSplashScreen,
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QRectF, QEventLoop, QTimer
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
 
 # NOTE: ``controllers.app_controller`` is imported lazily inside main() AFTER
@@ -59,81 +61,97 @@ def setup_application_icon(app):
         return False
 
 class RabetSplash(QSplashScreen):
-    """Custom splash window with a title, status text and a determinate
-    progress bar. Stays on top of every other RABET widget while the
-    main window is being constructed."""
+    """Startup splash that reveals the RABET dot logo as initialization runs."""
 
     def __init__(self, icon_path: str | None = None) -> None:
-        # Build a clean 480x240 background pixmap. We paint a dark
-        # rounded rectangle with the RABET version on it so the splash
-        # looks intentional rather than relying on an external image.
+        from utils.rabet_logo_cells import LOGO_FILL_PATTERNS, logo_cells
         from version import __version__ as app_version
-        pixmap = QPixmap(QSize(480, 240))
-        pixmap.fill(QColor("#1f1f1f"))
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Border
-        painter.setPen(QColor("#3a3a3a"))
-        painter.drawRoundedRect(0, 0, 479, 239, 8, 8)
-        # Title
-        painter.setPen(QColor("#f5f5f5"))
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        painter.setFont(title_font)
-        painter.drawText(
-            pixmap.rect().adjusted(0, 40, 0, 0),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            "RABET",
-        )
-        # Subtitle
-        painter.setPen(QColor("#bdbdbd"))
-        sub_font = QFont()
-        sub_font.setPointSize(10)
-        painter.setFont(sub_font)
-        painter.drawText(
-            pixmap.rect().adjusted(0, 80, 0, 0),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            "Real-time Animal Behavior Event Tagger",
-        )
-        # Version
-        painter.setPen(QColor("#9e9e9e"))
-        ver_font = QFont()
-        ver_font.setPointSize(9)
-        painter.setFont(ver_font)
-        painter.drawText(
-            pixmap.rect().adjusted(0, 110, 0, 0),
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            f"v{app_version}",
-        )
-        painter.end()
 
-        super().__init__(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+        requested_pattern = os.environ.get("RABET_LOGO_FILL_PATTERN", "random")
+        if requested_pattern == "random":
+            requested_pattern = random.choice(LOGO_FILL_PATTERNS)
+        elif requested_pattern not in LOGO_FILL_PATTERNS:
+            requested_pattern = "center_out"
+
+        self._splash_size = QSize(560, 360)
+        self._logo_fill_pattern = requested_pattern
+        self._logo_cells = logo_cells(requested_pattern)
+        self._progress = 0.0
+        self._message = "Preparing..."
+        self._version = app_version
+
+        super().__init__(self._render_pixmap(), Qt.WindowType.WindowStaysOnTopHint)
         if icon_path:
             self.setWindowIcon(QIcon(icon_path))
 
-        # A child progress bar painted over the bottom of the splash.
-        self._progress = QProgressBar(self)
-        self._progress.setGeometry(40, 180, 400, 18)
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._progress.setTextVisible(False)
-        self._progress.setStyleSheet(
-            "QProgressBar { background-color: #2a2a2a;"
-            " border: 1px solid #3a3a3a; border-radius: 4px; }"
-            " QProgressBar::chunk { background-color: #4caf50;"
-            " border-radius: 3px; }"
+    def set_progress(self, value: int, message: str = "") -> None:
+        target = max(0, min(100, int(value)))
+        if message:
+            self._message = message
+
+        start = self._progress
+        steps = max(1, min(18, int(abs(target - start) / 4) or 1))
+        for step in range(1, steps + 1):
+            amount = step / steps
+            eased = 1 - (1 - amount) * (1 - amount)
+            self._progress = start + (target - start) * eased
+            self.setPixmap(self._render_pixmap())
+            QApplication.processEvents()
+
+    def hold_complete(self, milliseconds: int = 180) -> None:
+        """Keep the completed logo visible briefly before the splash closes."""
+        if milliseconds <= 0:
+            return
+        hold_loop = QEventLoop()
+        QTimer.singleShot(milliseconds, hold_loop.quit)
+        hold_loop.exec(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+    def _render_pixmap(self) -> QPixmap:
+        from utils.rabet_logo_cells import LOGO_PALETTE, LOGO_ROWS
+
+        pixmap = QPixmap(self._splash_size)
+        pixmap.fill(QColor("#030303"))
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        painter.setPen(QColor("#20262b"))
+        painter.drawRoundedRect(0, 0, self._splash_size.width() - 1, self._splash_size.height() - 1, 10, 10)
+
+        cell_step = 7
+        cell_size = 6
+        logo_width = max(len(row) for row in LOGO_ROWS) * cell_step
+        logo_height = len(LOGO_ROWS) * cell_step
+        logo_x = (self._splash_size.width() - logo_width) / 2
+        logo_y = 26
+
+        visible = int(len(self._logo_cells) * (self._progress / 100.0))
+        for row, col, value in self._logo_cells[:visible]:
+            x = logo_x + col * cell_step
+            y = logo_y + row * cell_step
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(LOGO_PALETTE[value]))
+            painter.drawRoundedRect(QRectF(x, y, cell_size, cell_size), 1.4, 1.4)
+
+        title_font = QFont("Segoe UI", 18)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#f7fbfd"))
+        painter.drawText(
+            QRectF(0, 298, self._splash_size.width(), 28),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            "RABET",
         )
 
-    def set_progress(self, value: int, message: str = "") -> None:
-        self._progress.setValue(max(0, min(100, int(value))))
-        if message:
-            self.showMessage(
-                message,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
-                QColor("#e0e0e0"),
-            )
-        QApplication.processEvents()
+        detail_font = QFont("Segoe UI", 9)
+        painter.setFont(detail_font)
+        painter.setPen(QColor("#9baab2"))
+        painter.drawText(
+            QRectF(0, 324, self._splash_size.width(), 18),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+            f"{self._message}  v{self._version}",
+        )
+        painter.end()
+        return pixmap
 
 
 def adjust_window_to_screen(window):
@@ -301,6 +319,7 @@ def main():
         controller.main_window.setFocus()
 
         # Hide splash now that the main window is up.
+        splash.hold_complete(180)
         splash.finish(controller.main_window)
         profiler.summary()
 

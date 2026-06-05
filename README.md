@@ -93,10 +93,11 @@ platform:
 
 | Platform | Asset |
 | --- | --- |
-| Windows | `RABET-Windows-1.3.4.zip` |
-| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.4.zip` |
-| macOS (Intel) | `RABET-macOS-x86_64-1.3.4.zip` |
-| Linux | `RABET-Linux-x86_64-1.3.4.tar.gz` |
+| Windows installer | `RABET-Windows-1.3.4-Setup.exe` |
+| Windows portable | `RABET-Windows-1.3.4-portable.exe` |
+| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.4.dmg` |
+| macOS (Intel) | `RABET-macOS-x86_64-1.3.4.dmg` |
+| Linux | `RABET-Linux-x86_64-1.3.4.AppImage` |
 
 The downloads are self-contained — no additional installation step is
 required. See the [User Guide](docs/USER_GUIDE.md#12-launching-rabet)
