@@ -129,9 +129,13 @@ jobs:
           $src = "dist/RABET.exe"
           if (-not (Test-Path $src)) { Write-Error "Portable exe not found: $src"; exit 1 }
           New-Item -ItemType Directory -Path "release-assets" -Force | Out-Null
-          # Single-file portable: RABET.exe is fully self-contained (configs are
-          # embedded; user data is written to %AppData% at runtime).
-          Copy-Item -Path $src -Destination "release-assets/RABET-Windows-$version-portable.exe" -Force
+          $stage = "release-assets/RABET-Windows-$version-portable"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          # Single-file portable: keep the executable name simple inside the
+          # archive while shipping the asset itself as a browser-friendlier zip.
+          Copy-Item -Path $src -Destination "$stage/RABET.exe" -Force
+          Compress-Archive -Path "$stage/*" -DestinationPath "release-assets/RABET-Windows-$version-portable.zip" -Force
+          Remove-Item -Recurse -Force $stage
 
       - name: Upload Windows artefacts
         uses: actions/upload-artifact@v4
@@ -336,6 +340,22 @@ jobs:
           builds. Release notes are maintained directly on this Releases
           page; edit this description after publish to add the human-
           readable summary of changes.
+
+          ### macOS first launch
+
+          The macOS builds are unsigned and not notarized. After downloading
+          the DMG, open it and drag `RABET.app` to Applications. On first
+          launch, macOS may report that the app is "damaged" or cannot be
+          verified. This is Gatekeeper quarantine, not a corrupt download.
+
+          The most reliable fix is:
+
+          ```bash
+          xattr -dr com.apple.quarantine /Applications/RABET.app
+          ```
+
+          Then open `RABET.app` normally. You only need to do this once for
+          each downloaded copy.
           EOF
 
       - name: Create GitHub Release

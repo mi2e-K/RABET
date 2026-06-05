@@ -94,7 +94,7 @@ platform:
 | Platform | Asset |
 | --- | --- |
 | Windows installer | `RABET-Windows-1.3.5-Setup.exe` |
-| Windows portable | `RABET-Windows-1.3.5-portable.exe` |
+| Windows portable | `RABET-Windows-1.3.5-portable.zip` |
 | macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.5.dmg` |
 | macOS (Intel) | `RABET-macOS-x86_64-1.3.5.dmg` |
 | Linux | `RABET-Linux-x86_64-1.3.5.AppImage` |
@@ -102,6 +102,22 @@ platform:
 The downloads are self-contained — no additional installation step is
 required. See the [User Guide](docs/USER_GUIDE.md#12-launching-rabet)
 for platform-specific launch instructions.
+
+### macOS first launch
+
+The macOS builds are unsigned and not notarized. After downloading the DMG,
+open it and drag `RABET.app` to Applications. On first launch, macOS may report
+that the app is "damaged" or cannot be verified. This is Gatekeeper quarantine,
+not a corrupt download.
+
+The most reliable fix is to open Terminal and run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/RABET.app
+```
+
+Then open `RABET.app` normally. You only need to do this once for each
+downloaded copy.
 
 A mirror of the same binaries is also published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases) for

@@ -76,6 +76,10 @@ class ConfigPathManager:
         # For packaged app, also look in various locations
         if getattr(sys, 'frozen', False):
             # We're running in a bundle
+            meipass = getattr(sys, '_MEIPASS', None)
+            if meipass:
+                possible_paths.insert(0, Path(meipass) / "configs")
+
             if platform.system() == 'Darwin':
                 # macOS app bundle structure
                 bundle_dir = Path(sys.executable).parent
@@ -149,15 +153,21 @@ class ConfigPathManager:
         
         if config_dir is None:
             # Find without creating
-            for path in [
+            standard_paths = [
                 Path("configs") / file_name,
                 Path("..") / "configs" / file_name,
                 Path(__file__).parent.parent / "configs" / file_name,
-            ]:
+            ]
+            if getattr(sys, 'frozen', False):
+                meipass = getattr(sys, '_MEIPASS', None)
+                if meipass:
+                    standard_paths.insert(0, Path(meipass) / "configs" / file_name)
+
+            for path in standard_paths:
                 if path.exists():
                     self._found_paths[file_name] = path
                     return path
-                    
+
             # If packaged and not found in standard locations
             if getattr(sys, 'frozen', False):
                 if platform.system() == 'Darwin':
@@ -251,6 +261,7 @@ class ConfigPathManager:
             default_path = None
             
             # Search in possible bundle locations
+            meipass = getattr(sys, '_MEIPASS', None)
             if platform.system() == 'Darwin':
                 bundle_dir = Path(sys.executable).parent
                 search_paths = [
@@ -262,7 +273,9 @@ class ConfigPathManager:
                 search_paths = [
                     Path(sys.executable).parent / "configs" / file_name,
                 ]
-            
+            if meipass:
+                search_paths.insert(0, Path(meipass) / "configs" / file_name)
+
             for path in search_paths:
                 if path.exists():
                     default_path = path
