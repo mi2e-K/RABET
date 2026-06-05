@@ -6,7 +6,7 @@
 
 # Real-time Animal Behavior Event Tagger
 
-[![Version](https://img.shields.io/badge/version-1.3.4-blue)](https://github.com/mi2e-K/RABET/releases)
+[![Version](https://img.shields.io/badge/version-1.3.5-blue)](https://github.com/mi2e-K/RABET/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#installation)
@@ -93,11 +93,11 @@ platform:
 
 | Platform | Asset |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.3.4-Setup.exe` |
-| Windows portable | `RABET-Windows-1.3.4-portable.exe` |
-| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.4.dmg` |
-| macOS (Intel) | `RABET-macOS-x86_64-1.3.4.dmg` |
-| Linux | `RABET-Linux-x86_64-1.3.4.AppImage` |
+| Windows installer | `RABET-Windows-1.3.5-Setup.exe` |
+| Windows portable | `RABET-Windows-1.3.5-portable.exe` |
+| macOS (Apple Silicon) | `RABET-macOS-arm64-1.3.5.dmg` |
+| macOS (Intel) | `RABET-macOS-x86_64-1.3.5.dmg` |
+| Linux | `RABET-Linux-x86_64-1.3.5.AppImage` |
 
 The downloads are self-contained — no additional installation step is
 required. See the [User Guide](docs/USER_GUIDE.md#12-launching-rabet)
@@ -168,7 +168,7 @@ Annotation exports use the layout below; full documentation lives in
 
 ```
 Metadata
-RABET Version,1.3.4
+RABET Version,1.3.5
 Test Duration (seconds),300
 
 Event,Onset,Offset
@@ -197,7 +197,7 @@ metadata lives in [`CITATION.cff`](CITATION.cff); a human-readable form
 is:
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.4) [Computer software].
+> (Version 1.3.5) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
