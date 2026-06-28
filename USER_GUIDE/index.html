@@ -779,6 +779,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#36-bout-and-transition-figure-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Bout and transition figure export
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1651,6 +1662,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#36-bout-and-transition-figure-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Bout and transition figure export
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2517,8 +2539,9 @@ with:</p>
 <p>You can add as many latency metrics as you need (e.g. <em>Sideways
 threats Latency</em>) and toggle each on or off independently.</p>
 <h4 id="total-time-metrics">Total-time metrics<a class="headerlink" href="#total-time-metrics" title="Permanent link">&para;</a></h4>
-<p>Sum of <code>Duration</code> over a chosen set of behaviours. The default
-configuration ships with:</p>
+<p>Overlap-aware total time across a chosen set of behaviours. When raw
+events are available, overlapping intervals are collapsed so simultaneous
+behaviours are not double-counted. The default configuration ships with:</p>
 <ul>
 <li><em>Total Aggression</em> — Attack bites + Sideways threats + Tail rattles</li>
 <li>Chasing</li>
@@ -2528,6 +2551,10 @@ configuration ships with:</p>
 <p>The set of behaviours per total-time metric is editable, so you can
 define category sums tailored to your study (e.g. <em>Exploration</em> =
 Locomotion + Rearing).</p>
+<p>When only a Summary section is available and raw event onsets/offsets
+are missing, RABET can only sum the listed behaviour durations. Multi-
+behaviour total-time metrics from summary-only input are therefore marked
+as approximate.</p>
 <h3 id="35-exporting-results">3.5 Exporting results<a class="headerlink" href="#35-exporting-results" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Copy to Clipboard</strong> copies the active tab as TSV (tab-separated
@@ -2538,6 +2565,20 @@ Locomotion + Rearing).</p>
 <li><strong>Visualize Files</strong> switches to the Visualization tab with the
   currently loaded files already selected.</li>
 </ul>
+<h3 id="36-bout-and-transition-figure-export">3.6 Bout and transition figure export<a class="headerlink" href="#36-bout-and-transition-figure-export" title="Permanent link">&para;</a></h3>
+<p>The optional <strong>Bout Analysis</strong> and <strong>Transition Analysis</strong> windows are
+opened from the Analysis view. Figure tabs now include <strong>Export
+Figure...</strong> controls:</p>
+<ul>
+<li>Bout Analysis <strong>Raster</strong> can be saved as PNG, SVG, or PDF.</li>
+<li>Transition Analysis <strong>Heatmap</strong> can be saved as PNG, SVG, or PDF.</li>
+<li>Transition Analysis <strong>Predictability</strong> can save its bar chart as PNG,
+  SVG, or PDF.</li>
+</ul>
+<p>Use the adjacent <strong>DPI</strong> control before exporting. The Windows file
+dialog lets you choose the destination and file extension; if the
+extension is omitted, RABET uses the selected file-type filter. The
+export-complete notification closes automatically after one second.</p>
 <hr />
 <h2 id="4-visualising-data">4. Visualising data<a class="headerlink" href="#4-visualising-data" title="Permanent link">&para;</a></h2>
 <p>The <strong>Visualization</strong> view renders a raster plot — one row per
@@ -2611,6 +2652,9 @@ each file represents one animal identified by <code>animal_id</code>.</p>
      animals
    A scatter plot per metric is rendered automatically.</li>
 </ol>
+<p>ICC and Pearson r are shown as unavailable when the paired metric has no
+between-animal variance. Exact equality of constant values is still exact
+equality, but the statistic itself is not identifiable.</p>
 <p><strong>Output.</strong> The results table colour-codes ICC values using Cicchetti
 (1994) bands:</p>
 <table>
@@ -2662,6 +2706,10 @@ comparable.</p>
    vertically per behaviour, with disagreement segments visible at a
    glance.</li>
 </ol>
+<p>If a behaviour is absent from every compared bin for both raters, raw %
+agreement can be 100% while Cohen's kappa and Krippendorff's alpha are
+unavailable; this is the correct degenerate-case treatment rather than
+evidence of perfect chance-corrected reliability.</p>
 <p>The κ values are colour-coded using Landis &amp; Koch (1977) bands:</p>
 <table>
 <thead>
