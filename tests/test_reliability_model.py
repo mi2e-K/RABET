@@ -26,6 +26,7 @@ from models.reliability_model import (
     _parse_summary_table,
     _bin_events,
     _cohen_kappa,
+    _icc_two_way_single,
     _krippendorff_alpha,
 )
 from views.reliability_view import SummaryMatchDialog
@@ -403,6 +404,14 @@ def test_bin_events_handles_zero_onset_offset() -> None:
     assert binned["A"].sum() == 1
 
 
+def test_bin_events_endpoint_point_event_marks_last_bin() -> None:
+    behaviors = ["A"]
+    events = [("A", 10.0, 10.0)]
+    binned = _bin_events(events, behaviors, duration_seconds=10.0, bin_seconds=1.0)
+    assert binned["A"][-1] == 1
+    assert binned["A"].sum() == 1
+
+
 def test_bin_events_swaps_negative_duration() -> None:
     """If offset < onset the helper should swap them before binning."""
     behaviors = ["A"]
@@ -469,13 +478,41 @@ def test_detailed_mode_partial_disagreement(tmp_path: Path, qt_app) -> None:
 # -------------------------------------------------------------------- #
 
 
-def test_cohen_kappa_both_zero_returns_one() -> None:
-    """A3: both rasters all-zero is degenerate-but-perfect agreement.
-    The local implementation returns 1.0 to surface this in the UI as
-    'perfect', rather than None (which the UI would show as N/A)."""
+def test_cohen_kappa_both_zero_is_undefined() -> None:
+    """Both rasters all-zero have raw agreement of 1.0, but kappa itself
+    is undefined because the expected agreement denominator is zero."""
     va = np.zeros(10, dtype=np.uint8)
     vb = np.zeros(10, dtype=np.uint8)
-    assert _cohen_kappa(va, vb) == pytest.approx(1.0)
+    assert _cohen_kappa(va, vb) is None
+
+
+def test_icc_constant_identical_values_are_undefined() -> None:
+    va = np.array([5.0, 5.0, 5.0])
+    vb = np.array([5.0, 5.0, 5.0])
+    assert _icc_two_way_single(va, vb) is None
+
+
+def test_summary_mode_constant_pearson_is_undefined(tmp_path: Path, qt_app) -> None:
+    pytest.importorskip("pingouin")
+    a = tmp_path / "summary_a.csv"
+    b = tmp_path / "summary_b.csv"
+    rows = [
+        ("a01", 1.0, 0.0, 0.0, 0.0, "", 1, 0, 0, 0, "", 10.0, 2.0),
+        ("a02", 1.0, 0.0, 0.0, 0.0, "", 1, 0, 0, 0, "", 10.0, 2.0),
+        ("a03", 1.0, 0.0, 0.0, 0.0, "", 1, 0, 0, 0, "", 10.0, 2.0),
+    ]
+    _write_summary(a, rows)
+    _write_summary(b, rows)
+
+    model = ReliabilityModel()
+    result = model.compute_from_summaries(str(a), str(b))
+
+    assert result is not None
+    attack_duration = next(
+        row for row in result.rows if row.metric == "Attack bites (Duration)"
+    )
+    assert attack_duration.icc is None
+    assert attack_duration.pearson_r is None
 
 
 def test_cohen_kappa_flat_disagree_returns_zero() -> None:

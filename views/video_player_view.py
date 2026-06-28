@@ -281,7 +281,7 @@ class VideoPlayerView(QWidget):
         self.step_size_spin.setValue(100)
         self.step_size_spin.setSingleStep(10)
         # Make the spinbox more compact
-        self.step_size_spin.setFixedWidth(90)  # Increased width from 60 to 90 pixels
+        self.step_size_spin.setFixedWidth(64)
         self.controls_layout.addWidget(self.step_size_spin)
         
         # Add frame-by-frame mode checkbox
@@ -753,16 +753,11 @@ class VideoPlayerView(QWidget):
             if hasattr(self, '_frame_duration_ms') and self._frame_duration_ms > 0:
                 frame_duration = self._frame_duration_ms
                 
-            self.logger.debug(f"Step forward in frame-by-frame mode (using {frame_duration}ms)")
-            
             # Emit signal with the frame duration
             self.step_forward_clicked.emit(frame_duration)
         else:
             # Get exact step size from spinner
             step_size = self.step_size_spin.value()
-            
-            # Log with exact step size
-            self.logger.debug(f"Step forward button clicked with exact step size: {step_size}ms")
             
             # Emit signal with the exact step size
             self.step_forward_clicked.emit(step_size)
@@ -797,16 +792,10 @@ class VideoPlayerView(QWidget):
             if hasattr(self, '_frame_duration_ms') and self._frame_duration_ms > 0:
                 frame_duration = self._frame_duration_ms
 
-            self.logger.debug(
-                f"Step backward in frame-by-frame mode (using {frame_duration}ms)"
-            )
             self.step_backward_clicked.emit(frame_duration)
         else:
             # Get exact step size from spinner
             step_size = self.step_size_spin.value()
-            self.logger.debug(
-                f"Step backward button clicked with exact step size: {step_size}ms"
-            )
             self.step_backward_clicked.emit(step_size)
 
         # Start cooldown timer to prevent rapid clicking issues

@@ -43,6 +43,8 @@ class AnalysisView(QWidget):
     export_metrics_config_requested = Signal()
     import_metrics_config_requested = Signal()
     visualize_files_requested = Signal()
+    bout_analysis_requested = Signal()
+    transition_analysis_requested = Signal()
     
     def __init__(self):
         super().__init__()
@@ -316,7 +318,28 @@ class AnalysisView(QWidget):
         # Remove selected files button
         self.remove_button = QPushButton("Remove Selected")
         self.buttons_layout.addWidget(self.remove_button)
-        
+
+        # Optional downstream analysis: bout (cluster) analysis runs in its own
+        # window and never alters the standard Summary/Intervals tables or the
+        # auto-export (1.4.0). Placed between Remove Selected and Clear All.
+        self.bout_button = QPushButton("Bout Analysis...")
+        self.bout_button.setToolTip(
+            "Cluster repeated events into bouts (separate window; does not "
+            "affect the standard analysis or export)"
+        )
+        self.bout_button.setEnabled(False)
+        self.buttons_layout.addWidget(self.bout_button)
+
+        # Optional downstream analysis: first-order transition (sequential)
+        # analysis, also in its own window (1.4.0).
+        self.transition_button = QPushButton("Transition Analysis...")
+        self.transition_button.setToolTip(
+            "First-order transition (sequential) analysis in a separate window; "
+            "does not affect the standard analysis or export"
+        )
+        self.transition_button.setEnabled(False)
+        self.buttons_layout.addWidget(self.transition_button)
+
         # Clear all files button
         self.clear_button = QPushButton("Clear All")
         self.buttons_layout.addWidget(self.clear_button)
@@ -325,7 +348,7 @@ class AnalysisView(QWidget):
         self.visualize_button.setToolTip("Open the loaded annotation files in Visualization")
         self.visualize_button.setEnabled(False)
         self.buttons_layout.addWidget(self.visualize_button)
-        
+
         # Add spacer to push buttons to the left
         self.buttons_layout.addStretch()
         
@@ -382,6 +405,8 @@ class AnalysisView(QWidget):
         self.clear_button.clicked.connect(self.clear_files_requested)
         self.export_button.clicked.connect(self.export_table_requested)
         self.visualize_button.clicked.connect(self.visualize_files_requested)
+        self.bout_button.clicked.connect(self.bout_analysis_requested)
+        self.transition_button.clicked.connect(self.transition_analysis_requested)
 
         # Connect interval analysis controls
         self.interval_checkbox.stateChanged.connect(self.on_interval_settings_changed)
@@ -525,6 +550,8 @@ class AnalysisView(QWidget):
         # Store the file paths
         self._file_paths = file_paths
         self.visualize_button.setEnabled(bool(file_paths))
+        self.bout_button.setEnabled(bool(file_paths))
+        self.transition_button.setEnabled(bool(file_paths))
         
         # Update table
         self.files_table.setRowCount(0)
@@ -575,6 +602,17 @@ class AnalysisView(QWidget):
         latency_metric_names = list(latency_metric_names or [])
         total_time_metric_names = list(total_time_metric_names or [])
 
+        def format_seconds(value):
+            if value is None:
+                return "–"
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return "–"
+            if not math.isfinite(number):
+                return "–"
+            return f"{number:.2f}"
+
         # Build column headers: animal_id + duration[*] + frequency[*] + custom metrics
         columns = ['animal_id']
         columns.extend(f"{b} (s)" for b in behaviors)
@@ -599,12 +637,10 @@ class AnalysisView(QWidget):
                 row.append(str(value))
             for metric_name in latency_metric_names:
                 key = metric_name.lower().replace(' ', '_')
-                value = float(metrics.get(key, metrics.get('test_duration', 0.0)))
-                row.append(f"{value:.2f}")
+                row.append(format_seconds(metrics.get(key)))
             for metric_name in total_time_metric_names:
                 key = metric_name.lower().replace(' ', '_')
-                value = float(metrics.get(key, 0.0))
-                row.append(f"{value:.2f}")
+                row.append(format_seconds(metrics.get(key, 0.0)))
 
             data_rows.append(row)
 

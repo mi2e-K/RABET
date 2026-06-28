@@ -2,8 +2,8 @@
 import logging
 import os
 import time
-from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QFileDialog, QMessageBox
+from PySide6.QtCore import QObject, Qt, Slot
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QProgressDialog
 from utils.auto_close_message import AutoCloseMessageBox
 from views.metrics_config_dialog import MetricsConfigDialog
 from utils.config_path_manager import ConfigPathManager  # Import the new class
@@ -60,6 +60,8 @@ class AnalysisController(QObject):
         self._view.configure_metrics_requested.connect(self.on_configure_metrics_requested)
         self._view.export_metrics_config_requested.connect(self.export_metrics_config)
         self._view.import_metrics_config_requested.connect(self.import_metrics_config)
+        self._view.bout_analysis_requested.connect(self.on_bout_analysis_requested)
+        self._view.transition_analysis_requested.connect(self.on_transition_analysis_requested)
     
     def _sync_interval_settings_from_view(self):
         """Get interval settings from view and apply to model."""
@@ -67,6 +69,136 @@ class AnalysisController(QObject):
         self._model.set_interval_analysis(enabled, seconds)
         self.logger.debug(f"Initialized interval analysis: enabled={enabled}, seconds={seconds}")
     
+    @Slot()
+    def on_bout_analysis_requested(self):
+        """Open the optional bout-analysis window for the loaded files.
+
+        Bout analysis is a separate downstream tool: it reads the already-loaded
+        raw events and never alters the standard Summary/Intervals tables or the
+        auto-export (1.4.0).
+        """
+        # Sort by natural animal id so animals appear in a stable, intuitive
+        # order (matching the standard analysis table).
+        file_paths = sorted(
+            self._model.get_file_paths(),
+            key=lambda p: self._model._animal_sort_key(
+                self._model._animal_id_from_path(p)),
+        )
+        if not file_paths:
+            QMessageBox.information(
+                self._view, "No Files",
+                "Load annotation files first, then run bout analysis.",
+            )
+            return
+
+        per_file = []
+        seen = []
+        seen_set = set()
+        for path in file_paths:
+            events_by_behavior = self._model.get_events_by_behavior(path)
+            if not events_by_behavior:
+                continue
+            animal_id = self._model._animal_id_from_path(path)
+            duration = self._model.get_file_test_duration(path)
+            per_file.append((animal_id, events_by_behavior, duration))
+            for behavior in events_by_behavior:
+                if behavior not in seen_set:
+                    seen_set.add(behavior)
+                    seen.append(behavior)
+
+        if not per_file:
+            QMessageBox.information(
+                self._view, "No Event Data",
+                "The loaded files contain no raw events to analyse for bouts "
+                "(summary-only CSVs cannot be used).",
+            )
+            return
+
+        # Order behaviours by the model's catalogue where possible, then any
+        # extras seen in the data.
+        ordered = [b for b in self._model.get_behaviors_list() if b in seen_set]
+        ordered += [b for b in seen if b not in ordered]
+
+        from views.bout_analysis_dialog import BoutAnalysisDialog
+        dialog = BoutAnalysisDialog(self._view, per_file, ordered)
+        dialog.exec()
+
+    @Slot()
+    def on_transition_analysis_requested(self):
+        """Open the optional transition-analysis window for the loaded files.
+
+        Like bout analysis this is a separate downstream tool reading the
+        already-loaded raw events; it never alters the standard analysis or
+        export (1.4.0).
+        """
+        # Sort by natural animal id so the default-selected animal (and its
+        # per-animal matrix/heatmap) is stable across loads, matching the
+        # standard analysis table order.
+        file_paths = sorted(
+            self._model.get_file_paths(),
+            key=lambda p: self._model._animal_sort_key(
+                self._model._animal_id_from_path(p)),
+        )
+        if not file_paths:
+            QMessageBox.information(
+                self._view, "No Files",
+                "Load annotation files first, then run transition analysis.",
+            )
+            return
+
+        per_file = []
+        seen = []
+        seen_set = set()
+        for path in file_paths:
+            events = self._model.get_event_tuples(path)
+            if not events:
+                continue
+            animal_id = self._model._animal_id_from_path(path)
+            per_file.append((animal_id, events))
+            for behavior, _onset, _offset in events:
+                if behavior not in seen_set:
+                    seen_set.add(behavior)
+                    seen.append(behavior)
+
+        if not per_file:
+            QMessageBox.information(
+                self._view, "No Event Data",
+                "The loaded files contain no raw events to analyse for "
+                "transitions (summary-only CSVs cannot be used).",
+            )
+            return
+
+        ordered = [b for b in self._model.get_behaviors_list() if b in seen_set]
+        ordered += [b for b in seen if b not in ordered]
+
+        # Building the dialog runs the initial transition + chance-corrected
+        # predictability compute, which can take a moment; show a determinate
+        # progress dialog driven per-file by the predictability panel, then open.
+        total = len(per_file)
+        progress = QProgressDialog("Calculating…", None, 0, total, self._view)
+        progress.setWindowTitle("Transition Analysis")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        QApplication.processEvents()
+
+        def _on_progress(done, count):
+            progress.setMaximum(count)
+            progress.setValue(done)
+            QApplication.processEvents()
+
+        try:
+            from views.transition_analysis_dialog import TransitionAnalysisDialog
+            dialog = TransitionAnalysisDialog(
+                self._view, per_file, ordered, progress_cb=_on_progress)
+        finally:
+            progress.close()
+        # The one-shot construction callback is finished; subsequent in-panel
+        # Compute runs use the panel's own progress bar instead.
+        if hasattr(dialog, "pred_panel"):
+            dialog.pred_panel._progress_cb = None
+        dialog.exec()
+
     @Slot()
     def on_configure_metrics_requested(self):
         """Show the metrics configuration dialog."""

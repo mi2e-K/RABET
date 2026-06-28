@@ -12,19 +12,20 @@ from __future__ import annotations
 
 import csv
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QDialog
 
-from models.reliability_model import (
-    ReliabilityModel,
-    SummaryAgreementResult,
-    DetailedAgreementResult,
-)
 from utils.csv_safety import SafeCsvWriter
-from views.disagreement_review_view import DisagreementReviewDialog
 from views.reliability_view import ReliabilityView, SummaryMatchDialog
+
+if TYPE_CHECKING:
+    from models.reliability_model import (
+        DetailedAgreementResult,
+        ReliabilityModel,
+        SummaryAgreementResult,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class ReliabilityController(QObject):
     def __init__(self, view: ReliabilityView, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._view = view
-        self._model = ReliabilityModel(self)
+        self._model: Optional["ReliabilityModel"] = None
         # Optional ConfigManager handle for directory-persistence. Wired by
         # AppController via set_config_manager() once construction is done.
         self._config_manager = None
@@ -66,10 +67,24 @@ class ReliabilityController(QObject):
             lambda p: self._remember_dir("reliability_annotation", p)
         )
 
-        # Model -> view
+    def _ensure_model(self) -> "ReliabilityModel":
+        """Construct the heavy statistics model only when computation starts."""
+        if self._model is not None:
+            return self._model
+
+        import time
+        t0 = time.perf_counter()
+        from models.reliability_model import ReliabilityModel
+
+        self._model = ReliabilityModel(self)
         self._model.summary_results_ready.connect(self._view.show_summary_results)
         self._model.detailed_results_ready.connect(self._view.show_detailed_results)
         self._model.error_occurred.connect(self._view.show_error)
+        logger.info(
+            "ReliabilityModel lazy construction finished in %.0f ms",
+            (time.perf_counter() - t0) * 1000,
+        )
+        return self._model
 
     # ---------------------------------------------------------------- #
     # ConfigManager wiring
@@ -118,7 +133,8 @@ class ReliabilityController(QObject):
     @Slot(str, str)
     def on_compute_summary(self, path_a: str, path_b: str) -> None:
         logger.info("Computing Summary-mode agreement: %s vs %s", path_a, path_b)
-        match_plan = self._model.build_summary_match_plan(path_a, path_b)
+        model = self._ensure_model()
+        match_plan = model.build_summary_match_plan(path_a, path_b)
         if match_plan is None:
             return
 
@@ -138,7 +154,7 @@ class ReliabilityController(QObject):
                 return
             manual_pairs = dialog.manual_pairs()
 
-        self._model.compute_from_summaries(
+        model.compute_from_summaries(
             path_a,
             path_b,
             manual_pairs=manual_pairs,
@@ -152,7 +168,8 @@ class ReliabilityController(QObject):
             "Computing Detailed-mode agreement (bin=%.2fs): %s vs %s",
             bin_seconds, path_a, path_b,
         )
-        self._model.compute_from_annotations(
+        model = self._ensure_model()
+        model.compute_from_annotations(
             path_a, path_b, bin_seconds=bin_seconds
         )
 
@@ -175,6 +192,14 @@ class ReliabilityController(QObject):
             )
             return
 
+        import time
+        t0 = time.perf_counter()
+        from views.disagreement_review_view import DisagreementReviewDialog
+
+        logger.info(
+            "DisagreementReviewDialog lazy import finished in %.0f ms",
+            (time.perf_counter() - t0) * 1000,
+        )
         dialog = DisagreementReviewDialog(result, self._view)
         dialog.exec()
 

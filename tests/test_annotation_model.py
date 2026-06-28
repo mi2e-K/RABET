@@ -133,3 +133,63 @@ def test_export_import_round_trip_preserves_events(model, action_map, tmp_path: 
     # Onset/offset in ms preserved (4-decimal seconds in the file).
     assert events[0].onset == 1000
     assert events[0].offset == 2500
+
+
+# -------------------------------------------------------------------- #
+# 1.4.0: point (instantaneous) events
+# -------------------------------------------------------------------- #
+
+
+def test_record_point_event_is_zero_duration_and_not_active(model, action_map):
+    action_map.add_mapping("h", "Head dip", kind="point")
+    assert model.get_behavior_kind("h") == "point"
+    assert model.record_point_event("h", 5000) is True
+
+    events = model.get_all_events()
+    assert len(events) == 1
+    assert events[0].kind == "point"
+    assert events[0].onset == events[0].offset == 5000
+    assert events[0].duration == 0
+    # A point event never enters the active-events dict.
+    assert model.get_active_events() == {}
+
+
+def test_record_point_event_rejects_unmapped_key(model):
+    assert model.record_point_event("=", 5000) is False
+    assert model.get_all_events() == []
+
+
+def test_point_event_round_trip_keeps_zero_duration_and_kind(model, action_map, tmp_path: Path):
+    action_map.add_mapping("h", "Head dip", kind="point")
+    model.record_point_event("h", 5000)
+
+    out = tmp_path / "point.csv"
+    assert model.export_to_csv(str(out)) is True
+
+    # The exported event row keeps onset == offset (4-decimal seconds), and the
+    # summary reports zero duration with a frequency of 1.
+    text = out.read_text(encoding="utf-8")
+    assert "Head dip,5.0000,5.0000" in text
+    assert "Head dip,0.00,1" in text
+
+    assert model.import_from_csv(str(out)) is True
+    points = [e for e in model.get_all_events() if e.behavior == "Head dip"]
+    assert len(points) == 1
+    assert points[0].onset == points[0].offset == 5000
+    # Re-classified as a point on import (round-trip fidelity).
+    assert points[0].kind == "point"
+
+
+def test_import_clamps_offset_strictly_less_than_onset(model, tmp_path: Path):
+    # A genuinely invalid row (offset < onset) is still clamped to one frame.
+    bad = tmp_path / "inverted.csv"
+    bad.write_text(
+        "Metadata\nRABET Version,1.4.0\nTest Duration (seconds),300\n\n"
+        "Event,Onset,Offset\nTest behavior,2.0000,1.0000\n",
+        encoding="utf-8",
+    )
+    assert model.import_from_csv(str(bad)) is True
+    events = [e for e in model.get_all_events() if e.behavior == "Test behavior"]
+    assert len(events) == 1
+    assert events[0].offset > events[0].onset  # clamped, not left inverted
+    assert events[0].kind == "state"

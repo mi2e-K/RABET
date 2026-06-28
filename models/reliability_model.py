@@ -520,25 +520,18 @@ def _match_summary_animals(
 
 
 def _icc_two_way_single(values_a: np.ndarray, values_b: np.ndarray) -> Optional[float]:
-    """ICC(2,1), two-way mixed, absolute agreement, single rater.
+    """ICC(2,1), two-way random, absolute agreement, single rater.
 
-    Pingouin's formula divides msbetween / mserror, which becomes 0/0
-    when the two scorers happen to agree exactly (mserror = 0). We
-    short-circuit those degenerate cases:
-
-    * Perfect agreement (values_a == values_b) -> ICC = 1.0
-    * Both scorers gave a constant (zero variance) but disagree -> None
-    * Fewer than 2 pairs -> None
+    Returns ``None`` when ICC is not statistically identifiable: fewer
+    than 2 paired targets, or both scorers are constant across targets
+    (no between-target variance). Non-constant perfect agreement is left
+    to Pingouin and evaluates to 1.0.
     """
     if len(values_a) < 2 or len(values_b) < 2:
         return None
 
-    # Perfect agreement short-circuit (any element count).
-    if np.allclose(values_a, values_b):
-        return 1.0
-
-    # Zero-variance disagreement: both raters internally constant but
-    # different from each other.
+    # With no between-target variance ICC is undefined, even when both
+    # scorers are perfectly equal. Report N/A rather than a misleading 1.0.
     if (np.allclose(values_a, values_a[0])
             and np.allclose(values_b, values_b[0])):
         return None
@@ -562,7 +555,7 @@ def _icc_two_way_single(values_a: np.ndarray, values_b: np.ndarray) -> Optional[
         icc_df = pg.intraclass_corr(
             data=df, targets="target", raters="rater", ratings="rating"
         )
-        # ICC2 = two-way mixed, absolute agreement, single rater
+        # ICC2 = two-way random, absolute agreement, single rater
         row = icc_df.loc[icc_df["Type"] == "ICC2"]
         if row.empty:
             return None
@@ -584,9 +577,9 @@ def _cohen_kappa(values_a: np.ndarray, values_b: np.ndarray) -> Optional[float]:
     learn``'s ``cohen_kappa_score`` and R's ``irr::kappa2`` numerically.
 
     Returns ``None`` when kappa is undefined: zero-length input, mismatched
-    lengths, or expected agreement equal to 1 with non-perfect observed
-    agreement (degenerate flat sequences that disagree). Returns ``1.0``
-    when both sequences are flat AND equal (degenerate-but-perfect case).
+    lengths, or expected agreement equal to 1 (a single observed label, e.g.
+    both rasters all-zero). Exact equality can still be shown separately via
+    raw agreement; kappa itself is not estimable in that degenerate case.
     """
     if len(values_a) == 0 or len(values_a) != len(values_b):
         return None
@@ -606,7 +599,7 @@ def _cohen_kappa(values_a: np.ndarray, values_b: np.ndarray) -> Optional[float]:
 
     if np.isclose(p_e, 1.0):
         # Degenerate: both rasters concentrated on a single label.
-        return 1.0 if p_o == 1.0 else None
+        return None
 
     value = (p_o - p_e) / (1.0 - p_e)
     if not np.isfinite(value):
@@ -737,16 +730,22 @@ def _bin_events(
             continue
         if offset < onset:
             onset, offset = offset, onset
-        start_idx = max(0, int(np.floor(onset / bin_seconds)))
-        # Clamp the end index on both sides: the (offset - 1e-9) shift can
-        # push a tiny / zero-duration event below zero, and a future offset
-        # value beyond duration_seconds could exceed n_bins - 1.
-        end_idx = min(
-            n_bins - 1,
-            max(0, int(np.floor((offset - 1e-9) / bin_seconds))),
-        )
-        if end_idx < start_idx:
+        if onset == offset:
+            if onset < 0 or onset > duration_seconds:
+                continue
+            start_idx = min(n_bins - 1, max(0, int(np.floor(onset / bin_seconds))))
             end_idx = start_idx
+        else:
+            clipped_onset = max(0.0, onset)
+            clipped_offset = min(duration_seconds, offset)
+            if clipped_offset <= 0 or clipped_onset >= duration_seconds:
+                continue
+            if clipped_offset <= clipped_onset:
+                continue
+            start_idx = int(np.floor(clipped_onset / bin_seconds))
+            end_idx = int(np.floor((clipped_offset - 1e-9) / bin_seconds))
+            start_idx = min(n_bins - 1, max(0, start_idx))
+            end_idx = min(n_bins - 1, max(0, end_idx))
         bins[behavior][start_idx : end_idx + 1] = 1
     return bins
 
@@ -1200,8 +1199,6 @@ class ReliabilityModel(QObject):
             pearson_r: Optional[float]
             if n >= 2 and np.std(va) > 0 and np.std(vb) > 0:
                 pearson_r = float(np.corrcoef(va, vb)[0, 1])
-            elif n >= 2 and np.allclose(va, vb):
-                pearson_r = 1.0
             else:
                 pearson_r = None
 
@@ -1263,6 +1260,13 @@ class ReliabilityModel(QObject):
             return None
 
         duration = max(dur_a, dur_b)
+        if dur_a > 0 and dur_b > 0 and not np.isclose(dur_a, dur_b):
+            self.logger.warning(
+                "Annotation durations differ (%.6fs vs %.6fs); comparing over %.6fs",
+                dur_a,
+                dur_b,
+                duration,
+            )
         if duration <= 0:
             self.error_occurred.emit(
                 "Could not determine the test duration from the annotation "

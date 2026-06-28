@@ -969,6 +969,17 @@ class AnnotationController(QObject):
         if not self._is_recording:
             return
 
+        # Point behaviours (1.4.0): a press marks an instantaneous, zero-
+        # duration event at the current playhead, in BOTH real-time and
+        # frame-by-frame modes. There is no hold/release — the press IS the
+        # event, and the key is never tracked in ``_key_press_times`` so the
+        # later release is a no-op. ``on_annotation_added`` handles the
+        # timeline refresh, dirty flag and project-status update.
+        if self._annotation_model.get_behavior_kind(key) == "point":
+            position = self._video_model.get_position()
+            self._annotation_model.record_point_event(key, position)
+            return
+
         # Gate 2 (FBF mode only): tolerate paused playback / paused
         # recording, because that's the *normal* state during FBF work.
         # Route directly to the toggle-style handler and return.

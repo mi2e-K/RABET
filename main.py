@@ -42,7 +42,7 @@ def setup_application_icon(app):
         return False
     
     try:
-        logger.info(f"Setting application icon from: {icon_path}")
+        logger.debug(f"Setting application icon from: {icon_path}")
         
         # Create icon and set it for the application
         app_icon = QIcon(icon_path)
@@ -174,8 +174,8 @@ def adjust_window_to_screen(window):
     window_rect = window.geometry()
     
     # Log the screen and window dimensions
-    logger.info(f"Screen dimensions: {screen_rect.width()}x{screen_rect.height()}")
-    logger.info(f"Window dimensions: {window_rect.width()}x{window_rect.height()}")
+    logger.debug(f"Screen dimensions: {screen_rect.width()}x{screen_rect.height()}")
+    logger.debug(f"Window dimensions: {window_rect.width()}x{window_rect.height()}")
     
     # Check if window is larger than screen
     needs_adjustment = False
@@ -190,23 +190,23 @@ def adjust_window_to_screen(window):
     if window_rect.width() > max_width:
         new_width = max_width
         needs_adjustment = True
-        logger.info(f"Window width adjusted from {window_rect.width()} to {new_width}")
+        logger.debug(f"Window width adjusted from {window_rect.width()} to {new_width}")
     
     if window_rect.height() > max_height:
         new_height = max_height
         needs_adjustment = True
-        logger.info(f"Window height adjusted from {window_rect.height()} to {new_height}")
+        logger.debug(f"Window height adjusted from {window_rect.height()} to {new_height}")
     
     if needs_adjustment:
         # Resize the window
         window.resize(new_width, new_height)
-        logger.info(f"Window resized to fit screen: {new_width}x{new_height}")
+        logger.debug(f"Window resized to fit screen: {new_width}x{new_height}")
         
         # Center the window on screen
         center_x = screen_rect.x() + (screen_rect.width() - new_width) // 2
         center_y = screen_rect.y() + (screen_rect.height() - new_height) // 2
         window.move(center_x, center_y)
-        logger.info(f"Window centered at ({center_x}, {center_y})")
+        logger.debug(f"Window centered at ({center_x}, {center_y})")
 
 def initialize_configuration():
     """
@@ -277,7 +277,7 @@ def main():
         profiler.mark("splash")
 
         # Apply dark theme
-        logger.info("Available styles: " + str(QStyleFactory.keys()))
+        logger.debug("Available styles: " + str(QStyleFactory.keys()))
         theme_manager = ThemeManager()
         theme_manager.apply_dark_theme(app)
         splash.set_progress(25, "Initialising controllers...")

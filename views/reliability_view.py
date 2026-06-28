@@ -24,11 +24,6 @@ import os
 import re
 from typing import Optional
 
-import matplotlib
-matplotlib.use("QtAgg")
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
@@ -665,6 +660,12 @@ class ReliabilityView(QWidget):
         self.logger = logging.getLogger(__name__)
         self._summary_result = None
         self._detailed_result = None
+        self.summary_figure = None
+        self.summary_canvas = None
+        self.detailed_figure = None
+        self.detailed_canvas = None
+        self._summary_plot_layout = None
+        self._detailed_plot_layout = None
         # Detailed-mode labels override what the model recorded inside the
         # DetailedAgreementResult - the model is mode-agnostic, so we let
         # the radio buttons drive the legend wording.
@@ -815,19 +816,11 @@ class ReliabilityView(QWidget):
         scatter_controls.addWidget(self.summary_scatter_picker, 1)
         right_layout.addLayout(scatter_controls)
 
-        # NOTE (1.3.2 / C2): We deliberately keep the Figure / Canvas
-        # alive across view switches. _draw_summary_scatter calls
-        # ``self.summary_figure.clear()`` before each redraw, so the
-        # peak resource use is bounded; explicit Figure teardown was
-        # considered but the user-visible benefit of keeping the last
-        # result on screen when navigating away outweighs the small
-        # memory saving. Revisit if profiling shows accumulation.
-        self.summary_figure = Figure(figsize=(4, 4))
-        self.summary_canvas = FigureCanvas(self.summary_figure)
-        self.summary_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        right_layout.addWidget(self.summary_canvas, 1)
+        self._summary_plot_layout = right_layout
+        self.summary_plot_placeholder = QLabel("Scatter plot appears after Compute.")
+        self.summary_plot_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.summary_plot_placeholder.setStyleSheet(f"color: {_STATUS_TEXT_COLOR};")
+        right_layout.addWidget(self.summary_plot_placeholder, 1)
         splitter.addWidget(right)
         splitter.setSizes([520, 380])
 
@@ -954,12 +947,11 @@ class ReliabilityView(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(QLabel("Pairwise raster overlay:"))
 
-        self.detailed_figure = Figure(figsize=(4, 4))
-        self.detailed_canvas = FigureCanvas(self.detailed_figure)
-        self.detailed_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        right_layout.addWidget(self.detailed_canvas, 1)
+        self._detailed_plot_layout = right_layout
+        self.detailed_plot_placeholder = QLabel("Raster overlay appears after Compute.")
+        self.detailed_plot_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.detailed_plot_placeholder.setStyleSheet(f"color: {_STATUS_TEXT_COLOR};")
+        right_layout.addWidget(self.detailed_plot_placeholder, 1)
         splitter.addWidget(right)
         splitter.setSizes([520, 480])
 
@@ -1102,6 +1094,58 @@ class ReliabilityView(QWidget):
             return
         self._draw_summary_scatter(metric)
 
+    # ---------------- Lazy plot construction ---------------- #
+
+    @staticmethod
+    def _matplotlib_classes():
+        """Import matplotlib only when a plot is actually needed."""
+        import matplotlib
+        try:
+            matplotlib.use("QtAgg")
+        except Exception:
+            pass
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.figure import Figure
+        return Figure, FigureCanvas
+
+    def _ensure_summary_canvas(self) -> bool:
+        if self.summary_canvas is not None:
+            return True
+        Figure, FigureCanvas = self._matplotlib_classes()
+        self.summary_figure = Figure(figsize=(4, 4))
+        self.summary_canvas = FigureCanvas(self.summary_figure)
+        self.summary_canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.summary_plot_placeholder.hide()
+        self._summary_plot_layout.addWidget(self.summary_canvas, 1)
+        return True
+
+    def _ensure_detailed_canvas(self) -> bool:
+        if self.detailed_canvas is not None:
+            return True
+        Figure, FigureCanvas = self._matplotlib_classes()
+        self.detailed_figure = Figure(figsize=(4, 4))
+        self.detailed_canvas = FigureCanvas(self.detailed_figure)
+        self.detailed_canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.detailed_plot_placeholder.hide()
+        self._detailed_plot_layout.addWidget(self.detailed_canvas, 1)
+        return True
+
+    def _clear_summary_plot(self) -> None:
+        if self.summary_canvas is None or self.summary_figure is None:
+            return
+        self.summary_figure.clear()
+        self.summary_canvas.draw_idle()
+
+    def _clear_detailed_plot(self) -> None:
+        if self.detailed_canvas is None or self.detailed_figure is None:
+            return
+        self.detailed_figure.clear()
+        self.detailed_canvas.draw_idle()
+
     # ---------------- Clear handlers ---------------- #
 
     def _on_summary_clear_clicked(self) -> None:
@@ -1118,8 +1162,7 @@ class ReliabilityView(QWidget):
         self.summary_scatter_picker.blockSignals(True)
         self.summary_scatter_picker.clear()
         self.summary_scatter_picker.blockSignals(False)
-        self.summary_figure.clear()
-        self.summary_canvas.draw_idle()
+        self._clear_summary_plot()
         self.summary_status.setText("")
         self.summary_export_btn.setEnabled(False)
         self.summary_compute_btn.setEnabled(True)
@@ -1134,8 +1177,7 @@ class ReliabilityView(QWidget):
         self.detailed_picker_a.set_path("")
         self.detailed_picker_b.set_path("")
         self.detailed_table.setRowCount(0)
-        self.detailed_figure.clear()
-        self.detailed_canvas.draw_idle()
+        self._clear_detailed_plot()
         self.detailed_status.setText("")
         self.detailed_export_btn.setEnabled(False)
         self.detailed_review_btn.setEnabled(False)
@@ -1161,8 +1203,7 @@ class ReliabilityView(QWidget):
             )
             self.summary_table.setRowCount(0)
             self.summary_scatter_picker.clear()
-            self.summary_figure.clear()
-            self.summary_canvas.draw_idle()
+            self._clear_summary_plot()
             return
 
         source_counts = {"exact": 0, "flexible": 0, "manual": 0}
@@ -1245,8 +1286,7 @@ class ReliabilityView(QWidget):
             first_metric = next(iter(result.scatter_data.keys()))
             self._draw_summary_scatter(first_metric)
         else:
-            self.summary_figure.clear()
-            self.summary_canvas.draw_idle()
+            self._clear_summary_plot()
 
     def show_detailed_results(self, result) -> None:
         """Render a DetailedAgreementResult into the table and raster overlay."""
@@ -1269,8 +1309,7 @@ class ReliabilityView(QWidget):
                 "No behaviours were found in the annotation files."
             )
             self.detailed_table.setRowCount(0)
-            self.detailed_figure.clear()
-            self.detailed_canvas.draw_idle()
+            self._clear_detailed_plot()
             return
 
         self.detailed_status.setText(
@@ -1311,6 +1350,7 @@ class ReliabilityView(QWidget):
     def _draw_summary_scatter(self, metric: str) -> None:
         if self._summary_result is None or metric not in self._summary_result.scatter_data:
             return
+        self._ensure_summary_canvas()
         _animals, values_a, values_b = self._summary_result.scatter_data[metric]
         self.summary_figure.clear()
         ax = self.summary_figure.add_subplot(111)
@@ -1342,6 +1382,7 @@ class ReliabilityView(QWidget):
         """Draw events from both scorers as a horizontal raster:
         behaviours stacked on the y-axis, each row split into an A
         ribbon (above) and a B ribbon (below)."""
+        self._ensure_detailed_canvas()
         self.detailed_figure.clear()
         if not result.behaviors:
             self.detailed_canvas.draw_idle()

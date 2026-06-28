@@ -112,7 +112,19 @@ class ProjectView(QWidget):
         self.header_layout.addWidget(self.project_name_label, 1)
         
         self.info_layout.addLayout(self.header_layout)
-        
+
+        # One-line description of what Project mode is for. Kept here in the view
+        # body (full width, always visible) rather than the cramped toolbar/tab
+        # row, where a long label gets clipped.
+        self.mode_hint_label = QLabel(
+            "Project mode — create or open a project to keep its videos, "
+            "annotations and analyses together, then double-click a video to "
+            "start annotating it."
+        )
+        self.mode_hint_label.setWordWrap(True)
+        self.mode_hint_label.setStyleSheet("color: #666;")
+        self.info_layout.addWidget(self.mode_hint_label)
+
         # Project path
         self.project_path_label = QLabel("")
         self.project_path_label.setStyleSheet("font-style: italic; color: #666;")

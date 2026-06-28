@@ -40,8 +40,10 @@ class ActionMapController(QObject):
     @Slot()
     def on_map_changed(self):
         """Handle action map changes."""
-        # Update action map view with current mappings
-        self._view.update_mappings(self._model.get_all_mappings())
+        # Update action map view with current mappings (+ per-key kind, 1.4.0)
+        self._view.update_mappings(
+            self._model.get_all_mappings(), self._model.get_all_kinds()
+        )
         
         # Also update active behaviors display
         self._view.update_active_behaviors(self._model.get_active_behaviors())
@@ -56,18 +58,19 @@ class ActionMapController(QObject):
         self._view.update_active_behaviors(active_behaviors)
         self.logger.debug(f"Active behaviors updated: {active_behaviors}")
     
-    @Slot(str, str)
-    def on_edit_mapping_requested(self, key, behavior):
+    @Slot(str, str, str)
+    def on_edit_mapping_requested(self, key, behavior, kind="state"):
         """
         Handle request to add or edit a mapping.
-        
+
         Args:
             key (str): Key character
             behavior (str): Behavior label
+            kind (str): "state" or "point" (1.4.0)
         """
         # Add or update the mapping in the model
-        if self._model.add_mapping(key, behavior):
-            self.logger.info(f"Mapping added/updated: {key} -> {behavior}")
+        if self._model.add_mapping(key, behavior, kind=kind):
+            self.logger.info(f"Mapping added/updated: {key} -> {behavior} ({kind})")
     
     @Slot(str)
     def on_remove_mapping_requested(self, key):

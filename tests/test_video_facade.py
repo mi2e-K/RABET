@@ -7,6 +7,9 @@ its UI-side cache, and that the worker thread is started/stopped correctly.
 
 from __future__ import annotations
 
+import logging
+import time
+
 from models.video_model import VideoModel, _VideoDecodeWorker
 
 
@@ -103,6 +106,21 @@ def test_drain_seek_coalesces_to_latest(qt_app):
     worker._pending_seek_ms = 50
     worker._drain_seek()          # serves 50
     assert served == [30, 50]
+
+
+def test_decode_timing_logs_are_opt_in(monkeypatch, caplog, qt_app):
+    monkeypatch.delenv("RABET_VIDEO_TIMING", raising=False)
+    worker = _VideoDecodeWorker()
+    with caplog.at_level(logging.INFO):
+        worker._log_decode_timing("seek", time.monotonic())
+    assert "[video-timing]" not in caplog.text
+
+    caplog.clear()
+    monkeypatch.setenv("RABET_VIDEO_TIMING", "1")
+    worker = _VideoDecodeWorker()
+    with caplog.at_level(logging.INFO):
+        worker._log_decode_timing("seek", time.monotonic())
+    assert "[video-timing] seek" in caplog.text
 
 
 def test_facade_seek_publishes_latest_target(qt_app):
