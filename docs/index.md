@@ -12,11 +12,12 @@ hide:
 ### Real-time Animal Behavior Event Tagger
 
 A self-contained desktop application for behavioural annotation of
-animal video recordings — frame-accurate playback, keyboard-driven
-tagging, multi-file CSV analysis, raster-plot visualisation, and
-built-in inter-/intra-rater reliability assessment.
+animal video recordings: frame-accurate playback, keyboard-driven
+state and point-event tagging, multi-file CSV analysis, raster-plot
+visualisation, reliability assessment, bout analysis, and first-order
+transition analysis.
 
-[Download for your platform :material-download:](https://doi.org/10.5281/zenodo.15313025){ .md-button .md-button--primary }
+[Download for your platform :material-download:](https://github.com/mi2e-K/RABET/releases/latest){ .md-button .md-button--primary }
 [Read the User Guide :material-book-open-page-variant:](USER_GUIDE.md){ .md-button }
 [GitHub :material-github:](https://github.com/mi2e-K/RABET){ .md-button }
 
@@ -45,9 +46,8 @@ built-in inter-/intra-rater reliability assessment.
 
     ---
 
-    Configurable key → behaviour mapping. Press a key to start an
-    event, release to end it. Monotonic time stamps are immune to
-    NTP jumps.
+    Configurable key → behaviour mapping with State events for
+    durations and Point events for instantaneous acts.
 
 -   :material-chart-timeline-variant:{ .lg .middle } &nbsp;**Interactive timeline**
 
@@ -63,6 +63,22 @@ built-in inter-/intra-rater reliability assessment.
     Aggregate annotation CSVs into per-session and per-interval
     summaries. Custom latency and total-time metrics. One-click
     export to Excel, JASP, R, or SPSS.
+
+-   :material-chart-bell-curve:{ .lg .middle } &nbsp;**Bout analysis**
+
+    ---
+
+    Cluster repeated events into bouts using a configurable BCI,
+    advisory BCI estimation, per-animal bout summaries, and bout
+    raster plots.
+
+-   :material-transit-connection-variant:{ .lg .middle } &nbsp;**Transition analysis**
+
+    ---
+
+    First-order transition matrices with counts, conditional
+    probabilities, odds ratios, adjusted residuals, heatmaps, and
+    antecedent-window predictability.
 
 -   :material-chart-scatter-plot:{ .lg .middle } &nbsp;**Raster-plot visualisation**
 
@@ -90,7 +106,7 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Download RABET-Windows-1.3.5-Setup.zip from Zenodo
+    1. Download RABET-Windows-1.4.0-Setup.zip from GitHub Releases
     2. Run the installer
     3. Launch RABET from the Start Menu
     ```
@@ -98,24 +114,24 @@ built-in inter-/intra-rater reliability assessment.
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Download RABET-macOS-arm64-1.3.5.dmg from Zenodo
+    1. Download RABET-macOS-arm64-1.4.0.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
-    3. First launch: right-click → Open
+    3. If Gatekeeper blocks launch, remove quarantine once
     ```
 
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Download RABET-macOS-x86_64-1.3.5.dmg from Zenodo
+    1. Download RABET-macOS-x86_64-1.4.0.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
-    3. First launch: right-click → Open
+    3. If Gatekeeper blocks launch, remove quarantine once
     ```
 
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.3.5.AppImage
-    ./RABET-Linux-x86_64-1.3.5.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.0.AppImage
+    ./RABET-Linux-x86_64-1.4.0.AppImage
     ```
 
 </div>
@@ -133,12 +149,12 @@ If RABET supports your research, please cite it.  Machine-readable
 metadata lives in [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff); a human-readable form is:
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.5). https://github.com/mi2e-K/RABET
+> (Version 1.4.0). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
 The DOI above is the **concept DOI** that always resolves to the
-latest RABET release on Zenodo, so the citation stays valid as new
-versions are published.
+RABET record on Zenodo. For reproducibility, also report the exact
+RABET version used.
 
 A tool paper describing RABET is in preparation.
 

@@ -60,6 +60,12 @@ Events appear in the order they were finalised. The synthetic
 `Offset` values. Onset and Offset are stored internally in milliseconds
 and converted to seconds at export time.
 
+From RABET 1.4.0 onward, behaviours can be configured as either
+**State** or **Point** in the Action Map. State events are duration
+events and usually have `Offset > Onset`. Point events are instantaneous
+and are exported with `Offset == Onset`. The CSV keeps the same column
+layout so older downstream parsers continue to work.
+
 #### Summary
 
 | Column | Type | Notes |
@@ -68,23 +74,26 @@ and converted to seconds at export time.
 | `Duration` | float (s) | Sum of `Offset − Onset` over all instances. |
 | `Frequency` | int | Number of times this behavior was tagged (counted by onset). |
 
-`RecordingStart` is omitted from this section.
+`RecordingStart` is omitted from this section. Point events contribute
+to `Frequency`; their `Duration` contribution is zero.
 
 ### 1.3 Example
 
 ```csv
 Metadata
-RABET Version,1.3.5
+RABET Version,1.4.0
 Test Duration (seconds),60
 
 Event,Onset,Offset
 RecordingStart,0.0000,0.0000
 Attack bites,1.0000,1.5000
+Head dip,1.8000,1.8000
 Sideways threats,2.0000,2.2000
 Attack bites,3.0000,3.4000
 
 Behavior,Duration,Frequency
 Attack bites,0.90,2
+Head dip,0.00,1
 Sideways threats,0.20,1
 Tail rattles,0.00,0
 Chasing,0.00,0

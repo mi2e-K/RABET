@@ -21,7 +21,7 @@ Build on the target OS.
 Recommended for a borrowed Mac:
 
 ```bash
-cd /path/to/RABET_1.3.2
+cd /path/to/RABET_1.4.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -83,7 +83,7 @@ sudo apt install -y \
   libglib2.0-0 \
   libfontconfig1 \
   libfreetype6
-cd /path/to/RABET_1.3.2
+cd /path/to/RABET_1.4.0
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
