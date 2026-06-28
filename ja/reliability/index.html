@@ -86,7 +86,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#reliability-reference-scripts" class="md-skip">
+        <a href="#_1" class="md-skip">
           コンテンツにスキップ
         </a>
       
@@ -595,10 +595,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-is-provided" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What is provided
+        含まれるファイル
       
     </span>
   </a>
@@ -606,10 +606,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick start
+        クイックスタート
       
     </span>
   </a>
@@ -617,10 +617,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#definitions" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Definitions
+        定義
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="定義">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#icc21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ICC(2,1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pearson-r" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pearson r
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        平均絶対差
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rabet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RABET アプリ内出力との期待される差
       
     </span>
   </a>
@@ -628,10 +678,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#expected-differences-from-rabets-in-app-output" class="md-nav__link">
+  <a href="#rabet_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expected differences from RABET's in-app output
+        RABET で信頼性指標を報告するとき
       
     </span>
   </a>
@@ -658,83 +708,106 @@
   
 
 
-<h1 id="reliability-reference-scripts">Reliability reference scripts<a class="headerlink" href="#reliability-reference-scripts" title="Permanent link">&para;</a></h1>
-<p>RABET 1.3.2 introduced the <strong>Reliability tab</strong>, which computes inter-rater
-and intra-rater agreement entirely inside the application using the
-<a href="https://pingouin-stats.org/"><code>pingouin</code></a> Python package. This folder
-contains an independent R implementation that exists for two reasons:</p>
+<h1 id="_1">信頼性評価リファレンス<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>RABET 1.3.2 で <strong>Reliability</strong> タブが追加され、評価者間信頼性と評価者内信頼性を
+アプリ内で計算できるようになりました。計算には Python パッケージ
+<a href="https://pingouin-stats.org/"><code>pingouin</code></a> を使用しています。</p>
+<p>このフォルダには、Summary モードの結果を R で再現するための独立した参照実装が
+含まれています。目的は次の 2 つです。</p>
 <ol>
 <li>
-<p><strong>Cross-language reproducibility.</strong> Researchers who run their statistics
-   pipeline in R can verify the in-app numbers by re-computing the same
-   agreement matrix with the canonical R packages
-   (<a href="https://cran.r-project.org/package=psych"><code>psych</code></a> and optionally
-   <a href="https://cran.r-project.org/package=irr"><code>irr</code></a>).</p>
+<p><strong>別言語での再現性確認</strong><br />
+   R で統計解析パイプラインを組んでいる研究者が、RABET アプリ内の値を
+   R 側でも再計算できるようにするためです。R 版では主に
+   <a href="https://cran.r-project.org/package=psych"><code>psych</code></a> を使います。</p>
 </li>
 <li>
-<p><strong>Reviewer transparency.</strong> When publishing reliability numbers from
-   RABET, citing both the in-app pingouin computation and an independent R
-   reference reassures reviewers that the agreement matrix is implementation-
-   neutral.</p>
+<p><strong>査読・報告時の透明性</strong><br />
+   RABET で得た信頼性指標を論文やレポートに載せる場合、アプリ内の
+   pingouin 実装だけでなく、独立した R スクリプトでも再現できることを示すと、
+   計算が特定実装に依存していないことを説明しやすくなります。</p>
 </li>
 </ol>
-<h2 id="what-is-provided">What is provided<a class="headerlink" href="#what-is-provided" title="Permanent link">&para;</a></h2>
+<hr />
+<h2 id="_2">含まれるファイル<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>File</th>
-<th>Purpose</th>
+<th>ファイル</th>
+<th>目的</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>compute_agreement.R</code></td>
-<td>Stand-alone R script. Loads two <code>summary_table.csv</code> files, matches rows by <code>animal_id</code>, computes per-metric <strong>ICC(2,1)</strong>, Pearson r, mean absolute difference, and writes a results CSV. Mirrors RABET's <strong>Summary mode</strong>.</td>
+<td>2 つの <code>summary_table.csv</code> を読み込み、<code>animal_id</code> で行を対応付け、メトリクスごとに <strong>ICC(2,1)</strong>、Pearson r、平均絶対差を計算する単独実行可能な R スクリプトです。RABET の <strong>Summary モード</strong> と同じ計算を再現します。</td>
 </tr>
 </tbody>
 </table>
-<p>A Detailed-mode (time-window Cohen's kappa / Krippendorff's alpha) R
-reference will follow in a later release. The pingouin implementation
-inside RABET is the authoritative computation in the meantime.</p>
-<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Install dependencies (once):</span>
+<p>Detailed モード、つまり時間ビン化した Cohen's kappa / Krippendorff's alpha の
+R 参照実装は、今後のリリースで追加予定です。現時点では、RABET アプリ内の実装が
+Detailed モードの正式な計算です。</p>
+<hr />
+<h2 id="_3">クイックスタート<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 依存パッケージを一度だけインストールします</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Rscript<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;install.packages(c(&quot;psych&quot;))&#39;</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Reproduce the Summary-mode agreement matrix:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Summary モードの一致度表を R で再計算します</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Rscript<span class="w"> </span>docs/reliability/compute_agreement.R<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">        </span>path/to/scorer_A_summary.csv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">        </span>path/to/scorer_B_summary.csv<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">        </span>reliability_summary_R.csv
 </span></code></pre></div>
-<p>The script prints the per-metric agreement table and writes it to the
-output CSV (defaults to <code>reliability_summary_R.csv</code> next to the current
-working directory if no third argument is given).</p>
-<h2 id="definitions">Definitions<a class="headerlink" href="#definitions" title="Permanent link">&para;</a></h2>
-<p>ICC(2,1) here refers to <strong>Pingouin's <code>ICC2</code></strong> output, corresponding to
-the <code>ICC2</code> row returned by <code>psych::ICC</code>: a single-rater, absolute-agreement
-ICC.</p>
-<p>Terminology differs across ICC conventions and software packages. In the
-Shrout and Fleiss / Pingouin convention, <code>ICC2</code> treats raters as random
-and <code>ICC3</code> treats raters as fixed. Some McGraw and Wong-style labels can
-map the same numerical form to two-way random or two-way mixed
-absolute-agreement interpretations. Therefore, RABET reports the software
-label (<code>ICC2</code>) and the form ICC(2,1), and users should interpret the
-fixed/random rater assumption according to their study design.</p>
-<p>Pearson r is the standard product-moment correlation across the matched
-animals.</p>
-<p>Mean absolute difference is <code>mean(abs(A - B))</code> over animals present in
-both summary files.</p>
-<h2 id="expected-differences-from-rabets-in-app-output">Expected differences from RABET's in-app output<a class="headerlink" href="#expected-differences-from-rabets-in-app-output" title="Permanent link">&para;</a></h2>
-<p>The two implementations should agree to within ~1e-6 for ICC and r, and
-exactly for mean absolute difference. Larger discrepancies usually mean:</p>
+<p>スクリプトはメトリクスごとの一致度表を標準出力に表示し、CSV にも保存します。
+3 つ目の引数を省略した場合、現在の作業ディレクトリに
+<code>reliability_summary_R.csv</code> が作成されます。</p>
+<hr />
+<h2 id="_4">定義<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h3 id="icc21">ICC(2,1)<a class="headerlink" href="#icc21" title="Permanent link">&para;</a></h3>
+<p>ここでの ICC(2,1) は、Pingouin の <code>ICC2</code> 出力に対応します。R の
+<code>psych::ICC</code> では <code>ICC2</code> 行に相当する、単一評価者・absolute agreement の ICC
+です。</p>
+<p>ICC の表記は、文献やソフトウェアによって対応関係が分かりにくい場合があります。
+Shrout and Fleiss / Pingouin の慣例では、<code>ICC2</code> は評価者を random effect として
+扱い、<code>ICC3</code> は fixed effect として扱います。一方、McGraw and Wong 系の表記では、
+同じ数式が two-way random または two-way mixed の absolute agreement と説明される
+ことがあります。</p>
+<p>そのため RABET では、ソフトウェア上のラベルである <code>ICC2</code> と、一般的な形式名である
+ICC(2,1) の両方を明記します。評価者を random と見るか fixed と見るかは、研究デザイン
+に沿って解釈してください。</p>
+<h3 id="pearson-r">Pearson r<a class="headerlink" href="#pearson-r" title="Permanent link">&para;</a></h3>
+<p>対応付けられた個体間で、同じメトリクスの値を用いて計算する通常の Pearson の積率
+相関係数です。</p>
+<h3 id="_5">平均絶対差<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>両方の summary ファイルに存在する個体について、<code>mean(abs(A - B))</code> を計算した値です。
+単位は元のメトリクスの単位に依存します。Duration や latency の場合は秒です。</p>
+<hr />
+<h2 id="rabet">RABET アプリ内出力との期待される差<a class="headerlink" href="#rabet" title="Permanent link">&para;</a></h2>
+<p>R 参照実装と RABET アプリ内出力は、ICC と Pearson r ではおおむね <code>1e-6</code> 程度以内、
+平均絶対差では完全一致することを想定しています。</p>
+<p>それより大きくずれる場合、よくある原因は次のとおりです。</p>
 <ul>
-<li>One side dropped an animal that the other kept (check <code>unmatched_a</code> /
-  <code>unmatched_b</code> in RABET's status panel and the R script's stdout).</li>
-<li>Numerical precision differences in how the underlying linear-mixed
-  model solver handles degenerate inputs (e.g. all-zero columns).</li>
+<li>片方のファイルにしか存在しない <code>animal_id</code> がある<br />
+  RABET の <code>unmatched_a</code> / <code>unmatched_b</code> 表示と、R スクリプトの標準出力を確認して
+  ください。</li>
+<li>すべて 0 などの退化的な列がある<br />
+  線形混合モデルや分散成分の扱いで、ソフトウェア間にごく小さな数値差が出ることが
+  あります。</li>
 </ul>
-<p>If the values diverge by more than that, please open an issue at
-https://github.com/mi2e-K/RABET/issues with both CSVs attached.</p>
+<p>明らかに大きな不一致がある場合は、2 つの CSV を添えて
+<a href="https://github.com/mi2e-K/RABET/issues">https://github.com/mi2e-K/RABET/issues</a> に報告してください。</p>
+<hr />
+<h2 id="rabet_1">RABET で信頼性指標を報告するとき<a class="headerlink" href="#rabet_1" title="Permanent link">&para;</a></h2>
+<p>論文やレポートでは、少なくとも次を記録しておくことを勧めます。</p>
+<ul>
+<li>使用した RABET のバージョン</li>
+<li>Summary モードか Detailed モードか</li>
+<li>Summary モードの場合、解析した <code>summary_table.csv</code> の作成条件</li>
+<li>Detailed モードの場合、bin width と対象行動</li>
+<li>比較した個体数、または動画数</li>
+<li>欠損・未対応の <code>animal_id</code> があったかどうか</li>
+</ul>
+<p>これらを明記しておくと、後から同じ CSV で値を再計算しやすくなります。</p>
 
 
 
