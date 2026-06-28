@@ -12,9 +12,10 @@ hide:
 ### Real-time Animal Behavior Event Tagger
 
 動物行動の動画アノテーションに特化した、自己完結型のデスクトップアプリケーション。
-フレーム単位での精密な再生、キーボード操作による高速なタグ付け、複数CSVファイルの解析、ラスタープロットによる可視化、評価者間・評価者内信頼性の評価に対応。
+フレーム単位の再生、State / Point イベントの記録、複数 CSV の解析、ラスタープロット、
+信頼性評価、バウト解析、1 次遷移解析までを一つのツールで扱えます。
 
-[ダウンロード（各 OS 向け） :material-download:](https://doi.org/10.5281/zenodo.15313025){ .md-button .md-button--primary }
+[ダウンロード（各 OS 向け） :material-download:](https://github.com/mi2e-K/RABET/releases/latest){ .md-button .md-button--primary }
 [ユーザーガイドを読む :material-book-open-page-variant:](USER_GUIDE.md){ .md-button }
 [GitHub :material-github:](https://github.com/mi2e-K/RABET){ .md-button }
 
@@ -43,8 +44,8 @@ hide:
 
     ---
 
-    キーと行動の対応関係を設定可能。キーを押すと記録が開始され、キーを離すと終了する。
-    モノトニッククロックを使用しているため、NTP による時刻補正の影響を受けない。
+    キーと行動の対応関係を設定可能。持続時間を持つ State イベントと、
+    一瞬の発生を記録する Point イベントを使い分けられます。
 
 -   :material-chart-timeline-variant:{ .lg .middle } &nbsp;**インタラクティブなタイムライン**
 
@@ -60,6 +61,20 @@ hide:
     アノテーション CSV を集約してセッション全体・時間ビン単位の
     サマリーを生成。カスタム潜時・合計時間メトリクスに対応。
     Excel / JASP / R / SPSS に直接ペースト可能。
+
+-   :material-chart-bell-curve:{ .lg .middle } &nbsp;**バウト解析**
+
+    ---
+
+    BCI を指定して反復イベントをバウトへまとめます。BCI の参考推定、
+    個体別バウト指標、バウトラスタープロットに対応。
+
+-   :material-transit-connection-variant:{ .lg .middle } &nbsp;**遷移解析**
+
+    ---
+
+    1 次遷移行列、条件付き確率、odds ratio、adjusted residual、
+    ヒートマップ、antecedent-window predictability を計算できます。
 
 -   :material-chart-scatter-plot:{ .lg .middle } &nbsp;**ラスタープロット可視化**
 
@@ -87,7 +102,7 @@ hide:
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Zenodo から RABET-Windows-1.3.5-Setup.zip をダウンロード
+    1. GitHub Releases から RABET-Windows-1.4.0-Setup.zip をダウンロード
     2. 任意の場所に展開（デスクトップ / Tools フォルダなど）
     3. RABET.exe をダブルクリック
     ```
@@ -95,24 +110,24 @@ hide:
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Zenodo から RABET-macOS-arm64-1.3.5.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-arm64-1.4.0.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
-    3. 初回起動: 右クリック → 開く
+    3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
 
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Zenodo から RABET-macOS-x86_64-1.3.5.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-x86_64-1.4.0.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
-    3. 初回起動: 右クリック → 開く
+    3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
 
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.3.5.AppImage
-    ./RABET-Linux-x86_64-1.3.5.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.0.AppImage
+    ./RABET-Linux-x86_64-1.4.0.AppImage
     ```
 
 </div>
@@ -130,12 +145,13 @@ hide:
 に記載されています。人間が読みやすい形式の引用例は以下のとおりです。
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.3.5). https://github.com/mi2e-K/RABET
+> (Version 1.4.0). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
-上記の DOI は **コンセプト DOI** であり、Zenodo 上の最新リリースに常に紐づきます。新しいバージョンが公開された後も、引用先を変更する必要はありません。
+上記の DOI は Zenodo の **concept DOI** です。再現性のため、実際に使った
+RABET のバージョンもあわせて記録してください。
 
-RABET を解説する論文を準備中。
+RABET を解説する論文を準備中です。
 
 ---
 

@@ -16,6 +16,12 @@ edit_uri: edit/main/docs/
 # a separate site/ tree.
 docs_dir: docs
 
+# ``docs/`` also contains GitHub-readable files and ignored development notes
+# that should not be treated as pages by the generated website.
+exclude_docs: |
+  /README.md
+  dev/
+
 theme:
   name: material
   language: en
