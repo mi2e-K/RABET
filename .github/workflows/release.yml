@@ -341,26 +341,50 @@ jobs:
           cat > release_body.md <<'EOF'
           ## RABET vVERSION_PLACEHOLDER
 
-          RABET vVERSION_PLACEHOLDER improves startup and first-tab loading UX,
-          refreshes the release packaging, and trims dev-only test dependencies
-          from bundled distributions.
+          RABET vVERSION_PLACEHOLDER expands the scientific analysis workflow
+          with explicit point-event handling, bout analysis, and first-order
+          transition analysis, while keeping startup responsive through lazy
+          loading of heavier analysis tabs.
 
           ### Highlights
 
-          - **Added a branded startup loader.**
-            The startup splash now reveals the RABET dot-logo cells over a dark
-            background, using randomized fill patterns and a short completed-logo
-            hold before the main window appears.
+          - **Added point and state behaviour types.**
+            Behaviour mappings can now distinguish duration-based state events
+            from instantaneous point events. Point events are exported with
+            onset equal to offset and are handled separately in downstream
+            summary, bout, and reliability calculations.
 
-          - **Added first-load overlays for heavy tabs.**
-            Analysis, Visualization, and Reliability remain lazily constructed,
-            but first access now shows a compact segmented loader instead of a
-            silent pause.
+          - **Added bout analysis.**
+            The new bout workflow computes event groupings from a configurable
+            bout criterion interval, reporting bout counts, bout duration,
+            events per bout, inter-bout intervals, active time, and rate per
+            minute. Point events use onset-to-onset gaps; state events use
+            offset-to-onset gaps.
+
+          - **Added transition analysis.**
+            RABET now provides first-order transition matrices, row-normalised
+            probabilities, expected counts, chi-square residuals, optional
+            transition time windows, and bout-collapsed analysis to reduce
+            burst-driven self-transition artefacts.
+
+          - **Expanded figure export.**
+            Bout rasters, transition heatmaps, and predictability plots can be
+            exported as PNG, SVG, or PDF with a user-selectable DPI.
+
+          - **Improved reliability and edge-case handling.**
+            Summary-mode ICC(2,1), Pearson r, and mean absolute difference are
+            documented against the companion R reference implementation. Detailed
+            agreement now handles degenerate all-zero cases explicitly instead of
+            over-interpreting percentage agreement as chance-corrected agreement.
 
           - **Kept startup responsive.**
-            The previous hidden post-launch warm-up has been removed so early
-            annotation work is not interrupted by background construction of
-            heavier tabs.
+            Heavy Analysis, Visualization, and Reliability components remain
+            lazily constructed. First access shows a compact loading overlay for
+            longer tab construction work.
+
+          - **Cleaned debug output and release contents.**
+            Redundant debug logging and development-only files are excluded from
+            the repository update and packaged distributions.
 
           ### Packaging
 

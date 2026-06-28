@@ -148,7 +148,10 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.stacked_widget)
         self._tab_loading_overlay = PhaseLoadingOverlay(self.stacked_widget)
         self._tab_loading_elapsed = None
-        self._tab_loading_minimum_ms = 650
+        # Anti-flicker floor for the loader. Kept low because the overlay now
+        # only shows on the COLD path (heavy import not yet warmed), where the
+        # real work is seconds; the warm path skips the overlay entirely.
+        self._tab_loading_minimum_ms = 200
         self._tab_loading_completion_hold_ms = 180
         
         # Create annotation view
@@ -234,6 +237,13 @@ class MainWindow(QMainWindow):
             "Visualization": "Preparing Visualization",
             "Reliability": "Preparing Reliability",
         }
+        # Set True by the controller once the background heavy-import warm-up has
+        # FULLY finished; only then is the loader overlay skipped (build is tens
+        # of ms). A sys.modules probe cannot be used here: Python registers a
+        # module at the *start* of its multi-second import, so mid-warm it would
+        # false-positive and hide the overlay while the build still blocks on the
+        # in-flight import (no feedback during a ~1s wait).
+        self._heavy_imports_ready = False
         
         # Status bar removed - status messages now integrated into timeline view
         
@@ -278,14 +288,11 @@ class MainWindow(QMainWindow):
             leading_spacing=8,
         )
 
-        self.timeline_view.zoom_slider.setFixedWidth(110)
-        self.timeline_view.zoom_value.setFixedWidth(28)
-        self.timeline_view.zoom_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.timeline_view.zoom_slider.setFixedWidth(96)
         self.timeline_view.toolbar_info_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         overlay_text_style = "color: white; background: transparent;"
         self.timeline_view.zoom_label.setStyleSheet(overlay_text_style)
-        self.timeline_view.zoom_value.setStyleSheet(overlay_text_style)
         self.timeline_view.toolbar_info_label.setStyleSheet(
             "color: rgba(255, 255, 255, 220); background: transparent;"
         )
@@ -309,7 +316,7 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            self.logger.info(f"Setting window icon from: {icon_path}")
+            self.logger.debug(f"Setting window icon from: {icon_path}")
             
             # Create icon
             app_icon = QIcon(icon_path)
@@ -327,7 +334,7 @@ class MainWindow(QMainWindow):
             if app:
                 app.setWindowIcon(app_icon)
                 
-            self.logger.info("Window icon set successfully")
+            self.logger.debug("Window icon set successfully")
         except Exception as e:
             self.logger.error(f"Error setting window icon: {str(e)}")
     
@@ -405,7 +412,7 @@ class MainWindow(QMainWindow):
             "  " + self._widget_size_summary("timeline_area", self.timeline_view.timeline_area),
             "  " + self._widget_size_summary("timeline_canvas", self.timeline_view.timeline_canvas),
         ]
-        self.logger.info("\n".join(lines))
+        self.logger.debug("\n".join(lines))
 
     def schedule_layout_diagnostic_snapshots(self, reason):
         """Capture several snapshots around a state transition."""
@@ -667,8 +674,7 @@ class MainWindow(QMainWindow):
         # explicit ``processEvents`` is not needed for ``setFocus`` itself.
         self.video_player_view.setFocus()
         
-        # Log transition completion
-        self.logger.info("Successfully switched to video mode")
+        self.logger.debug("Successfully switched to video mode")
     
     def switch_to_project_mode(self):
         """
@@ -693,7 +699,9 @@ class MainWindow(QMainWindow):
             self.project_mode_toolbar_action.setChecked(True)
             
             self.timeline_view.set_toolbar_context("Project")
-            self.set_status_message("Project Mode: Manage videos and annotations")
+            # The descriptive project-mode hint lives in the Project view body
+            # (not the cramped toolbar/tab row), so keep the toolbar status clear.
+            self.set_status_message("")
         else:
             self.logger.warning("Project view not found in view index")
 
@@ -704,11 +712,10 @@ class MainWindow(QMainWindow):
         mode_specific_statuses = {
             "Ready",
             "Video Mode: Annotation enabled",
-            "Project Mode: Manage videos and annotations",
         }
 
         if view_name == "Annotation":
-            if current_status in {"", "Video Mode: Annotation enabled", "Project Mode: Manage videos and annotations"}:
+            if current_status in {"", "Video Mode: Annotation enabled"}:
                 self.set_status_message("Ready")
         elif current_status in mode_specific_statuses:
             self.set_status_message("")
@@ -740,12 +747,8 @@ class MainWindow(QMainWindow):
             
         self._space_key_processing = True
         
-        # Detailed logging to track state changes
-        self.logger.debug("==== SPACE KEY PRESS PROCESSING START ====")
-        
         # Get the current video playback state directly
         was_playing = self.video_player_view._is_playing
-        self.logger.debug(f"Video was playing: {was_playing}")
         
         # First, toggle video play/pause using the view's method
         # This is preferable to directly calling the model to ensure proper UI updates
@@ -753,15 +756,14 @@ class MainWindow(QMainWindow):
         
         # Now the video state has toggled
         is_playing = not was_playing
-        self.logger.debug(f"Video is now playing: {is_playing}")
+        is_recording = False
+        is_paused = False
         
         # Now handle recording state synchronization
         if self.annotation_controller:
             # Get direct state from annotation controller instead of checking UI
             is_recording = self.annotation_controller._is_recording
             is_paused = self.annotation_controller._is_recording_paused
-            
-            self.logger.debug(f"Recording state: recording={is_recording}, paused={is_paused}")
             
             # Synchronize recording state with video state if recording is active
             if is_recording:
@@ -783,14 +785,14 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'timeline_view'):
             self.timeline_view.ensure_controls_visible()
         
-        # Log final states for verification
-        self.logger.debug(f"Final video state: playing={is_playing}")
-        if self.annotation_controller:
-            is_recording = self.annotation_controller._is_recording
-            is_paused = self.annotation_controller._is_recording_paused
-            self.logger.debug(f"Final recording state: recording={is_recording}, paused={is_paused}")
-        
-        self.logger.debug("==== SPACE KEY PRESS PROCESSING END ====")
+        self.logger.debug(
+            "Space toggled playback: was_playing=%s now_playing=%s "
+            "recording=%s paused=%s",
+            was_playing,
+            is_playing,
+            is_recording,
+            is_paused,
+        )
         
         # Schedule reset of the processing flag with a longer delay to prevent rapid
         # repeated spacebar presses from causing state inconsistencies
@@ -799,13 +801,12 @@ class MainWindow(QMainWindow):
     def resetSpaceKeyProcessing(self):
         """Reset the space key processing flag."""
         self._space_key_processing = False
-        self.logger.debug("Space key processing reset")
 
     def stabilize_annotation_layout(self):
         """Force the annotation page layouts to settle after dynamic UI changes."""
         if getattr(self, '_disable_manual_layout_stabilization', False):
             if getattr(self, '_layout_diagnostics_enabled', False):
-                self.logger.info("[LAYOUT_DIAG] stabilize_annotation_layout skipped (manual stabilization disabled)")
+                self.logger.debug("[LAYOUT_DIAG] stabilize_annotation_layout skipped (manual stabilization disabled)")
             self.schedule_layout_diagnostic_snapshots("stabilize_skipped")
             return
         if not hasattr(self, 'annotation_layout'):
@@ -912,7 +913,7 @@ class MainWindow(QMainWindow):
         """Run layout stabilization after recording-state UI changes, then release the temporary clamp."""
         if getattr(self, '_disable_manual_layout_stabilization', False):
             if getattr(self, '_layout_diagnostics_enabled', False):
-                self.logger.info("[LAYOUT_DIAG] schedule_annotation_layout_stabilization skipped (manual stabilization disabled)")
+                self.logger.debug("[LAYOUT_DIAG] schedule_annotation_layout_stabilization skipped (manual stabilization disabled)")
             self.schedule_layout_diagnostic_snapshots("schedule_stabilization_skipped")
             return
         QTimer.singleShot(0, self.stabilize_annotation_layout)
@@ -933,7 +934,7 @@ class MainWindow(QMainWindow):
         watch the controls that should auto-return focus to the main window,
         which significantly reduces event-filter overhead on every mouse move.
         """
-        self.logger.info("Installing focus tracking on specific widgets")
+        self.logger.debug("Installing focus tracking on specific widgets")
 
         # Single, reusable timer for resetting focus to the main window. Using
         # one QTimer instance and re-arming it via ``start()`` avoids the
@@ -1073,30 +1074,24 @@ class MainWindow(QMainWindow):
                 # Default to 33ms if frame duration is not available (30fps)
                 frame_step = 33
             
-            self.logger.debug(f"Frame-by-frame mode: using step size of {frame_step}ms (one frame)")
-            
             # Right arrow - step forward one frame
             if event.key() == Qt.Key.Key_Right:
-                self.logger.debug("Right arrow pressed in frame-by-frame mode - stepping forward one frame")
                 self.video_player_view.step_forward_clicked.emit(frame_step)
                 return
                 
             # Left arrow - step backward one frame
             if event.key() == Qt.Key.Key_Left:
-                self.logger.debug("Left arrow pressed in frame-by-frame mode - stepping backward one frame")
                 self.video_player_view.step_backward_clicked.emit(frame_step)
                 return
         else:
             # Normal mode - use configured step size
             # Right arrow - step forward
             if event.key() == Qt.Key.Key_Right:
-                self.logger.debug("Right arrow pressed - stepping forward")
                 self.video_player_view.step_forward_clicked.emit(step_size)
                 return
                 
             # Left arrow - step backward
             if event.key() == Qt.Key.Key_Left:
-                self.logger.debug("Left arrow pressed - stepping backward")
                 self.video_player_view.step_backward_clicked.emit(step_size)
                 return
             
@@ -1176,11 +1171,28 @@ class MainWindow(QMainWindow):
 
             # Build a lazily-registered view the first time it is shown
             # (Phase 5-2 / PR-STARTUP-04).
+            built_lazy = False
+            build_elapsed = 0
             try:
-                self._ensure_lazy_view_built(view_name)
+                built_lazy, build_elapsed = self._ensure_lazy_view_built(view_name)
             finally:
                 if show_loader:
                     self._hide_lazy_view_loader()
+            if built_lazy:
+                self.logger.debug(
+                    "Lazy view '%s' constructed in %d ms "
+                    "(loader=%s, heavy_imports_ready=%s)",
+                    view_name,
+                    build_elapsed,
+                    show_loader,
+                    self._heavy_imports_ready,
+                )
+                if not show_loader and build_elapsed >= 450:
+                    self.logger.warning(
+                        "Lazy view '%s' took %d ms without loader feedback",
+                        view_name,
+                        build_elapsed,
+                    )
 
             self.stacked_widget.setCurrentIndex(index)
             self.logger.debug(f"Switched to {view_name} mode")
@@ -1309,8 +1321,24 @@ class MainWindow(QMainWindow):
         self._lazy_view_builders[name] = builder
 
     def _should_show_lazy_view_loader(self, name):
-        """Return True when a first-access lazy tab should show the phase loader."""
-        return name in self._lazy_view_builders and name in self._lazy_view_loader_messages
+        """Return True when a first-access lazy tab should show the phase loader.
+
+        Skips the overlay only once the background warm-up has FULLY imported the
+        heavy libs (build is then tens of ms = instant). While the warm-up is
+        still in flight — or before it starts — the overlay is shown so the user
+        gets feedback during the (possibly multi-second) import the build blocks
+        on.
+        """
+        if name not in self._lazy_view_builders or name not in self._lazy_view_loader_messages:
+            return False
+        return not self._heavy_imports_ready
+
+    def mark_heavy_imports_ready(self):
+        """Flag that the background heavy-import warm-up has finished, so the
+        first switch to a heavy tab can skip the loader overlay (instant build).
+        Sets a plain bool, so it is safe to call from the warm-up thread.
+        """
+        self._heavy_imports_ready = True
 
     def _show_lazy_view_loader(self, name):
         """Display and immediately paint the first frame of the lazy-tab loader."""
@@ -1346,13 +1374,21 @@ class MainWindow(QMainWindow):
         self._tab_loading_elapsed = None
 
     def _ensure_lazy_view_built(self, name):
-        """Run a registered lazy builder once, on first access to ``name``."""
+        """Run a registered lazy builder once, on first access to ``name``.
+
+        Returns:
+            tuple[bool, int]: whether a builder ran, and elapsed milliseconds.
+        """
         builder = self._lazy_view_builders.pop(name, None)
         if builder is not None:
+            timer = QElapsedTimer()
+            timer.start()
             try:
                 builder()
             except Exception:
                 self.logger.exception("Lazy view '%s' build failed", name)
+            return True, timer.elapsed()
+        return False, 0
 
     def _current_view_name(self):
         """Return the name of the currently visible top-level view."""
@@ -1784,13 +1820,22 @@ class MainWindow(QMainWindow):
             else:
                 self.show_error("Video controller is not available yet.")
 
-        # CSV drops are delivered to the analysis view's existing handler so
-        # behaviour stays consistent with dropping them directly on that pane.
-        # If Visualization is already visible, keep the drop in Visualization.
-        # This covers edge drops around the Visualization drop label where Qt
-        # can let the global MainWindow fallback see the event first.
+        # CSV routing depends on the active view:
+        #   * Annotation -> load the first CSV as annotations into the timeline
+        #     (a dropped annotation file should populate the current session,
+        #     not get pulled into the Analysis tab).
+        #   * Visualization -> keep the drop in Visualization (covers edge drops
+        #     around its drop label where the global fallback sees the event).
+        #   * Anything else -> the Analysis view's multi-file handler.
         if csvs:
-            if self._current_view_name() == "Visualization":
+            current_view = self._current_view_name()
+            if current_view == "Annotation":
+                if len(csvs) > 1:
+                    self.set_status_message(
+                        "Multiple files dropped; importing the first as annotations."
+                    )
+                self._open_recent_annotation(csvs[0])
+            elif current_view == "Visualization":
                 self.switch_to_view("Visualization")
                 target = self._lazy_real_widget("Visualization")
                 if target is not None and hasattr(target, "files_dropped"):
@@ -1818,7 +1863,7 @@ class MainWindow(QMainWindow):
         if getattr(self, '_layout_diagnostics_enabled', False):
             old_size = event.oldSize()
             new_size = event.size()
-            self.logger.info(
+            self.logger.debug(
                 "[LAYOUT_DIAG] main_window_resize_event "
                 f"old={old_size.width()}x{old_size.height()} "
                 f"new={new_size.width()}x{new_size.height()}"

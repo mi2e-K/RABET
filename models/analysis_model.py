@@ -275,8 +275,10 @@ class AnalysisModel(QObject):
                         "parsing will continue but consider updating the tool"
                     )
 
-            # Extract test duration from metadata section if present
-            test_duration = 300  # Default 5 minutes (300 seconds)
+            # Extract test duration from metadata section if present. Keep
+            # ``None`` when absent so raw-event-only imports can still infer a
+            # duration from the event log instead of blindly using 300 s.
+            test_duration = None
             metadata_match = re.search(r'Test Duration \(seconds\),\s*(\d+\.?\d*)', content)
             if metadata_match:
                 try:
@@ -310,40 +312,46 @@ class AnalysisModel(QObject):
                 # Extract all unique behaviors from the file and add to custom behaviors set
                 self._extract_behaviors_from_data(df)
                 
-                # If we have summary data, use it directly instead of recalculating
+                # If we have summary data, validate it against raw events but
+                # keep raw events as the source of truth for primary metrics.
                 if summary_data:
                     self._analyze_file_with_summary(file_path, df, summary_data, test_duration)
                 else:
                     # Otherwise analyze from raw events
                     self._analyze_file(file_path, df, test_duration)
 
+                resolved_duration = self._results.get(file_path, {}).get("test_duration")
+                if resolved_duration is None:
+                    resolved_duration = test_duration if test_duration is not None else 300
+
                 self._analysis_inputs[file_path] = self._create_analysis_context(
                     df,
                     summary_data if summary_data else None,
-                    test_duration,
+                    resolved_duration,
                 )
-                
+
                 return True
             elif summary_data:
                 # If we only have summary data (no raw events), process it directly
                 self.logger.info(f"Processing file with only summary data: {file_path}")
-                
+
                 # Also extract behavior names from summary data
                 for behavior in summary_data.keys():
                     if behavior not in self._default_behaviors:
                         self._custom_behaviors.add(behavior)
-                
+
                 # Create placeholder dataframe for consistency
                 df = pd.DataFrame(columns=['Event', 'Onset', 'Offset'])
                 self._raw_data[file_path] = df
-                
+
                 # Process the summary data directly
-                self._analyze_file_with_summary(file_path, df, summary_data, test_duration)
+                summary_duration = test_duration if test_duration is not None else 300
+                self._analyze_file_with_summary(file_path, df, summary_data, summary_duration)
 
                 self._analysis_inputs[file_path] = self._create_analysis_context(
                     df,
                     summary_data,
-                    test_duration,
+                    summary_duration,
                 )
                 
                 return True
@@ -495,14 +503,152 @@ class AnalysisModel(QObject):
         """
         # Start with default behaviors
         self._behaviors = self._default_behaviors.copy()
-        
+
         # Add any custom behaviors
         if self._custom_behaviors:
             # Sort custom behaviors alphabetically for consistency
             sorted_custom_behaviors = sorted(self._custom_behaviors)
             self._behaviors.extend(sorted_custom_behaviors)
-            
+
             self.logger.info(f"Added {len(self._custom_behaviors)} custom behaviors to analysis: {sorted_custom_behaviors}")
+
+    @staticmethod
+    def _is_valid_behavior_name(behavior):
+        """Return True when ``behavior`` names a real annotation behavior."""
+        if behavior is None or pd.isna(behavior):
+            return False
+        name = str(behavior).strip()
+        return bool(name) and name not in {"RecordingStart", "Behavior", "nan"}
+
+    def _analysis_behavior_names(self, df=None, summary_data=None):
+        """Return the ordered behavior list to emit for one analysis pass."""
+        names = []
+        seen = set()
+
+        def add(raw_behavior):
+            if not self._is_valid_behavior_name(raw_behavior):
+                return
+            behavior = str(raw_behavior).strip()
+            if behavior not in seen:
+                seen.add(behavior)
+                names.append(behavior)
+
+        for behavior in self._behaviors:
+            add(behavior)
+        for behavior in (summary_data or {}).keys():
+            add(behavior)
+        if df is not None and not df.empty and 'Event' in df.columns:
+            for behavior in df['Event'].unique():
+                add(behavior)
+        return names
+
+    def _resolve_test_duration(self, df, provided_duration=None):
+        """Prefer metadata duration, otherwise infer from raw events."""
+        try:
+            if provided_duration is not None:
+                value = float(provided_duration)
+                if np.isfinite(value) and value > 0:
+                    return value
+        except (TypeError, ValueError):
+            self.logger.warning(
+                "Ignoring invalid provided test duration: %r",
+                provided_duration,
+            )
+
+        if df is not None and not df.empty:
+            return self._get_test_duration(df)
+        return 300.0
+
+    def _union_duration(self, onsets, offsets, behavior=None, file_path=None):
+        """Return overlap-collapsed duration for one behavior."""
+        intervals = [
+            (float(on), float(off))
+            for on, off in zip(onsets, offsets, strict=False)
+            if np.isfinite(on) and np.isfinite(off) and off > on
+        ]
+        if not intervals:
+            return 0.0
+
+        intervals.sort(key=lambda pair: (pair[0], pair[1]))
+        total = 0.0
+        current_start, current_end = intervals[0]
+        saw_overlap = False
+
+        for start, end in intervals[1:]:
+            if start <= current_end:
+                if start < current_end:
+                    saw_overlap = True
+                current_end = max(current_end, end)
+            else:
+                total += current_end - current_start
+                current_start, current_end = start, end
+        total += current_end - current_start
+
+        if saw_overlap:
+            source = os.path.basename(file_path) if file_path else "data"
+            self.logger.warning(
+                "Detected overlapping '%s' events in %s; using union duration",
+                behavior,
+                source,
+            )
+        return float(total)
+
+    def _calculate_behavior_duration_count(self, df, behavior, file_path=None):
+        """Return ``(union_duration_seconds, valid_event_count)`` for a behavior."""
+        if df is None or df.empty or 'Event' not in df.columns:
+            return 0.0, 0
+
+        behavior_df = df[df['Event'] == behavior]
+        if behavior_df.empty:
+            return 0.0, 0
+
+        onsets = pd.to_numeric(behavior_df['Onset'], errors='coerce').to_numpy(dtype=float)
+        offsets = pd.to_numeric(behavior_df['Offset'], errors='coerce').to_numpy(dtype=float)
+        valid_mask = np.isfinite(onsets) & np.isfinite(offsets) & (offsets >= onsets)
+        invalid_count = int((~valid_mask).sum())
+        if invalid_count:
+            self.logger.warning(
+                "Ignoring %d invalid %s event(s) in %s",
+                invalid_count,
+                behavior,
+                os.path.basename(file_path) if file_path else "data",
+            )
+
+        valid_onsets = onsets[valid_mask]
+        valid_offsets = offsets[valid_mask]
+        duration = self._union_duration(
+            valid_onsets, valid_offsets, behavior=behavior, file_path=file_path,
+        )
+        return duration, int(valid_mask.sum())
+
+    def _warn_if_summary_mismatch(
+        self, file_path, behavior, summary_metrics, raw_duration, raw_count,
+    ):
+        """Log when a CSV summary section disagrees with its raw events."""
+        try:
+            summary_duration = float(summary_metrics.get("duration", 0.0))
+            summary_count = int(summary_metrics.get("frequency", 0))
+        except (TypeError, ValueError):
+            self.logger.warning(
+                "Invalid summary values for '%s' in %s; raw events were used",
+                behavior,
+                os.path.basename(file_path),
+            )
+            return
+
+        duration_mismatch = abs(summary_duration - raw_duration) > 0.01
+        count_mismatch = summary_count != raw_count
+        if duration_mismatch or count_mismatch:
+            self.logger.warning(
+                "Summary/raw mismatch for '%s' in %s; using raw events "
+                "(summary duration=%s, raw duration=%.6f, summary count=%s, raw count=%s)",
+                behavior,
+                os.path.basename(file_path),
+                summary_duration,
+                raw_duration,
+                summary_count,
+                raw_count,
+            )
     
     def _analyze_file_with_summary(self, file_path, df, summary_data, test_duration=300):
         """
@@ -517,32 +663,38 @@ class AnalysisModel(QObject):
         try:
             self.logger.info(f"Analyzing file with summary data: {file_path}")
             
+            test_duration = self._resolve_test_duration(df, test_duration)
+            behavior_names = self._analysis_behavior_names(df, summary_data)
+
             # Initialize results dictionary
             results = {
                 "test_duration": test_duration,
             }
-            
-            # First, use the pre-calculated values from the summary section
-            for behavior, metrics in summary_data.items():
-                # FIX: Skip empty behavior names to prevent "nan" columns
-                if not behavior or not behavior.strip():
-                    self.logger.warning(f"Skipping empty behavior name in summary data")
-                    continue
-                    
-                # Store duration and frequency directly from summary data
-                results[f"{behavior}_duration"] = metrics['duration']
-                results[f"{behavior}_count"] = metrics['frequency']
-                
-                self.logger.debug(f"Using summary data: {behavior} - Duration: {metrics['duration']}, Frequency: {metrics['frequency']}")
-            
-            # Fill in any missing behaviors with zeros
-            for behavior in self._behaviors:
-                if f"{behavior}_duration" not in results:
-                    results[f"{behavior}_duration"] = 0.0
-                    results[f"{behavior}_count"] = 0
-            
-            # If we have raw event data, calculate the custom metrics
+
+            # If we have raw event data, raw events are the source of truth.
+            # The summary section is retained as a consistency check only.
             if not df.empty:
+                for behavior in behavior_names:
+                    duration, count = self._calculate_behavior_duration_count(
+                        df, behavior, file_path,
+                    )
+                    if behavior in summary_data:
+                        self._warn_if_summary_mismatch(
+                            file_path,
+                            behavior,
+                            summary_data[behavior],
+                            duration,
+                            count,
+                        )
+                    results[f"{behavior}_duration"] = float(duration)
+                    results[f"{behavior}_count"] = int(count)
+                    self.logger.debug(
+                        "Using raw data: %s - Duration: %.6f, Frequency: %d",
+                        behavior,
+                        duration,
+                        count,
+                    )
+
                 # Get enabled latency metrics from configuration
                 latency_metrics = self._metrics_config.get_enabled_latency_metrics()
                 
@@ -573,22 +725,45 @@ class AnalysisModel(QObject):
                 if self._interval_enabled and not df.empty:
                     interval_results = self._analyze_intervals(df, test_duration)
                     self._interval_results[file_path] = interval_results
-                    self.logger.info(f"Completed interval analysis with {len(interval_results)} intervals")
+                    self.logger.debug(f"Completed interval analysis with {len(interval_results)} intervals")
             else:
-                # No raw event data, try to derive from summary data for compatibility
-                
+                # No raw event data: use the summary section for metrics that
+                # are identifiable from totals, and leave timing-dependent
+                # metrics unavailable.
+                for behavior, metrics in summary_data.items():
+                    # FIX: Skip empty behavior names to prevent "nan" columns
+                    if not self._is_valid_behavior_name(behavior):
+                        self.logger.warning("Skipping empty behavior name in summary data")
+                        continue
+
+                    # Store duration and frequency directly from summary data
+                    results[f"{behavior}_duration"] = metrics['duration']
+                    results[f"{behavior}_count"] = metrics['frequency']
+
+                    self.logger.debug(
+                        "Using summary data: %s - Duration: %s, Frequency: %s",
+                        behavior,
+                        metrics['duration'],
+                        metrics['frequency'],
+                    )
+
+                # Fill in any missing behaviors with zeros
+                for behavior in behavior_names:
+                    if f"{behavior}_duration" not in results:
+                        results[f"{behavior}_duration"] = 0.0
+                        results[f"{behavior}_count"] = 0
+
                 # Handle latency metrics
                 latency_metrics = self._metrics_config.get_enabled_latency_metrics()
                 for metric in latency_metrics:
                     metric_name = metric["name"]
-                    behavior = metric["behavior"]
-                    
-                    # If behavior exists in summary and has occurrences, use 0 as placeholder
-                    # Otherwise use test duration (indicating no occurrences)
-                    if behavior in summary_data and summary_data[behavior]["frequency"] > 0:
-                        results[f"{metric_name.lower().replace(' ', '_')}"] = 0.0
-                    else:
-                        results[f"{metric_name.lower().replace(' ', '_')}"] = test_duration
+                    results[f"{metric_name.lower().replace(' ', '_')}"] = None
+                    self.logger.warning(
+                        "Summary-only input: '%s' cannot be computed because "
+                        "event onset times are unavailable for %s",
+                        metric_name,
+                        os.path.basename(file_path),
+                    )
                 
                 # Handle total time metrics - try to sum the durations from summary
                 total_time_metrics = self._metrics_config.get_enabled_total_time_metrics()
@@ -627,10 +802,10 @@ class AnalysisModel(QObject):
             # Store results
             self._results[file_path] = results
             
-            # Log all calculated metrics for validation
-            self.logger.info(f"Analysis summary for {file_path}:")
+            # Detailed calculated metrics are useful only during diagnostics.
+            self.logger.debug(f"Analysis summary for {file_path}:")
             for k, v in sorted(results.items()):
-                self.logger.info(f"  {k}: {v}")
+                self.logger.debug(f"  {k}: {v}")
             
             return True
         except Exception as e:
@@ -651,30 +826,30 @@ class AnalysisModel(QObject):
         try:
             self.logger.info(f"Analyzing file from raw event data: {file_path}")
             
-            # Log detailed information about the dataset
-            self.logger.info(f"DataFrame info for {file_path}:")
-            self.logger.info(f"  Shape: {df.shape}")
-            self.logger.info(f"  Columns: {df.columns.tolist()}")
-            self.logger.info(f"  Data types: {df.dtypes}")
+            # Log detailed information about the dataset only at debug level.
+            self.logger.debug(f"DataFrame info for {file_path}:")
+            self.logger.debug(f"  Shape: {df.shape}")
+            self.logger.debug(f"  Columns: {df.columns.tolist()}")
+            self.logger.debug(f"  Data types: {df.dtypes}")
             
             # Check for RecordingStart and Attack bites events
             rs_events = df[df['Event'] == 'RecordingStart']
             attack_events = df[df['Event'] == 'Attack bites']
             
-            self.logger.info(f"Data validation:")
-            self.logger.info(f"  Found {len(rs_events)} RecordingStart events")
-            self.logger.info(f"  Found {len(attack_events)} Attack bites events")
+            self.logger.debug("Data validation:")
+            self.logger.debug(f"  Found {len(rs_events)} RecordingStart events")
+            self.logger.debug(f"  Found {len(attack_events)} Attack bites events")
 
             if not rs_events.empty:
                 rs_onsets = pd.to_numeric(rs_events['Onset'], errors='coerce').dropna()
                 if not rs_onsets.empty:
-                    self.logger.info(f"  RecordingStart time: {rs_onsets.min()}")
+                    self.logger.debug(f"  RecordingStart time: {rs_onsets.min()}")
                 else:
                     self.logger.warning("  RecordingStart events have no valid numeric onset")
             if not attack_events.empty:
                 attack_onsets = pd.to_numeric(attack_events['Onset'], errors='coerce').dropna()
                 if not attack_onsets.empty:
-                    self.logger.info(f"  First Attack bites time: {attack_onsets.min()}")
+                    self.logger.debug(f"  First Attack bites time: {attack_onsets.min()}")
                 else:
                     self.logger.warning("  Attack bites events have no valid numeric onset")
             
@@ -684,8 +859,7 @@ class AnalysisModel(QObject):
                 df['Onset'] = df['Onset'].astype(float)
                 df['Offset'] = df['Offset'].astype(float)
                 
-                # Log column types after conversion
-                self.logger.info(f"  Column types after conversion: {df.dtypes}")
+                self.logger.debug(f"  Column types after conversion: {df.dtypes}")
                 
                 # Check for invalid values
                 nan_rows = df[df['Onset'].isna() | df['Offset'].isna()]
@@ -700,14 +874,10 @@ class AnalysisModel(QObject):
                 df['Offset'] = pd.to_numeric(df['Offset'], errors='coerce')
                 df = df.dropna(subset=['Onset', 'Offset'])
             
-            # Determine the test duration from the data or use provided value
-            file_test_duration = self._get_test_duration(df)
-            if file_test_duration > 0:
-                # Use the detected test duration from the file
-                test_duration = file_test_duration
-                self.logger.debug(f"Using detected test duration: {test_duration} seconds")
-            else:
-                self.logger.debug(f"Using provided test duration: {test_duration} seconds")
+            # Prefer explicit metadata duration; infer from raw events only
+            # when metadata was unavailable.
+            test_duration = self._resolve_test_duration(df, test_duration)
+            self.logger.debug(f"Using test duration: {test_duration} seconds")
             
             # Initialize results dictionary
             results = {
@@ -716,40 +886,21 @@ class AnalysisModel(QObject):
             
             # For each behavior, calculate duration and count
             # Use the combined list of default and custom behaviors
-            for behavior in self._behaviors:
-                behavior_df = df[df['Event'] == behavior]
+            for behavior in self._analysis_behavior_names(df):
+                duration, count = self._calculate_behavior_duration_count(
+                    df, behavior, file_path,
+                )
+                self.logger.debug(
+                    "Behavior '%s': %d occurrences, %.2fs total duration",
+                    behavior,
+                    count,
+                    duration,
+                )
 
-                # Calculate total duration in seconds
-                if not behavior_df.empty:
-                    onsets = pd.to_numeric(behavior_df['Onset'], errors='coerce')
-                    offsets = pd.to_numeric(behavior_df['Offset'], errors='coerce')
-                    valid_mask = (
-                        np.isfinite(onsets.to_numpy(dtype=float))
-                        & np.isfinite(offsets.to_numpy(dtype=float))
-                        & (offsets >= onsets).to_numpy()
-                    )
-                    invalid_count = int((~valid_mask).sum())
-                    if invalid_count:
-                        self.logger.warning(
-                            "Ignoring %d invalid %s event(s) in %s",
-                            invalid_count,
-                            behavior,
-                            os.path.basename(file_path),
-                        )
-                    durations = offsets[valid_mask] - onsets[valid_mask]
-                    duration = durations.sum()
-                    count = int(valid_mask.sum())
-
-                    self.logger.debug(f"Behavior '{behavior}': {count} occurrences, {duration:.2f}s total duration")
-                else:
-                    duration = 0
-                    count = 0
-                    self.logger.debug(f"Behavior '{behavior}': No occurrences")
-                
                 # Store in results - ensure both duration and count are correctly stored
                 results[f"{behavior}_duration"] = float(duration)  # Ensure it's a float
                 results[f"{behavior}_count"] = int(count)  # Ensure it's an integer
-            
+
             # Get enabled latency metrics from configuration
             latency_metrics = self._metrics_config.get_enabled_latency_metrics()
             
@@ -783,12 +934,12 @@ class AnalysisModel(QObject):
             if self._interval_enabled:
                 interval_results = self._analyze_intervals(df, test_duration)
                 self._interval_results[file_path] = interval_results
-                self.logger.info(f"Completed interval analysis with {len(interval_results)} intervals")
+                self.logger.debug(f"Completed interval analysis with {len(interval_results)} intervals")
             
-            # Log all calculated metrics for validation
-            self.logger.info(f"Analysis summary for {file_path}:")
+            # Detailed calculated metrics are useful only during diagnostics.
+            self.logger.debug(f"Analysis summary for {file_path}:")
             for k, v in sorted(results.items()):
-                self.logger.info(f"  {k}: {v}")
+                self.logger.debug(f"  {k}: {v}")
             
             return True
             
@@ -809,7 +960,7 @@ class AnalysisModel(QObject):
         Returns:
             list: List of dictionaries with interval metrics
         """
-        self.logger.info(f"Performing interval analysis with {self._interval_seconds} second intervals")
+        self.logger.debug(f"Performing interval analysis with {self._interval_seconds} second intervals")
         
         # FIX: Find the RecordingStart time - intervals should start from here, not from 0
         recording_start_time = 0
@@ -818,7 +969,7 @@ class AnalysisModel(QObject):
         if not recording_starts.empty:
             # Use the first RecordingStart as the analysis start point
             recording_start_time = float(recording_starts['Onset'].iloc[0])
-            self.logger.info(f"Found RecordingStart at {recording_start_time}s - intervals will start from this time")
+            self.logger.debug(f"Found RecordingStart at {recording_start_time}s - intervals will start from this time")
         else:
             # Fallback: use the earliest event time
             if not df.empty:
@@ -834,8 +985,8 @@ class AnalysisModel(QObject):
         # Calculate the number of intervals from RecordingStart
         num_intervals = int(np.ceil(test_duration / self._interval_seconds))
         
-        self.logger.info(f"Analysis period: {recording_start_time}s to {analysis_end_time}s ({test_duration}s duration)")
-        self.logger.info(f"Will create {num_intervals} intervals of {self._interval_seconds}s each")
+        self.logger.debug(f"Analysis period: {recording_start_time}s to {analysis_end_time}s ({test_duration}s duration)")
+        self.logger.debug(f"Will create {num_intervals} intervals of {self._interval_seconds}s each")
         
         # Initialize results for each interval
         interval_results = []
@@ -909,8 +1060,7 @@ class AnalysisModel(QObject):
             
             self.logger.debug(f"Interval {i+1}: {start_time}s - {end_time}s processed")
         
-        # Log total intervals for verification
-        self.logger.info(f"Created {len(interval_results)} intervals covering {recording_start_time}s to {analysis_end_time}s")
+        self.logger.debug(f"Created {len(interval_results)} intervals covering {recording_start_time}s to {analysis_end_time}s")
         
         return interval_results
     
@@ -1061,19 +1211,19 @@ class AnalysisModel(QObject):
                 self.logger.debug(f"No {target_behavior} found, using test duration: {test_duration}s")
                 return test_duration
             
-            # Log all RecordingStart events for debugging
-            self.logger.info(f"LATENCY CALCULATION DETAILS for {target_behavior}:")
-            self.logger.info(f"  Found {len(behavior_events)} {target_behavior} events")
-            self.logger.info(f"  Found {len(recording_starts)} RecordingStart events")
-            
+            # Log all RecordingStart events for debugging.
+            self.logger.debug(f"LATENCY CALCULATION DETAILS for {target_behavior}:")
+            self.logger.debug(f"  Found {len(behavior_events)} {target_behavior} events")
+            self.logger.debug(f"  Found {len(recording_starts)} RecordingStart events")
+
             if not recording_starts.empty:
                 for i, rs in recording_starts.iterrows():
-                    self.logger.info(f"  RecordingStart #{i}: {rs['Onset']}s")
-            
+                    self.logger.debug(f"  RecordingStart #{i}: {rs['Onset']}s")
+
             if not behavior_events.empty:
-                self.logger.info(f"  All {target_behavior} onsets: {list(behavior_events['Onset'])}")
+                self.logger.debug(f"  All {target_behavior} onsets: {list(behavior_events['Onset'])}")
                 min_behavior_time = behavior_events['Onset'].min()
-                self.logger.info(f"  First {target_behavior} onset: {min_behavior_time}s (type: {type(min_behavior_time)})")
+                self.logger.debug(f"  First {target_behavior} onset: {min_behavior_time}s (type: {type(min_behavior_time)})")
             
             # One CSV = one session (§16-1): the recorder now enforces a single
             # RecordingStart per file, so latency keys off the FIRST one. Older
@@ -1087,25 +1237,24 @@ class AnalysisModel(QObject):
                         len(recording_starts),
                     )
                 start_time = float(recording_starts['Onset'].iloc[0])
-                self.logger.info(f"  Using RecordingStart at {start_time}s")
+                self.logger.debug(f"  Using RecordingStart at {start_time}s")
             else:
                 # No RecordingStart found - fall back to earliest event time
                 start_time = float(df['Onset'].min())
-                self.logger.info(f"  No RecordingStart events! Using earliest event time: {start_time}s")
+                self.logger.debug(f"  No RecordingStart events; using earliest event time: {start_time}s")
             
             # Calculate latency with explicit float conversion
             first_behavior_time = float(behavior_events['Onset'].min())
             latency = first_behavior_time - start_time
             
-            # Log the exact calculation
-            self.logger.info(f"  Calculation: {first_behavior_time} - {start_time} = {latency}")
+            self.logger.debug(f"  Calculation: {first_behavior_time} - {start_time} = {latency}")
             
             # Ensure non-negative value (should not happen with proper data)
             if latency < 0:
                 self.logger.warning(f"  Calculated negative latency ({latency}s)! This suggests data ordering issues.")
                 latency = max(0, latency)
             
-            self.logger.info(f"FINAL {target_behavior} LATENCY: {latency}s")
+            self.logger.debug(f"FINAL {target_behavior} LATENCY: {latency}s")
             return latency
                 
         except Exception as e:
@@ -1214,16 +1363,16 @@ class AnalysisModel(QObject):
         try:
             self._reanalyze_loaded_files()
 
-            # Log summary of analysis results
+            # Log summary of analysis results only for diagnostics.
             for file_path, metrics in self._results.items():
                 file_name = os.path.basename(file_path)
-                self.logger.info(f"Analysis results for {file_name}:")
+                self.logger.debug(f"Analysis results for {file_name}:")
                 
                 # Log durations and counts for each behavior
                 for behavior in self._behaviors:
                     duration = metrics.get(f"{behavior}_duration", 0)
                     count = metrics.get(f"{behavior}_count", 0)
-                    self.logger.info(f"  {behavior}: {count} occurrences, {duration:.2f}s total")
+                    self.logger.debug(f"  {behavior}: {count} occurrences, {duration:.2f}s total")
                 
                 # Log custom metrics (latency)
                 latency_metrics = self._metrics_config.get_enabled_latency_metrics()
@@ -1231,7 +1380,7 @@ class AnalysisModel(QObject):
                     metric_name = metric["name"]
                     key = f"{metric_name.lower().replace(' ', '_')}"
                     if key in metrics:
-                        self.logger.info(f"  {metric_name}: {metrics[key]:.2f}s")
+                        self.logger.debug(f"  {metric_name}: {metrics[key]:.2f}s")
                 
                 # Log custom metrics (total time)
                 total_time_metrics = self._metrics_config.get_enabled_total_time_metrics()
@@ -1239,12 +1388,12 @@ class AnalysisModel(QObject):
                     metric_name = metric["name"]
                     key = f"{metric_name.lower().replace(' ', '_')}"
                     if key in metrics:
-                        self.logger.info(f"  {metric_name}: {metrics[key]:.2f}s")
+                        self.logger.debug(f"  {metric_name}: {metrics[key]:.2f}s")
                 
                 # Log interval results if available
                 if self._interval_enabled and file_path in self._interval_results:
                     intervals = self._interval_results[file_path]
-                    self.logger.info(f"  Interval analysis: {len(intervals)} intervals of {self._interval_seconds} seconds each")
+                    self.logger.debug(f"  Interval analysis: {len(intervals)} intervals of {self._interval_seconds} seconds each")
             
             # Emit the results for UI update
             self.analysis_complete.emit(self._results)
@@ -1268,6 +1417,73 @@ class AnalysisModel(QObject):
     def get_file_paths(self):
         """Get the file paths used in the current analysis session."""
         return self._file_paths.copy()
+
+    def get_file_test_duration(self, file_path):
+        """Return the session duration (seconds) recorded for a loaded file."""
+        context = self._analysis_inputs.get(file_path)
+        if not context:
+            return 0.0
+        try:
+            return float(context.get("test_duration", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def get_events_by_behavior(self, file_path):
+        """Return ``{behavior: [(onset, offset), ...]}`` in seconds for a file.
+
+        Built from the raw event table cached at load time (so no re-parsing).
+        The synthetic ``RecordingStart`` marker is excluded. Returns ``{}`` when
+        the file has no raw events (e.g. a summary-only CSV). Used by the
+        optional bout-analysis window (1.4.0); the standard analysis path is
+        untouched.
+        """
+        context = self._analysis_inputs.get(file_path)
+        if not context:
+            return {}
+        df = context.get("dataframe")
+        if df is None or df.empty or 'Event' not in df.columns:
+            return {}
+
+        result = {}
+        for behavior, group in df.groupby('Event'):
+            if behavior == 'RecordingStart' or not str(behavior).strip():
+                continue
+            onsets = pd.to_numeric(group['Onset'], errors='coerce')
+            offsets = pd.to_numeric(group['Offset'], errors='coerce')
+            pairs = [
+                (float(onset), float(offset))
+                for onset, offset in zip(onsets, offsets, strict=True)
+                if pd.notna(onset) and pd.notna(offset)
+            ]
+            if pairs:
+                result[str(behavior)] = pairs
+        return result
+
+    def get_event_tuples(self, file_path):
+        """Return ``[(behavior, onset, offset), ...]`` sorted by onset for a file.
+
+        The synthetic ``RecordingStart`` marker is excluded. Returns ``[]`` when
+        the file has no raw events. Used by the optional transition-analysis
+        window (1.4.0); the standard analysis path is untouched.
+        """
+        context = self._analysis_inputs.get(file_path)
+        if not context:
+            return []
+        df = context.get("dataframe")
+        if df is None or df.empty or 'Event' not in df.columns:
+            return []
+
+        onsets = pd.to_numeric(df['Onset'], errors='coerce')
+        offsets = pd.to_numeric(df['Offset'], errors='coerce')
+        rows = []
+        for behavior, onset, offset in zip(df['Event'], onsets, offsets, strict=True):
+            behavior = str(behavior).strip()
+            if not behavior or behavior == 'RecordingStart':
+                continue
+            if pd.notna(onset) and pd.notna(offset):
+                rows.append((behavior, float(onset), float(offset)))
+        rows.sort(key=lambda item: item[1])
+        return rows
 
     def clear_loaded_data(self):
         """Clear all loaded analysis inputs and results."""
@@ -1329,6 +1545,19 @@ class AnalysisModel(QObject):
             else:
                 key_parts.append((0, part.casefold()))
         return key_parts
+
+    @staticmethod
+    def _format_optional_seconds(value):
+        """Format numeric seconds, leaving unavailable metrics blank."""
+        if value is None:
+            return ""
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return ""
+        if not np.isfinite(number):
+            return ""
+        return f"{number:.2f}"
 
     def _sorted_results_items(self):
         """Return whole-session results ordered by animal_id."""
@@ -1466,9 +1695,9 @@ class AnalysisModel(QObject):
                 
                 writer.writerow(column_headers)
                 
-                # Log the structure of the summary table
-                self.logger.info(f"Summary table structure: {len(behaviors_list)} behaviors + {len(latency_metrics)} latency metrics + {len(total_time_metrics)} total time metrics")
-                self.logger.info(f"Behaviors included: {behaviors_list}")
+                # Log the structure of the summary table only for diagnostics.
+                self.logger.debug(f"Summary table structure: {len(behaviors_list)} behaviors + {len(latency_metrics)} latency metrics + {len(total_time_metrics)} total time metrics")
+                self.logger.debug(f"Behaviors included: {behaviors_list}")
                 
                 # Write data rows and validate metrics for each file. We use
                 # ``source_path`` here to avoid shadowing the ``file_path``
@@ -1480,8 +1709,7 @@ class AnalysisModel(QObject):
                     # Start with animal_id
                     row = [animal_id]
                     
-                    # Log individual file metrics for validation
-                    self.logger.info(f"Metrics for {animal_id}:")
+                    self.logger.debug(f"Metrics for {animal_id}:")
                     
                     # Add duration values for each behavior
                     for behavior in behaviors_list:
@@ -1507,17 +1735,23 @@ class AnalysisModel(QObject):
                     for metric in latency_metrics:
                         metric_name = metric["name"]
                         key = f"{metric_name.lower().replace(' ', '_')}"
-                        value = float(metrics.get(key, metrics.get('test_duration', 300)))
-                        self.logger.info(f"  {metric_name}: {value:.2f}s")
-                        row.append(f"{value:.2f}")
+                        value_text = self._format_optional_seconds(metrics.get(key))
+                        if value_text:
+                            self.logger.debug(f"  {metric_name}: {value_text}s")
+                        else:
+                            self.logger.debug(f"  {metric_name}: unavailable")
+                        row.append(value_text)
 
                     # Add total time metrics
                     for metric in total_time_metrics:
                         metric_name = metric["name"]
                         key = f"{metric_name.lower().replace(' ', '_')}"
-                        value = float(metrics.get(key, 0))
-                        self.logger.info(f"  {metric_name}: {value:.2f}s")
-                        row.append(f"{value:.2f}")
+                        value_text = self._format_optional_seconds(metrics.get(key, 0))
+                        if value_text:
+                            self.logger.debug(f"  {metric_name}: {value_text}s")
+                        else:
+                            self.logger.debug(f"  {metric_name}: unavailable")
+                        row.append(value_text)
 
                     data_rows.append(row)
                     writer.writerow(row)

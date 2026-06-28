@@ -1,5 +1,6 @@
 # controllers/app_controller.py - Updated with icon management, theme integration, and visualization support
 import logging
+import threading
 from version import __version__
 from PySide6.QtCore import QObject, Slot, QTimer, Qt
 from PySide6.QtGui import QIcon
@@ -32,6 +33,8 @@ from utils.log_manager import LogManager
 from utils.theme_manager import ThemeManager
 from utils.config_manager import ConfigManager
 from utils.app_icon import find_app_icon_path
+
+_HEAVY_IMPORT_THREAD_FACTORY = threading.Thread
 
 class AppController(QObject):
     """
@@ -260,7 +263,7 @@ class AppController(QObject):
 
         def _run_next(index):
             if index >= len(builders):
-                self.logger.info("Lazy tabs warm-up complete")
+                self.logger.debug("Lazy tabs warm-up complete")
                 return
             try:
                 builders[index]()
@@ -271,6 +274,49 @@ class AppController(QObject):
             QTimer.singleShot(0, lambda: _run_next(index + 1))
 
         _run_next(0)
+
+    def _warm_up_heavy_imports(self):
+        """Pre-import the heavy analysis libraries on a background thread so the
+        first switch to a heavy tab only has to build widgets (fast) rather than
+        also import pandas/scipy/matplotlib/statsmodels.
+
+        Unlike the (removed) post-launch warm-up — which built widgets on the UI
+        thread and froze the workspace — this only does *imports*, which release
+        the GIL during C-extension loading, so the UI stays responsive. Widget
+        construction stays lazy on the UI thread (Qt requirement). Importing
+        pingouin warms pandas+scipy+matplotlib+statsmodels in one go; the cheap
+        matplotlib Qt backend is warmed too. Idempotent and exception-safe.
+        """
+        if getattr(self, "_heavy_warm_started", False):
+            return
+        self._heavy_warm_started = True
+
+        def _warm():
+            import time
+            t0 = time.perf_counter()
+            try:
+                import pingouin  # noqa: F401  pulls pandas/scipy/matplotlib/statsmodels
+            except Exception:
+                self.logger.exception("Heavy-import warm-up: pingouin failed")
+            try:
+                import matplotlib.pyplot  # noqa: F401
+                import matplotlib.backends.backend_qtagg  # noqa: F401
+            except Exception:
+                self.logger.exception("Heavy-import warm-up: matplotlib failed")
+            self.logger.debug(
+                "Heavy-import warm-up finished in %.0f ms",
+                (time.perf_counter() - t0) * 1000,
+            )
+            # Now that the libs are fully imported, let the main window skip the
+            # loader overlay on the first switch (build is then instant).
+            try:
+                self.main_window.mark_heavy_imports_ready()
+            except Exception:
+                self.logger.exception("Heavy-import warm-up: ready flag failed")
+
+        _HEAVY_IMPORT_THREAD_FACTORY(
+            target=_warm, name="HeavyImportWarmup", daemon=True
+        ).start()
 
     def _ensure_analysis(self):
         """Lazily construct the Analysis model + controller (PR-STARTUP-04).
@@ -293,7 +339,7 @@ class AppController(QObject):
         if hasattr(self, "project_controller"):
             self.project_controller._analysis_controller = self.analysis_controller
         self.analysis_model.error_occurred.connect(self.main_window.show_error)
-        self.logger.info("Analysis tab constructed lazily")
+        self.logger.debug("Analysis tab constructed lazily")
 
     def _ensure_visualization(self):
         """Lazily construct the Visualization view + controller (Phase 5-2).
@@ -315,13 +361,17 @@ class AppController(QObject):
         self.visualization_view.files_dropped.connect(
             self.handle_visualization_files_dropped
         )
-        self.logger.info("Visualization tab constructed lazily")
+        self.logger.debug("Visualization tab constructed lazily")
 
     def _ensure_reliability(self):
         """Lazily construct the Reliability view + controller (Phase 5-2)."""
         if self.reliability_view is not None:
             return
-        # Lazy import (PR-STARTUP-02): pingouin/scipy load only on first open.
+        import time
+        t0 = time.perf_counter()
+        # Lazy shell: the tab view/controller are built on first open, while
+        # the heavier statistics model and review dialog are built on Compute /
+        # Review actions inside ReliabilityController.
         from controllers.reliability_controller import ReliabilityController
         from views.reliability_view import ReliabilityView
         self.reliability_view = ReliabilityView()
@@ -330,7 +380,10 @@ class AppController(QObject):
             self.reliability_view, self
         )
         self.reliability_controller.set_config_manager(self.config_manager)
-        self.logger.info("Reliability tab constructed lazily")
+        self.logger.debug(
+            "Reliability tab shell constructed lazily in %.0f ms",
+            (time.perf_counter() - t0) * 1000,
+        )
 
     def set_application_icon(self):
         """Set the application and window icons."""
@@ -341,7 +394,7 @@ class AppController(QObject):
             return
         
         try:
-            self.logger.info(f"Setting application icon from: {icon_path}")
+            self.logger.debug(f"Setting application icon from: {icon_path}")
             
             # Create icon
             app_icon = QIcon(icon_path)
@@ -354,7 +407,7 @@ class AppController(QObject):
             # Set the window icon
             if self.main_window:
                 self.main_window.setWindowIcon(app_icon)
-                self.logger.info("Window icon set successfully")
+                self.logger.debug("Window icon set successfully")
         except Exception as e:
             self.logger.error(f"Error setting application icon: {str(e)}")
     
@@ -371,11 +424,16 @@ class AppController(QObject):
         if self.main_window and self.main_window.windowIcon().isNull():
             self.set_application_icon()
         
-        self.logger.info("Main window shown and centered on screen")
+        self.logger.debug("Main window shown and centered on screen")
 
-        # Heavy tabs stay lazy so startup remains responsive. Their first
-        # access now shows MainWindow's PhaseLoadingOverlay instead of doing a
-        # hidden post-launch warm-up that can freeze the annotation workspace.
+        # Heavy tabs stay lazy so startup itself remains responsive. Shortly
+        # after the first frame is painted, pre-import the heavy analysis libs
+        # on a background thread so the first switch to a heavy tab only builds
+        # widgets (fast). Imports run off the UI thread, so unlike the old
+        # post-launch warm-up this does not freeze the annotation workspace; the
+        # PhaseLoadingOverlay still covers the case where the user opens a tab
+        # before the warm-up finishes.
+        QTimer.singleShot(600, self._warm_up_heavy_imports)
     
     def connect_main_window_signals(self):
         """Connect main window signals to controllers."""

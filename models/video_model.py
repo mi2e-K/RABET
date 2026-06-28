@@ -62,6 +62,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from fractions import Fraction
@@ -83,6 +84,11 @@ from PySide6.QtCore import (
     Slot,
 )
 from PySide6.QtGui import QImage
+
+
+def _env_flag(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 class _VideoDecodeWorker(QObject):
@@ -151,6 +157,7 @@ class _VideoDecodeWorker(QObject):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing VideoModel (PyAV backend)")
+        self._decode_timing_log_enabled = _env_flag("RABET_VIDEO_TIMING")
 
         # ----- PyAV state -----
         self._container: Optional[av.container.InputContainer] = None
@@ -691,12 +698,9 @@ class _VideoDecodeWorker(QObject):
             self.render_load_changed.emit(False)
 
     def _log_decode_timing(self, op: str, t0: float, level: int = logging.INFO) -> None:
-        """Measure how long an av decode op blocked its thread (PR-V1).
-
-        Under the current main-thread backend this is time the UI is blocked;
-        after the worker move the same work should run off the UI thread. Logs
-        the elapsed ms and the executing thread name so before/after compares.
-        """
+        """Measure PyAV decode time when explicit timing diagnostics are enabled."""
+        if not self._decode_timing_log_enabled:
+            return
         elapsed_ms = (time.monotonic() - t0) * 1000.0
         self.logger.log(
             level,

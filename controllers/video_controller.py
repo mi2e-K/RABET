@@ -282,8 +282,6 @@ class VideoController(QObject):
             position = self._video_model.get_position()
         self._view.set_position(position)
 
-        self.logger.debug(f"Step operation finalized at position {position}ms")
-
         # Reset stepping flag
         self._stepping_in_progress = False
 
@@ -348,8 +346,6 @@ class VideoController(QObject):
             self.logger.debug(f"Seek to {position_ms}ms ignored - operation in progress")
             return
             
-        self.logger.debug(f"Handling seek to position: {position_ms}ms")
-
         # Seek-intent model (1.3.4): tag this as an explicit *user* seek BEFORE
         # issuing it. seek() is asynchronous under the A-1 worker model, so the
         # worker's later position_changed -> on_position_changed consumes this

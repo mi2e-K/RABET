@@ -13,7 +13,7 @@
 #   1. Parses both summary_table.csv files (two-banded layout).
 #   2. Matches rows on `animal_id`.
 #   3. For each common metric column, reports
-#        - ICC(2,1)  (psych::ICC, two-way mixed, absolute agreement, single rater)
+#        - ICC(2,1)  (psych::ICC, two-way random, absolute agreement, single rater)
 #        - Pearson r
 #        - Mean absolute difference
 #   4. Writes one combined results CSV next to the inputs.
@@ -114,7 +114,7 @@ parse_summary <- function(path) {
   data
 }
 
-# ICC(2,1) reproducing pingouin's "ICC2": two-way mixed, absolute
+# ICC(2,1) reproducing pingouin's "ICC2": two-way random, absolute
 # agreement, single rater.
 icc_two_way_single <- function(values_a, values_b) {
   ok <- is.finite(values_a) & is.finite(values_b)
@@ -122,10 +122,8 @@ icc_two_way_single <- function(values_a, values_b) {
   vb <- values_b[ok]
   n <- length(va)
   if (n < 2L) return(NA_real_)
-  # Identical sequences -> perfect agreement; avoid the divide-by-zero
-  # in psych::ICC.
-  if (isTRUE(all.equal(va, vb))) return(1.0)
-  # Both sequences flat but unequal -> ICC undefined.
+  # With no between-target variance, ICC is undefined even if both
+  # scorers gave the same constant value.
   if (length(unique(va)) == 1L && length(unique(vb)) == 1L) return(NA_real_)
 
   mat <- cbind(va, vb)
@@ -144,7 +142,7 @@ pearson_r <- function(va, vb) {
   va <- va[ok]; vb <- vb[ok]
   if (length(va) < 2L) return(NA_real_)
   if (sd(va) == 0 || sd(vb) == 0) {
-    return(if (isTRUE(all.equal(va, vb))) 1.0 else NA_real_)
+    return(NA_real_)
   }
   as.numeric(cor(va, vb))
 }

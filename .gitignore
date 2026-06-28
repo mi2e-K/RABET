@@ -24,6 +24,13 @@ logs/
 # User-managed project content
 projects/
 
+# Local sample / experimental behavior data (private; never distribute)
+sample behavior data/
+
+# Local developer notes / memos (not for distribution)
+notes/
+docs/dev/
+
 # Runtime-created config (user_action_map is owned by ConfigManager and
 # regenerated per-user; only the shipped defaults should be versioned).
 configs/user_action_map.json

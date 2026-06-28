@@ -414,8 +414,9 @@ threats Latency*) and toggle each on or off independently.
 
 #### Total-time metrics
 
-Sum of `Duration` over a chosen set of behaviours. The default
-configuration ships with:
+Overlap-aware total time across a chosen set of behaviours. When raw
+events are available, overlapping intervals are collapsed so simultaneous
+behaviours are not double-counted. The default configuration ships with:
 
 - *Total Aggression* — Attack bites + Sideways threats + Tail rattles
   + Chasing
@@ -426,6 +427,11 @@ The set of behaviours per total-time metric is editable, so you can
 define category sums tailored to your study (e.g. *Exploration* =
 Locomotion + Rearing).
 
+When only a Summary section is available and raw event onsets/offsets
+are missing, RABET can only sum the listed behaviour durations. Multi-
+behaviour total-time metrics from summary-only input are therefore marked
+as approximate.
+
 ### 3.5 Exporting results
 
 - **Copy to Clipboard** copies the active tab as TSV (tab-separated
@@ -435,6 +441,22 @@ Locomotion + Rearing).
   `summary_intervals.csv` alongside it.
 - **Visualize Files** switches to the Visualization tab with the
   currently loaded files already selected.
+
+### 3.6 Bout and transition figure export
+
+The optional **Bout Analysis** and **Transition Analysis** windows are
+opened from the Analysis view. Figure tabs now include **Export
+Figure...** controls:
+
+- Bout Analysis **Raster** can be saved as PNG, SVG, or PDF.
+- Transition Analysis **Heatmap** can be saved as PNG, SVG, or PDF.
+- Transition Analysis **Predictability** can save its bar chart as PNG,
+  SVG, or PDF.
+
+Use the adjacent **DPI** control before exporting. The Windows file
+dialog lets you choose the destination and file extension; if the
+extension is omitted, RABET uses the selected file-type filter. The
+export-complete notification closes automatically after one second.
 
 ---
 
@@ -528,6 +550,10 @@ each file represents one animal identified by `animal_id`.
      animals
    A scatter plot per metric is rendered automatically.
 
+ICC and Pearson r are shown as unavailable when the paired metric has no
+between-animal variance. Exact equality of constant values is still exact
+equality, but the statistic itself is not identifiable.
+
 **Output.** The results table colour-codes ICC values using Cicchetti
 (1994) bands:
 
@@ -563,6 +589,11 @@ comparable.
 5. A pairwise event-raster overlay shows both raters' events stacked
    vertically per behaviour, with disagreement segments visible at a
    glance.
+
+If a behaviour is absent from every compared bin for both raters, raw %
+agreement can be 100% while Cohen's kappa and Krippendorff's alpha are
+unavailable; this is the correct degenerate-case treatment rather than
+evidence of perfect chance-corrected reliability.
 
 The κ values are colour-coded using Landis & Koch (1977) bands:
 

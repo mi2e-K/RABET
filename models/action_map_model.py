@@ -34,6 +34,13 @@ class ActionMapModel(QObject):
         
         # Initialize empty action map
         self._action_map = {}
+        # Per-key behaviour kind: "state" (default, onset/offset duration) or
+        # "point" (instantaneous, zero-duration). Stored separately from
+        # ``_action_map`` so that ``get_behavior`` / ``get_all_mappings`` keep
+        # returning a plain ``{key: name}`` dict — every existing reader stays
+        # untouched. On disk the two are merged back into a union form (a bare
+        # string for state, an object for point) by ``_serialize_map`` (1.4.0).
+        self._behavior_kinds = {}
         self._active_behaviors = set()  # Currently active behaviors
         
         # Setup auto-save timer
@@ -107,8 +114,9 @@ class ActionMapModel(QObject):
             default_map = default_action_map()
 
             self._action_map = default_map
+            self._behavior_kinds = {}  # bundled defaults are all state
             self._loaded_successfully = True
-            
+
             # Don't emit signal during initialization
             
             # Save both as default and user map
@@ -145,15 +153,36 @@ class ActionMapModel(QObject):
             # Validate format
             if not isinstance(data, dict):
                 raise ValueError("Action map must be a dictionary")
-            
-            # Validate key format
+
+            # Parse the union value form (1.4.0): a value is either a bare
+            # behaviour-name string (kind "state") or an object
+            # ``{"behavior": <name>, "kind": "state"|"point"}``. Names land in
+            # ``_action_map`` and kinds in ``_behavior_kinds`` so the rest of
+            # the model still sees a plain ``{key: name}`` map.
+            parsed_map = {}
+            parsed_kinds = {}
             for key, value in data.items():
                 if not isinstance(key, str) or len(key) != 1:
                     raise ValueError(f"Invalid key format: {key}")
-                if not isinstance(value, str) or not value.strip():
+                if isinstance(value, dict):
+                    name = value.get("behavior")
+                    kind = value.get("kind", "state")
+                else:
+                    name = value
+                    kind = "state"
+                if not isinstance(name, str) or not name.strip():
                     raise ValueError(f"Invalid behavior label for key {key}: {value}")
-            
-            self._action_map = data
+                if kind not in ("state", "point"):
+                    self.logger.warning(
+                        "Unknown behaviour kind %r for key '%s'; defaulting to 'state'",
+                        kind, key,
+                    )
+                    kind = "state"
+                parsed_map[key] = name
+                parsed_kinds[key] = kind
+
+            self._action_map = parsed_map
+            self._behavior_kinds = parsed_kinds
 
             # Tolerate (but warn about) duplicate behaviour names on load for
             # backward compatibility (§16-2): older maps may map two keys to
@@ -190,14 +219,30 @@ class ActionMapModel(QObject):
             Path(json_path).parent.mkdir(parents=True, exist_ok=True)
             
             with open(json_path, 'w') as f:
-                json.dump(self._action_map, f, indent=2)
+                json.dump(self._serialize_map(), f, indent=2)
             return True
         except Exception as e:
             error_msg = f"Failed to save action map: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
             return False
-    
+
+    def _serialize_map(self):
+        """Build the on-disk union form from the internal name/kind maps.
+
+        A ``state`` behaviour is written as a bare string (identical to the
+        pre-1.4.0 format), so an all-state map round-trips byte-for-byte. Only
+        ``point`` behaviours use the object form, keeping older files and the
+        bundled defaults unchanged.
+        """
+        out = {}
+        for key, name in self._action_map.items():
+            if self._behavior_kinds.get(key, "state") == "point":
+                out[key] = {"behavior": name, "kind": "point"}
+            else:
+                out[key] = name
+        return out
+
     def _schedule_auto_save(self):
         """Schedule an auto-save operation."""
         if not self._auto_save_pending:
@@ -216,14 +261,17 @@ class ActionMapModel(QObject):
             else:
                 self.logger.error("Failed to auto-save user action map")
     
-    def add_mapping(self, key, behavior):
+    def add_mapping(self, key, behavior, kind=None):
         """
         Add a new key-to-behavior mapping.
-        
+
         Args:
             key (str): Key character
             behavior (str): Behavior label
-            
+            kind (str, optional): "state" or "point". ``None`` (default)
+                preserves the key's existing kind if it has one, else "state",
+                so existing callers and re-confirmations never clobber a point.
+
         Returns:
             bool: True if added successfully, False otherwise
         """
@@ -256,8 +304,20 @@ class ActionMapModel(QObject):
                 self.error_occurred.emit(error_msg)
                 return False
 
-        self.logger.debug(f"Adding mapping: {key} -> {behavior}")
+        # Resolve the kind: explicit value wins; otherwise keep the key's
+        # current kind (preserves a point on a same-key edit / re-confirm),
+        # falling back to "state".
+        if kind is None:
+            resolved_kind = self._behavior_kinds.get(key, "state")
+        elif kind in ("state", "point"):
+            resolved_kind = kind
+        else:
+            self.logger.warning("Unknown behaviour kind %r; using 'state'", kind)
+            resolved_kind = "state"
+
+        self.logger.debug(f"Adding mapping: {key} -> {behavior} ({resolved_kind})")
         self._action_map[key] = behavior
+        self._behavior_kinds[key] = resolved_kind
         self.map_changed.emit()
         self.mapping_added.emit(key, behavior)
         
@@ -282,6 +342,7 @@ class ActionMapModel(QObject):
             was_active = key in self._active_behaviors
             
             del self._action_map[key]
+            self._behavior_kinds.pop(key, None)
             self._active_behaviors.discard(key)
             
             # Emit both signals for compatibility
@@ -346,7 +407,15 @@ class ActionMapModel(QObject):
             str: Behavior label or None if key not found
         """
         return self._action_map.get(key)
-    
+
+    def get_kind(self, key):
+        """Return the behaviour kind for a key: "state" (default) or "point"."""
+        return self._behavior_kinds.get(key, "state")
+
+    def get_all_kinds(self):
+        """Return ``{key: "state"|"point"}`` for every mapped key."""
+        return {key: self._behavior_kinds.get(key, "state") for key in self._action_map}
+
     def get_all_mappings(self):
         """
         Get all key-to-behavior mappings.
@@ -445,7 +514,8 @@ class ActionMapModel(QObject):
                     
             # If default doesn't exist, use the centralised fallback.
             self._action_map = default_action_map()
-            
+            self._behavior_kinds = {}  # all state
+
             self.map_changed.emit()
             self._schedule_auto_save()
             

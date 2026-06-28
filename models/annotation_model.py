@@ -16,10 +16,10 @@ class BehaviorEvent:
     Represents a single behavior event with onset, offset and duration.
     """
     
-    def __init__(self, key, behavior, onset, offset=None, system_onset_time=None, system_offset_time=None):
+    def __init__(self, key, behavior, onset, offset=None, system_onset_time=None, system_offset_time=None, kind="state"):
         """
         Initialize a behavior event.
-        
+
         Args:
             key (str): Key character
             behavior (str): Behavior label
@@ -27,11 +27,16 @@ class BehaviorEvent:
             offset (int, optional): Offset timestamp in milliseconds
             system_onset_time (float, optional): System time of onset (high precision)
             system_offset_time (float, optional): System time of offset (high precision)
+            kind (str): "state" (default, has duration) or "point"
+                (instantaneous; onset == offset). Point events are exempt from
+                the minimum one-frame duration rule and render as a tick on the
+                timeline (1.4.0).
         """
         self.key = key
         self.behavior = behavior
         self.onset = onset
         self.offset = offset
+        self.kind = kind
         
         # Store high-precision system times for calculating minimum durations
         self.system_onset_time = system_onset_time
@@ -74,6 +79,7 @@ class BehaviorEvent:
             'onset': self.onset,
             'offset': self.offset,
             'duration': self.duration,
+            'kind': self.kind,
             'system_onset_time': self.system_onset_time,
             'system_offset_time': self.system_offset_time
         }
@@ -133,7 +139,17 @@ class AnnotationModel(QObject):
         if self._video_model and hasattr(self._video_model, '_frame_duration_ms'):
             return self._video_model._frame_duration_ms
         return self._default_frame_duration_ms
-        
+
+    def get_behavior_kind(self, key):
+        """Return the action-map kind ("state"/"point") for a key.
+
+        Falls back to "state" when the action map predates the kind feature.
+        """
+        get_kind = getattr(self._action_map_model, "get_kind", None)
+        if callable(get_kind):
+            return get_kind(key)
+        return "state"
+
     def start_event(self, key, timestamp):
         """
         Start a new behavior event.
@@ -306,7 +322,41 @@ class AnnotationModel(QObject):
             self.active_events_changed.emit()
 
         return finalised
-    
+
+    def record_point_event(self, key, timestamp):
+        """Record an instantaneous (point) behaviour event.
+
+        Point behaviours carry no duration: the event is created with
+        ``offset == onset`` and committed immediately — there is no
+        active-event tracking and no key-release handling (the press IS the
+        event). Used by the controller when the pressed key's action-map kind
+        is "point" (1.4.0).
+
+        Args:
+            key (str): Key character
+            timestamp (int): Onset == offset timestamp in milliseconds
+
+        Returns:
+            bool: True if the event was recorded, False if the key is unmapped.
+        """
+        behavior = self._action_map_model.get_behavior(key)
+        if not behavior:
+            self.logger.debug(f"Ignoring point keypress: '{key}' is not mapped")
+            return False
+
+        system_time = time.monotonic()
+        event = BehaviorEvent(
+            key, behavior, timestamp, offset=timestamp,
+            system_onset_time=system_time, system_offset_time=system_time,
+            kind="point",
+        )
+        self._events.append(event)
+        self.annotation_added.emit(event)
+        self.logger.debug(
+            f"Recorded point event: {key} -> {behavior} at {timestamp}ms"
+        )
+        return True
+
     def discard_active_event(self, key):
         """
         Discard an active (still-pressed) behavior event without recording it.
@@ -746,23 +796,35 @@ class AnnotationModel(QObject):
                             skipped_count += 1
                             continue
                         
-                        # Ensure minimum duration if offset exists. The
-                        # synthetic ``RecordingStart`` marker is intentionally
-                        # zero-duration (onset == offset); clamping it to one
-                        # frame on import turned a 1000ms/1000ms marker into
-                        # 1000ms/1033ms on every round-trip (BUG-009), so it is
-                        # exempt from the minimum-duration rule.
+                        # A zero-duration row (offset == onset) is intentional:
+                        # it is either the synthetic ``RecordingStart`` marker
+                        # or a 1.4.0 *point* event. Clamping it to one frame on
+                        # import turned a 1000/1000 marker into 1000/1033 on
+                        # every round-trip (BUG-009), so zero-duration rows are
+                        # preserved as-is. Only a genuinely invalid offset
+                        # (strictly < onset) is clamped to one frame.
                         if (
                             behavior != "RecordingStart"
                             and offset is not None
-                            and offset <= onset
+                            and offset < onset
                         ):
                             offset = onset + self.get_frame_duration()
                             self.logger.debug(f"Row {row_num + 1}: Adjusted offset to ensure minimum duration")
-                        
+
+                        # Classify a non-RecordingStart zero-duration row as a
+                        # point event so the timeline renders it as a tick and a
+                        # re-export keeps it zero-duration (round-trip fidelity).
+                        kind = "state"
+                        if (
+                            behavior != "RecordingStart"
+                            and offset is not None
+                            and offset == onset
+                        ):
+                            kind = "point"
+
                         # Create event and stage it (commit happens only after
                         # the whole file parses to >=1 event).
-                        event = BehaviorEvent(key, behavior, onset, offset)
+                        event = BehaviorEvent(key, behavior, onset, offset, kind=kind)
                         parsed_events.append(event)
                         imported_count += 1
                         

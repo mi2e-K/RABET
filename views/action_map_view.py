@@ -3,10 +3,10 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy,
-    QAbstractScrollArea,
+    QAbstractScrollArea, QComboBox,
     QDialog, QLineEdit, QLabel, QDialogButtonBox, QMessageBox
 )
-from PySide6.QtCore import Signal, Slot, QRegularExpression
+from PySide6.QtCore import Qt, Signal, Slot, QRegularExpression
 from PySide6.QtGui import QFont, QRegularExpressionValidator
 
 class ActionMapView(QWidget):
@@ -20,14 +20,18 @@ class ActionMapView(QWidget):
             (carries the key).
     """
 
-    edit_mapping_requested = Signal(str, str)
+    edit_mapping_requested = Signal(str, str, str)  # key, behavior, kind
     remove_mapping_requested = Signal(str)
-    
+
     def __init__(self):
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.logger.info("Initializing ActionMapView")
-        
+
+        # key -> "state"|"point" for the currently displayed mappings, used to
+        # seed the edit dialog and the Type column (1.4.0).
+        self._mapping_kinds = {}
+
         self.setup_ui()
         self.connect_signals()
     
@@ -47,9 +51,12 @@ class ActionMapView(QWidget):
         
         # Table for displaying key mappings
         self.mappings_table = QTableWidget()
-        self.mappings_table.setColumnCount(2)
-        self.mappings_table.setHorizontalHeaderLabels(["Key", "Behavior"])
-        self.mappings_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.mappings_table.setColumnCount(3)
+        self.mappings_table.setHorizontalHeaderLabels(["Key", "Behavior", "Type"])
+        _hdr = self.mappings_table.horizontalHeader()
+        _hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        _hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.mappings_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.mappings_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.mappings_table.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
@@ -128,7 +135,7 @@ class ActionMapView(QWidget):
                 if confirm != QMessageBox.StandardButton.Yes:
                     return
 
-            self.edit_mapping_requested.emit(key, behavior)
+            self.edit_mapping_requested.emit(key, behavior, dialog.selected_kind())
     
     def on_edit_clicked(self):
         """Handle edit button clicked."""
@@ -142,16 +149,17 @@ class ActionMapView(QWidget):
         row = selected_rows[0].row()
         key = self.mappings_table.item(row, 0).text()
         current_behavior = self.mappings_table.item(row, 1).text()
-        
+        current_kind = self._mapping_kinds.get(key, "state")
+
         # Show dialog with current values
-        dialog = ActionMapDialog(self, key, current_behavior)
+        dialog = ActionMapDialog(self, key, current_behavior, kind=current_kind)
         dialog.key_edit.setEnabled(False)  # Can't edit the key
-        
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            new_behavior = dialog.behavior_edit.text()
-            
+            new_behavior = dialog.behavior_edit.text().strip()
+
             if new_behavior:
-                self.edit_mapping_requested.emit(key, new_behavior)
+                self.edit_mapping_requested.emit(key, new_behavior, dialog.selected_kind())
             else:
                 QMessageBox.warning(self, "Invalid Input", "Behavior cannot be empty.")
     
@@ -178,24 +186,31 @@ class ActionMapView(QWidget):
             self.remove_mapping_requested.emit(key)
     
     @Slot(dict)
-    def update_mappings(self, mappings):
+    def update_mappings(self, mappings, kinds=None):
         """
         Update the mappings table.
-        
+
         Args:
             mappings (dict): Key-to-behavior mappings
+            kinds (dict, optional): Key-to-kind ("state"/"point") mappings. When
+                omitted every behaviour is shown as a state (1.4.0).
         """
+        self._mapping_kinds = dict(kinds or {})
         self.mappings_table.setRowCount(0)
-        
+
         for key, behavior in sorted(mappings.items()):
             row = self.mappings_table.rowCount()
             self.mappings_table.insertRow(row)
-            
+
+            kind = self._mapping_kinds.get(key, "state")
             key_item = QTableWidgetItem(key)
+            key_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             behavior_item = QTableWidgetItem(behavior)
-            
+            type_item = QTableWidgetItem("Point" if kind == "point" else "State")
+
             self.mappings_table.setItem(row, 0, key_item)
             self.mappings_table.setItem(row, 1, behavior_item)
+            self.mappings_table.setItem(row, 2, type_item)
     
     @Slot(dict)
     def update_active_behaviors(self, active_behaviors):
@@ -239,13 +254,13 @@ class ActionMapDialog(QDialog):
 
     KEY_PATTERN = QRegularExpression(r"^[A-Za-z0-9]$")
 
-    def __init__(self, parent=None, key="", behavior="", existing_keys=None):
+    def __init__(self, parent=None, key="", behavior="", existing_keys=None, kind="state"):
         super().__init__(parent)
 
         self._existing_keys = set(existing_keys or set())
 
         self.setWindowTitle("Action Map Entry")
-        self.resize(320, 160)
+        self.resize(320, 200)
 
         # Main layout
         self.layout = QVBoxLayout(self)
@@ -270,6 +285,19 @@ class ActionMapDialog(QDialog):
         self.behavior_layout.addWidget(self.behavior_edit)
         self.layout.addLayout(self.behavior_layout)
 
+        # Type (kind) input: a state has a duration (key down/up), a point is
+        # instantaneous (a single press marks one moment) (1.4.0).
+        self.kind_layout = QHBoxLayout()
+        self.kind_label = QLabel("Type:")
+        self.kind_combo = QComboBox()
+        self.kind_combo.addItem("State (duration)", "state")
+        self.kind_combo.addItem("Point (instant)", "point")
+        kind_index = self.kind_combo.findData("point" if kind == "point" else "state")
+        self.kind_combo.setCurrentIndex(max(0, kind_index))
+        self.kind_layout.addWidget(self.kind_label)
+        self.kind_layout.addWidget(self.kind_combo)
+        self.layout.addLayout(self.kind_layout)
+
         # Buttons
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -277,6 +305,10 @@ class ActionMapDialog(QDialog):
         self.buttons.accepted.connect(self._on_accept)
         self.buttons.rejected.connect(self.reject)
         self.layout.addWidget(self.buttons)
+
+    def selected_kind(self):
+        """Return the chosen behaviour kind: "state" or "point"."""
+        return self.kind_combo.currentData() or "state"
 
     def _on_accept(self):
         """Validate inputs before accepting the dialog."""

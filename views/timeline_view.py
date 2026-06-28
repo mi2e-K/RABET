@@ -2,7 +2,7 @@
 import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QScrollArea, QSlider, QSpinBox, QSizePolicy,
+    QScrollArea, QSpinBox, QSizePolicy,
     QCheckBox, QFrame
 )
 from PySide6.QtCore import Qt, QRect, Signal, Slot, QTimer
@@ -158,16 +158,17 @@ class TimelineView(QWidget):
         self.zoom_label = QLabel("Zoom:")
         self.controls_layout.addWidget(self.zoom_label)
         
-        self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
-        self.zoom_slider.setMinimum(10)
-        self.zoom_slider.setMaximum(500)
+        # Zoom is a spin box (10-500 px/s); it shows its value inline, so no
+        # separate value label is needed (1.4.0). The attribute name
+        # ``zoom_slider`` is kept for compatibility with existing references.
+        self.zoom_slider = QSpinBox()
+        self.zoom_slider.setRange(10, 500)
+        self.zoom_slider.setSingleStep(10)
         self.zoom_slider.setValue(self._zoom_level)
-        self.zoom_slider.setFixedWidth(110)
+        self.zoom_slider.setSuffix(" px/s")
+        self.zoom_slider.setFixedWidth(96)
+        self.zoom_slider.setToolTip("Timeline zoom (pixels per second)")
         self.controls_layout.addWidget(self.zoom_slider)
-        
-        self.zoom_value = QLabel(str(self._zoom_level))
-        self.zoom_value.setToolTip(f"{self._zoom_level} px/s")
-        self.controls_layout.addWidget(self.zoom_value)
         
         # Add some spacing
         self.controls_layout.addSpacing(15)
@@ -288,7 +289,6 @@ class TimelineView(QWidget):
         return [
             self.zoom_label,
             self.zoom_slider,
-            self.zoom_value,
             self.timeline_visible_checkbox,
             self.update_freq_label,
             self.update_freq_spin,
@@ -345,8 +345,6 @@ class TimelineView(QWidget):
             value (int): New zoom level
         """
         self._zoom_level = value
-        self.zoom_value.setText(str(value))
-        self.zoom_value.setToolTip(f"{value} px/s")
         self.zoom_changed.emit(value)
         self._refresh_timeline_geometry()
         self.timeline_canvas.update()
@@ -599,7 +597,6 @@ class TimelineView(QWidget):
         # Update zoom controls visibility based on timeline visibility
         self.zoom_label.setVisible(self._timeline_visible)
         self.zoom_slider.setVisible(self._timeline_visible)
-        self.zoom_value.setVisible(self._timeline_visible)
         self._refresh_timeline_geometry(preserve_scroll=False)
         
         if self.controls_container.isVisible():
@@ -615,7 +612,6 @@ class TimelineView(QWidget):
         widgets = [
             self.zoom_label,
             self.zoom_slider,
-            self.zoom_value,
             self.timeline_visible_checkbox,
             self.update_freq_label,
             self.update_freq_spin,
@@ -976,6 +972,31 @@ class TimelineCanvas(QWidget):
                 # Skip the rest of the loop for RecordingStart events
                 continue
 
+            # Point (instantaneous) events render as a vertical tick with a
+            # small cap, not a (near-zero-width) bar, so they read as instants
+            # rather than tiny states (1.4.0).
+            if getattr(event, "kind", "state") == "point":
+                if not self._span_visible(x1 - 4, x1 + 4, clip_left, clip_right):
+                    continue
+                is_selected = (i == selected_index)
+                color = self.timeline_view.get_color(event.behavior)
+                # Opaque variant so the thin tick stays visible over the
+                # (often semi-transparent) behaviour fill colour.
+                tick_color = QColor(color.red(), color.green(), color.blue(), 255)
+                level = self._event_levels.get(i, 0)
+                top = y_base + level * self._LEVEL_OFFSET
+                bottom = top + self._track_height
+                pen = QPen(Qt.black if is_selected else tick_color.darker())
+                pen.setWidth(2 if is_selected else 1)
+                painter.setPen(pen)
+                painter.drawLine(x1, top, x1, bottom)
+                # Small cap so the instant pops and gives a click target.
+                cap = QRect(x1 - 3, top - 3, 6, 6)
+                painter.fillRect(cap, tick_color)
+                painter.setPen(QPen(tick_color.darker()))
+                painter.drawRect(cap)
+                continue
+
             # Use event duration or extend to current position if ongoing
             if event.offset is not None:
                 x2 = int(event.offset / 1000 * self.timeline_view._zoom_level)
@@ -1112,6 +1133,20 @@ class TimelineCanvas(QWidget):
                 x = int(event_obj.onset / 1000 * self.timeline_view._zoom_level)
                 # Create a narrow click area around the line
                 if abs(click_x - x) <= 5:  # 5 pixels tolerance
+                    self.timeline_view.select_event(i)
+                    selected = True
+                    break
+                continue
+
+            # Point events are zero-width, so use a small tolerance band around
+            # the tick (mirrors the RecordingStart approach) so they remain
+            # clickable for selection / deletion (1.4.0).
+            if getattr(event_obj, "kind", "state") == "point":
+                x = int(event_obj.onset / 1000 * self.timeline_view._zoom_level)
+                level = self._event_levels.get(i, 0)
+                y_position = y_base + level * self._LEVEL_OFFSET
+                if (abs(click_x - x) <= 5 and
+                        y_position - 4 <= click_y <= y_position + self._track_height):
                     self.timeline_view.select_event(i)
                     selected = True
                     break

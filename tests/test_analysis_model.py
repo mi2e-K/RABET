@@ -162,3 +162,73 @@ def test_raw_event_total_time_not_marked_approximate(model, tmp_path):
     )
     assert model.load_files([str(p)]) is True
     assert model.get_approximate_metric_names() == set()
+
+
+def test_raw_events_take_precedence_over_mismatched_summary(model, tmp_path):
+    p = tmp_path / "mismatch.csv"
+    p.write_text(
+        "Metadata\n"
+        "RABET Version,1.4.0\n"
+        "Test Duration (seconds),300\n"
+        "\n"
+        "Event,Onset,Offset\n"
+        "RecordingStart,0.0,0.0\n"
+        "Attack bites,10.0,12.0\n"
+        "\n"
+        "Behavior,Duration,Frequency\n"
+        "Attack bites,999.00,99\n",
+        encoding="utf-8",
+    )
+
+    assert model.load_files([str(p)]) is True
+    metrics = model.get_results()[str(p)]
+    assert metrics["Attack bites_duration"] == pytest.approx(2.0)
+    assert metrics["Attack bites_count"] == 1
+    assert metrics["attack_latency"] == pytest.approx(10.0)
+
+
+def test_summary_only_latency_is_unavailable(model, tmp_path):
+    p = _summary_only_csv(tmp_path)
+
+    assert model.load_files([str(p)]) is True
+    metrics = model.get_results()[str(p)]
+    assert metrics["attack_latency"] is None
+
+
+def test_raw_only_respects_metadata_test_duration(model, tmp_path):
+    p = tmp_path / "raw_only.csv"
+    p.write_text(
+        "Metadata\n"
+        "RABET Version,1.4.0\n"
+        "Test Duration (seconds),300\n"
+        "\n"
+        "Event,Onset,Offset\n"
+        "RecordingStart,0.0,0.0\n"
+        "Sideways threats,10.0,20.0\n",
+        encoding="utf-8",
+    )
+
+    assert model.load_files([str(p)]) is True
+    metrics = model.get_results()[str(p)]
+    assert metrics["test_duration"] == pytest.approx(300.0)
+    assert metrics["attack_latency"] == pytest.approx(300.0)
+
+
+def test_same_behavior_overlap_uses_union_duration(model, tmp_path):
+    p = tmp_path / "overlap.csv"
+    p.write_text(
+        "Metadata\n"
+        "RABET Version,1.4.0\n"
+        "Test Duration (seconds),300\n"
+        "\n"
+        "Event,Onset,Offset\n"
+        "RecordingStart,0.0,0.0\n"
+        "Attack bites,0.0,10.0\n"
+        "Attack bites,5.0,15.0\n",
+        encoding="utf-8",
+    )
+
+    assert model.load_files([str(p)]) is True
+    metrics = model.get_results()[str(p)]
+    assert metrics["Attack bites_duration"] == pytest.approx(15.0)
+    assert metrics["Attack bites_count"] == 2
