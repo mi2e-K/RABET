@@ -87,7 +87,7 @@ RABET 1.4.0 以降、行動は **State** と **Point** のどちらかに設定�
 
 ```csv
 Metadata
-RABET Version,1.4.0
+RABET Version,1.4.1
 Test Duration (seconds),60
 
 Event,Onset,Offset

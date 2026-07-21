@@ -1018,30 +1018,21 @@ class MainWindow(QMainWindow):
 
         # Recording "waiting" state: the session has been armed (Start Recording
         # clicked) and we are waiting for the user's go signal. The FIRST
-        # non-autorepeat key press starts the session. Contract (BUG-001): any
-        # key starts it; Space and navigation keys act purely as the start
-        # signal, while a *behaviour* key is ALSO forwarded so the first
-        # annotation is not silently dropped. This must run before the Space
-        # handler below, which would otherwise swallow Space and never start
-        # the session.
+        # non-autorepeat key press starts the session and acts purely as the
+        # "go" signal. Whatever key it is, it is consumed here and is not
+        # forwarded as an annotation, so no behavioural event opens at time 0.
+        # This must run before the Space handler below, which would otherwise
+        # swallow Space and never start the session.
         if (
             self.recording_control_view.is_in_waiting_state()
             and not event.isAutoRepeat()
         ):
-            self.logger.debug("Starting recording from waiting state")
+            self.logger.debug(
+                "Starting recording from waiting state "
+                "(start signal only; keypress not recorded)"
+            )
             self.recording_control_view.start_recording()
             self.schedule_layout_diagnostic_snapshots("waiting_key_started_recording")
-
-            key_text = event.text()
-            navigation_keys = (
-                Qt.Key.Key_Space, Qt.Key.Key_Left, Qt.Key.Key_Right,
-                Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_Escape,
-            )
-            if key_text and key_text != " " and event.key() not in navigation_keys:
-                # start_recording() emits timed_recording_requested
-                # synchronously, so the session is already active here and
-                # on_key_pressed will accept this behaviour key.
-                self.key_pressed.emit(key_text)
             return
 
         # Handle space key for play/pause

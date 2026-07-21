@@ -6,7 +6,7 @@
 
 ## Real-time Animal Behavior Event Tagger
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/mi2e-K/RABET/releases)
+[![Version](https://img.shields.io/badge/version-1.4.1-blue)](https://github.com/mi2e-K/RABET/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#installation)
@@ -102,17 +102,17 @@ Download the asset matching your platform:
 
 | Platform | Asset |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.4.0-Setup.zip` |
-| Windows portable | `RABET-Windows-1.4.0-portable.zip` |
-| macOS (Apple Silicon) | `RABET-macOS-arm64-1.4.0.dmg` |
-| macOS (Intel) | `RABET-macOS-x86_64-1.4.0.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.0.AppImage` |
+| Windows installer | `RABET-Windows-1.4.1-Setup.zip` |
+| Windows portable | `RABET-Windows-1.4.1-portable.zip` |
+| macOS (Apple Silicon) | `RABET-macOS-arm64-1.4.1.dmg` |
+| macOS (Intel) | `RABET-macOS-x86_64-1.4.1.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.1.AppImage` |
 
 ### Windows
 
-For the installer build, unzip `RABET-Windows-1.4.0-Setup.zip` and run
+For the installer build, unzip `RABET-Windows-1.4.1-Setup.zip` and run
 `RABET-Setup.exe`. For the portable build, unzip
-`RABET-Windows-1.4.0-portable.zip` and launch `RABET.exe` directly.
+`RABET-Windows-1.4.1-portable.zip` and launch `RABET.exe` directly.
 
 Windows SmartScreen may warn on first launch because the app is not code
 signed. Choose **More info** and then **Run anyway** if you trust the
@@ -137,8 +137,8 @@ Then open `RABET.app` normally.
 Make the AppImage executable and run it:
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.0.AppImage
-./RABET-Linux-x86_64-1.4.0.AppImage
+chmod +x RABET-Linux-x86_64-1.4.1.AppImage
+./RABET-Linux-x86_64-1.4.1.AppImage
 ```
 
 ### From source
@@ -181,7 +181,7 @@ summary:
 
 ```csv
 Metadata
-RABET Version,1.4.0
+RABET Version,1.4.1
 Test Duration (seconds),300
 
 Event,Onset,Offset
@@ -207,7 +207,7 @@ If RABET supports your research, please cite it. Machine-readable metadata is
 in [CITATION.cff](CITATION.cff). A human-readable form is:
 
 > Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.0) [Computer software].
+> (Version 1.4.1) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 

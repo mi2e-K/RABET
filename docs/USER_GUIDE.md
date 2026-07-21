@@ -1,6 +1,6 @@
 # RABET User Guide
 
-This guide covers RABET 1.4.0. It is written for researchers who want to
+This guide covers RABET 1.4.1. It is written for researchers who want to
 annotate animal-behaviour videos, aggregate annotation files, visualise event
 patterns, assess scorer reliability, and run the bout and transition analyses
 included in RABET.
@@ -38,11 +38,11 @@ reference: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 | Platform | File |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.4.0-Setup.zip` |
-| Windows portable | `RABET-Windows-1.4.0-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.0.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.0.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.0.AppImage` |
+| Windows installer | `RABET-Windows-1.4.1-Setup.zip` |
+| Windows portable | `RABET-Windows-1.4.1-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.1.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.1.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.1.AppImage` |
 
 All packages are self-contained. You do not need a separate VLC, FFmpeg,
 Python, R, scipy, or codec-pack installation to use the released app.
@@ -51,13 +51,13 @@ Python, R, scipy, or codec-pack installation to use the released app.
 
 **Windows installer**
 
-1. Unzip `RABET-Windows-1.4.0-Setup.zip`.
+1. Unzip `RABET-Windows-1.4.1-Setup.zip`.
 2. Run `RABET-Setup.exe`.
 3. Launch RABET from the Start Menu or desktop shortcut.
 
 **Windows portable**
 
-1. Unzip `RABET-Windows-1.4.0-portable.zip`.
+1. Unzip `RABET-Windows-1.4.1-portable.zip`.
 2. Open the extracted folder.
 3. Run `RABET.exe`.
 
@@ -80,8 +80,8 @@ Then open `RABET.app` normally.
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.0.AppImage
-./RABET-Linux-x86_64-1.4.0.AppImage
+chmod +x RABET-Linux-x86_64-1.4.1.AppImage
+./RABET-Linux-x86_64-1.4.1.AppImage
 ```
 
 ### 1.3 What RABET Creates
@@ -176,16 +176,16 @@ session-relative time.
 ### 2.4 Timed Recording
 
 Set the test duration in the Recording controls panel, then click
-**Start Recording**. RABET enters a waiting state. The actual session starts
-when the video first moves, so timestamps are measured relative to the first
-playback movement after starting.
+**Start Recording**. RABET enters a waiting state. Press any key to start the
+session and video playback. This first keypress is used only as the start
+signal and never creates an annotation, even if it is mapped to a behaviour.
 
 Typical flow:
 
 1. Open a video.
 2. Set the test duration, for example `00:05:00`.
 3. Click **Start Recording**.
-4. Press `Space` to play the video.
+4. Press `Space` to start the session and play the video.
 5. Press behaviour keys while scoring.
 6. Use **Pause**, **Resume**, or **Stop** as needed.
 
@@ -632,7 +632,7 @@ Issues: <https://github.com/mi2e-K/RABET/issues>
 If RABET supports your research, please cite:
 
 > Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.0) [Computer software].
+> (Version 1.4.1) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 

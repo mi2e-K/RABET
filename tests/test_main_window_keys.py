@@ -1,8 +1,8 @@
-"""GUI tests for MainWindow waiting-state key handling (BUG-001, 1.3.4).
+"""GUI tests for MainWindow waiting-state key handling (BUG-001).
 
 Runs headless (offscreen Qt). Constructs a real MainWindow but without the
-full controller stack: we only assert the view transition and that a behaviour
-key is forwarded via the ``key_pressed`` signal.
+full controller stack: we assert that the first non-autorepeat key starts the
+session and is consumed without being forwarded via ``key_pressed``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _press(key, text):
     )
 
 
-def test_behavior_key_in_waiting_state_starts_and_is_forwarded(main_window):
+def test_behavior_key_in_waiting_state_starts_without_forwarding(main_window):
     rcv = main_window.recording_control_view
     rcv.set_waiting_state(300)
     assert rcv.is_in_waiting_state()
@@ -36,12 +36,12 @@ def test_behavior_key_in_waiting_state_starts_and_is_forwarded(main_window):
     forwarded = []
     main_window.key_pressed.connect(forwarded.append)
 
-    # A behaviour key ('a') should start the session AND be forwarded so the
-    # first annotation is not dropped.
+    # A behaviour key starts the session but is only the start signal; it must
+    # not open an event at time 0.
     main_window.keyPressEvent(_press(Qt.Key.Key_A, "a"))
 
     assert rcv.is_recording()           # transitioned out of waiting
-    assert forwarded == ["a"]           # first behaviour key not lost
+    assert forwarded == []              # first key is not an annotation
 
 
 def test_space_in_waiting_state_starts_without_forwarding(main_window):

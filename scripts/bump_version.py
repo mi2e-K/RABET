@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update the RABET version number in version.py.
+"""Update the RABET version number in version.py and packaging defaults.
 
 Usage:
   python scripts/bump_version.py            # Show current version
@@ -18,6 +18,7 @@ from pathlib import Path
 # so we resolve one level up. Using ``parent.parent`` keeps the lookup
 # stable regardless of the user's current working directory.
 VERSION_FILE = Path(__file__).resolve().parent.parent / "version.py"
+INNO_FILE = Path(__file__).resolve().parent.parent / "packaging" / "RABET.iss"
 
 
 def read_version() -> str:
@@ -29,7 +30,24 @@ def read_version() -> str:
 
 
 def write_version(new_version: str) -> None:
+    inno_text = INNO_FILE.read_text(encoding="utf-8")
+    inno_text, define_count = re.subn(
+        r'(#define AppVersion ")[^"]+("\s*)$',
+        rf"\g<1>{new_version}\g<2>",
+        inno_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if define_count != 1:
+        sys.exit(f"Could not update the AppVersion default in {INNO_FILE}")
+    inno_text = re.sub(
+        r'(/DAppVersion=)\d+\.\d+\.\d+',
+        rf"\g<1>{new_version}",
+        inno_text,
+        count=1,
+    )
     VERSION_FILE.write_text(f'__version__ = "{new_version}"\n', encoding="utf-8")
+    INNO_FILE.write_text(inno_text, encoding="utf-8")
 
 
 def bump(version: str, part: str) -> str:

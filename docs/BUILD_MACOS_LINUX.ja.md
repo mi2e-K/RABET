@@ -28,7 +28,7 @@ FFmpeg を別途インストールする必要はありません。
 借りた Mac などで最小限にビルドする例です。
 
 ```bash
-cd /path/to/RABET_1.4.0
+cd /path/to/RABET_1.4.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -100,7 +100,7 @@ sudo apt install -y \
   libfontconfig1 \
   libfreetype6
 
-cd /path/to/RABET_1.4.0
+cd /path/to/RABET_1.4.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip

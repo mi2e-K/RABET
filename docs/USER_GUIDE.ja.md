@@ -1,6 +1,6 @@
 # RABET ユーザーガイド
 
-このガイドは RABET 1.4.0 向けです。動画を見ながら動物行動を記録し、
+このガイドは RABET 1.4.1 向けです。動画を見ながら動物行動を記録し、
 複数ファイルの集計、可視化、評価者間・評価者内信頼性の確認、バウト解析、
 遷移解析まで行うための基本的な使い方をまとめています。
 
@@ -35,11 +35,11 @@
 
 | OS | ファイル |
 | --- | --- |
-| Windows インストーラー | `RABET-Windows-1.4.0-Setup.zip` |
-| Windows ポータブル版 | `RABET-Windows-1.4.0-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.0.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.0.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.0.AppImage` |
+| Windows インストーラー | `RABET-Windows-1.4.1-Setup.zip` |
+| Windows ポータブル版 | `RABET-Windows-1.4.1-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.1.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.1.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.1.AppImage` |
 
 配布版には必要な実行環境が同梱されています。通常の利用では、VLC、FFmpeg、
 Python、R、scipy、コーデックパックなどを別途インストールする必要はありません。
@@ -48,13 +48,13 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 
 **Windows インストーラー**
 
-1. `RABET-Windows-1.4.0-Setup.zip` を展開します。
+1. `RABET-Windows-1.4.1-Setup.zip` を展開します。
 2. `RABET-Setup.exe` を実行します。
 3. スタートメニューまたはショートカットから RABET を起動します。
 
 **Windows ポータブル版**
 
-1. `RABET-Windows-1.4.0-portable.zip` を展開します。
+1. `RABET-Windows-1.4.1-portable.zip` を展開します。
 2. 展開先のフォルダを開きます。
 3. `RABET.exe` を実行します。
 
@@ -78,8 +78,8 @@ xattr -dr com.apple.quarantine /Applications/RABET.app
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.0.AppImage
-./RABET-Linux-x86_64-1.4.0.AppImage
+chmod +x RABET-Linux-x86_64-1.4.1.AppImage
+./RABET-Linux-x86_64-1.4.1.AppImage
 ```
 
 ### 1.3 初回起動時に作られるもの
@@ -173,16 +173,16 @@ RABET の主要な作業画面は 5 つのタブに分かれています。
 ### 2.4 タイムドセッション
 
 Recording controls でテスト時間を設定し、**Start Recording** を押すと
-待機状態になります。実際の記録開始時刻は、開始ボタンを押した瞬間ではなく、
-その後に動画が初めて動いた瞬間です。これにより、動画再生と記録時刻がずれ
-にくくなります。
+待機状態になります。任意のキーを押すと、セッションと動画再生が開始されます。
+最初のキー入力は開始信号としてのみ使用され、行動に割り当てられたキーであっても
+アノテーションとして記録されません。
 
 基本的な流れ:
 
 1. 動画を開く
 2. `00:05:00` などの形式でテスト時間を設定する
 3. **Start Recording** を押す
-4. `Space` で再生する
+4. `Space` でセッションと動画再生を開始する
 5. 行動キーを押してスコアリングする
 6. 必要に応じて **Pause**、**Resume**、**Stop** を使う
 
@@ -631,7 +631,7 @@ Issues: <https://github.com/mi2e-K/RABET/issues>
 研究で RABET を使った場合は、次のように引用してください。
 
 > Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.0) [Computer software].
+> (Version 1.4.1) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
