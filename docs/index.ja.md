@@ -102,7 +102,7 @@ hide:
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. GitHub Releases から RABET-Windows-1.4.0-Setup.zip をダウンロード
+    1. GitHub Releases から RABET-Windows-1.4.1-Setup.zip をダウンロード
     2. 任意の場所に展開（デスクトップ / Tools フォルダなど）
     3. RABET.exe をダブルクリック
     ```
@@ -110,7 +110,7 @@ hide:
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. GitHub Releases から RABET-macOS-arm64-1.4.0.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-arm64-1.4.1.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
@@ -118,7 +118,7 @@ hide:
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. GitHub Releases から RABET-macOS-x86_64-1.4.0.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-x86_64-1.4.1.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
@@ -126,8 +126,8 @@ hide:
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.4.0.AppImage
-    ./RABET-Linux-x86_64-1.4.0.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.1.AppImage
+    ./RABET-Linux-x86_64-1.4.1.AppImage
     ```
 
 </div>
@@ -145,7 +145,7 @@ hide:
 に記載されています。人間が読みやすい形式の引用例は以下のとおりです。
 
 > Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.4.0). https://github.com/mi2e-K/RABET
+> (Version 1.4.1). https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
 上記の DOI は Zenodo の **concept DOI** です。再現性のため、実際に使った

@@ -27,8 +27,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-release:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Verify tag matches application version
+        shell: bash
+        run: |
+          tag_version="${RELEASE_TAG#v}"
+          app_version="$(python -c 'from version import __version__; print(__version__)')"
+          if [ "$tag_version" != "$app_version" ]; then
+            echo "Release tag $RELEASE_TAG does not match application version $app_version" >&2
+            exit 1
+          fi
+
   build-windows:
     name: Build Windows installer
+    needs: validate-release
     runs-on: windows-latest
     steps:
       - name: Check out release ref
@@ -152,6 +172,7 @@ jobs:
 
   build-macos:
     name: Build macOS distribution (${{ matrix.arch }})
+    needs: validate-release
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -226,6 +247,7 @@ jobs:
 
   build-linux:
     name: Build Linux distribution
+    needs: validate-release
     runs-on: ubuntu-latest
     steps:
       - name: Check out release ref
@@ -341,50 +363,25 @@ jobs:
           cat > release_body.md <<'EOF'
           ## RABET vVERSION_PLACEHOLDER
 
-          RABET vVERSION_PLACEHOLDER expands the scientific analysis workflow
-          with explicit point-event handling, bout analysis, and first-order
-          transition analysis, while keeping startup responsive through lazy
-          loading of heavier analysis tabs.
+          RABET vVERSION_PLACEHOLDER is a patch release that restores the
+          intended recording-start workflow and aligns the documentation and
+          packaging metadata with that behaviour.
 
-          ### Highlights
+          ### Fixed
 
-          - **Added point and state behaviour types.**
-            Behaviour mappings can now distinguish duration-based state events
-            from instantaneous point events. Point events are exported with
-            onset equal to offset and are handled separately in downstream
-            summary, bout, and reliability calculations.
+          - **The first keypress is start-signal-only.**
+            After selecting Start Recording, the first non-autorepeat keypress
+            starts the timed session and video playback but is not forwarded as
+            an annotation. This applies even when the key is mapped to a
+            behaviour, preventing an unintended event from opening at time 0.
 
-          - **Added bout analysis.**
-            The new bout workflow computes event groupings from a configurable
-            bout criterion interval, reporting bout counts, bout duration,
-            events per bout, inter-bout intervals, active time, and rate per
-            minute. Point events use onset-to-onset gaps; state events use
-            offset-to-onset gaps.
+          - **Recording instructions now match the application.**
+            The English and Japanese guides now state explicitly that any key
+            starts the session and that the triggering key is not recorded.
 
-          - **Added transition analysis.**
-            RABET now provides first-order transition matrices, row-normalised
-            probabilities, expected counts, chi-square residuals, optional
-            transition time windows, and bout-collapsed analysis to reduce
-            burst-driven self-transition artefacts.
-
-          - **Expanded figure export.**
-            Bout rasters, transition heatmaps, and predictability plots can be
-            exported as PNG, SVG, or PDF with a user-selectable DPI.
-
-          - **Improved reliability and edge-case handling.**
-            Summary-mode ICC(2,1), Pearson r, and mean absolute difference are
-            documented against the companion R reference implementation. Detailed
-            agreement now handles degenerate all-zero cases explicitly instead of
-            over-interpreting percentage agreement as chance-corrected agreement.
-
-          - **Kept startup responsive.**
-            Heavy Analysis, Visualization, and Reliability components remain
-            lazily constructed. First access shows a compact loading overlay for
-            longer tab construction work.
-
-          - **Cleaned debug output and release contents.**
-            Redundant debug logging and development-only files are excluded from
-            the repository update and packaged distributions.
+          - **Release metadata stays version-aligned.**
+            The Inno Setup fallback version now matches the application version,
+            and the version-bump helper updates both values together.
 
           ### Packaging
 
@@ -398,10 +395,6 @@ jobs:
 
           - **Linux is distributed as an AppImage.**
             Make it executable and launch it directly.
-
-          - **Removed dev-only pytest internals from packaged bundles.**
-            PyInstaller builds now exclude pytest implementation modules and
-            related plugin infrastructure that are not used at runtime.
 
           ### macOS first launch
 
