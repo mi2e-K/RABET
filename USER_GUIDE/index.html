@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../assets/logo.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -37,7 +37,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1887,7 +1887,7 @@
 
 
 <h1 id="rabet-user-guide">RABET User Guide<a class="headerlink" href="#rabet-user-guide" title="Permanent link">&para;</a></h1>
-<p>This guide covers RABET 1.4.0. It is written for researchers who want to
+<p>This guide covers RABET 1.4.1. It is written for researchers who want to
 annotate animal-behaviour videos, aggregate annotation files, visualise event
 patterns, assess scorer reliability, and run the bout and transition analyses
 included in RABET.</p>
@@ -1926,23 +1926,23 @@ reference: <a href="https://doi.org/10.5281/zenodo.15313025">10.5281/zenodo.1531
 <tbody>
 <tr>
 <td>Windows installer</td>
-<td><code>RABET-Windows-1.4.0-Setup.zip</code></td>
+<td><code>RABET-Windows-1.4.1-Setup.zip</code></td>
 </tr>
 <tr>
 <td>Windows portable</td>
-<td><code>RABET-Windows-1.4.0-portable.zip</code></td>
+<td><code>RABET-Windows-1.4.1-portable.zip</code></td>
 </tr>
 <tr>
 <td>macOS Apple Silicon</td>
-<td><code>RABET-macOS-arm64-1.4.0.dmg</code></td>
+<td><code>RABET-macOS-arm64-1.4.1.dmg</code></td>
 </tr>
 <tr>
 <td>macOS Intel</td>
-<td><code>RABET-macOS-x86_64-1.4.0.dmg</code></td>
+<td><code>RABET-macOS-x86_64-1.4.1.dmg</code></td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>RABET-Linux-x86_64-1.4.0.AppImage</code></td>
+<td><code>RABET-Linux-x86_64-1.4.1.AppImage</code></td>
 </tr>
 </tbody>
 </table>
@@ -1951,13 +1951,13 @@ Python, R, scipy, or codec-pack installation to use the released app.</p>
 <h3 id="12-launch-rabet">1.2 Launch RABET<a class="headerlink" href="#12-launch-rabet" title="Permanent link">&para;</a></h3>
 <p><strong>Windows installer</strong></p>
 <ol>
-<li>Unzip <code>RABET-Windows-1.4.0-Setup.zip</code>.</li>
+<li>Unzip <code>RABET-Windows-1.4.1-Setup.zip</code>.</li>
 <li>Run <code>RABET-Setup.exe</code>.</li>
 <li>Launch RABET from the Start Menu or desktop shortcut.</li>
 </ol>
 <p><strong>Windows portable</strong></p>
 <ol>
-<li>Unzip <code>RABET-Windows-1.4.0-portable.zip</code>.</li>
+<li>Unzip <code>RABET-Windows-1.4.1-portable.zip</code>.</li>
 <li>Open the extracted folder.</li>
 <li>Run <code>RABET.exe</code>.</li>
 </ol>
@@ -1974,8 +1974,8 @@ signed. Choose <strong>More info</strong> and <strong>Run anyway</strong> if you
 </span></code></pre></div>
 <p>Then open <code>RABET.app</code> normally.</p>
 <p><strong>Linux</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>RABET-Linux-x86_64-1.4.0.AppImage
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.0.AppImage
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>RABET-Linux-x86_64-1.4.1.AppImage
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.1.AppImage
 </span></code></pre></div>
 <h3 id="13-what-rabet-creates">1.3 What RABET Creates<a class="headerlink" href="#13-what-rabet-creates" title="Permanent link">&para;</a></h3>
 <p>On first launch, RABET creates a user data folder:</p>
@@ -2131,15 +2131,15 @@ frame. The timestamp display shows video time and, during recording,
 session-relative time.</p>
 <h3 id="24-timed-recording">2.4 Timed Recording<a class="headerlink" href="#24-timed-recording" title="Permanent link">&para;</a></h3>
 <p>Set the test duration in the Recording controls panel, then click
-<strong>Start Recording</strong>. RABET enters a waiting state. The actual session starts
-when the video first moves, so timestamps are measured relative to the first
-playback movement after starting.</p>
+<strong>Start Recording</strong>. RABET enters a waiting state. Press any key to start the
+session and video playback. This first keypress is used only as the start
+signal and never creates an annotation, even if it is mapped to a behaviour.</p>
 <p>Typical flow:</p>
 <ol>
 <li>Open a video.</li>
 <li>Set the test duration, for example <code>00:05:00</code>.</li>
 <li>Click <strong>Start Recording</strong>.</li>
-<li>Press <code>Space</code> to play the video.</li>
+<li>Press <code>Space</code> to start the session and play the video.</li>
 <li>Press behaviour keys while scoring.</li>
 <li>Use <strong>Pause</strong>, <strong>Resume</strong>, or <strong>Stop</strong> as needed.</li>
 </ol>
@@ -2496,7 +2496,7 @@ old logs.</p>
 <p>If RABET supports your research, please cite:</p>
 <blockquote>
 <p>Mitsui, K. (2026). <em>RABET - Real-time Animal Behavior Event Tagger</em>
-(Version 1.4.0) [Computer software].
+(Version 1.4.1) [Computer software].
 https://github.com/mi2e-K/RABET
 doi:<a href="https://doi.org/10.5281/zenodo.15313025">10.5281/zenodo.15313025</a></p>
 </blockquote>
@@ -2581,7 +2581,7 @@ exact RABET version used.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.tooltips"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

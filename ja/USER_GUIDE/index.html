@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../assets/logo.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -37,7 +37,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1887,7 +1887,7 @@
 
 
 <h1 id="rabet">RABET ユーザーガイド<a class="headerlink" href="#rabet" title="Permanent link">&para;</a></h1>
-<p>このガイドは RABET 1.4.0 向けです。動画を見ながら動物行動を記録し、
+<p>このガイドは RABET 1.4.1 向けです。動画を見ながら動物行動を記録し、
 複数ファイルの集計、可視化、評価者間・評価者内信頼性の確認、バウト解析、
 遷移解析まで行うための基本的な使い方をまとめています。</p>
 <p>英語版は <a href="./">USER_GUIDE.md</a> にあります。</p>
@@ -1923,23 +1923,23 @@
 <tbody>
 <tr>
 <td>Windows インストーラー</td>
-<td><code>RABET-Windows-1.4.0-Setup.zip</code></td>
+<td><code>RABET-Windows-1.4.1-Setup.zip</code></td>
 </tr>
 <tr>
 <td>Windows ポータブル版</td>
-<td><code>RABET-Windows-1.4.0-portable.zip</code></td>
+<td><code>RABET-Windows-1.4.1-portable.zip</code></td>
 </tr>
 <tr>
 <td>macOS Apple Silicon</td>
-<td><code>RABET-macOS-arm64-1.4.0.dmg</code></td>
+<td><code>RABET-macOS-arm64-1.4.1.dmg</code></td>
 </tr>
 <tr>
 <td>macOS Intel</td>
-<td><code>RABET-macOS-x86_64-1.4.0.dmg</code></td>
+<td><code>RABET-macOS-x86_64-1.4.1.dmg</code></td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>RABET-Linux-x86_64-1.4.0.AppImage</code></td>
+<td><code>RABET-Linux-x86_64-1.4.1.AppImage</code></td>
 </tr>
 </tbody>
 </table>
@@ -1948,13 +1948,13 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 <h3 id="12">1.2 起動方法<a class="headerlink" href="#12" title="Permanent link">&para;</a></h3>
 <p><strong>Windows インストーラー</strong></p>
 <ol>
-<li><code>RABET-Windows-1.4.0-Setup.zip</code> を展開します。</li>
+<li><code>RABET-Windows-1.4.1-Setup.zip</code> を展開します。</li>
 <li><code>RABET-Setup.exe</code> を実行します。</li>
 <li>スタートメニューまたはショートカットから RABET を起動します。</li>
 </ol>
 <p><strong>Windows ポータブル版</strong></p>
 <ol>
-<li><code>RABET-Windows-1.4.0-portable.zip</code> を展開します。</li>
+<li><code>RABET-Windows-1.4.1-portable.zip</code> を展開します。</li>
 <li>展開先のフォルダを開きます。</li>
 <li><code>RABET.exe</code> を実行します。</li>
 </ol>
@@ -1972,8 +1972,8 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 </span></code></pre></div>
 <p>その後は通常どおり <code>RABET.app</code> を開けます。</p>
 <p><strong>Linux</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>RABET-Linux-x86_64-1.4.0.AppImage
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.0.AppImage
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>RABET-Linux-x86_64-1.4.1.AppImage
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.1.AppImage
 </span></code></pre></div>
 <h3 id="13">1.3 初回起動時に作られるもの<a class="headerlink" href="#13" title="Permanent link">&para;</a></h3>
 <p>RABET は初回起動時に、ユーザー設定用のフォルダを作成します。</p>
@@ -2128,15 +2128,15 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 動画時刻に加えて、記録開始からの相対時刻も表示されます。</p>
 <h3 id="24">2.4 タイムドセッション<a class="headerlink" href="#24" title="Permanent link">&para;</a></h3>
 <p>Recording controls でテスト時間を設定し、<strong>Start Recording</strong> を押すと
-待機状態になります。実際の記録開始時刻は、開始ボタンを押した瞬間ではなく、
-その後に動画が初めて動いた瞬間です。これにより、動画再生と記録時刻がずれ
-にくくなります。</p>
+待機状態になります。任意のキーを押すと、セッションと動画再生が開始されます。
+最初のキー入力は開始信号としてのみ使用され、行動に割り当てられたキーであっても
+アノテーションとして記録されません。</p>
 <p>基本的な流れ:</p>
 <ol>
 <li>動画を開く</li>
 <li><code>00:05:00</code> などの形式でテスト時間を設定する</li>
 <li><strong>Start Recording</strong> を押す</li>
-<li><code>Space</code> で再生する</li>
+<li><code>Space</code> でセッションと動画再生を開始する</li>
 <li>行動キーを押してスコアリングする</li>
 <li>必要に応じて <strong>Pause</strong>、<strong>Resume</strong>、<strong>Stop</strong> を使う</li>
 </ol>
@@ -2492,7 +2492,7 @@ kappa や alpha は未定義です。</p>
 <p>研究で RABET を使った場合は、次のように引用してください。</p>
 <blockquote>
 <p>Mitsui, K. (2026). <em>RABET - Real-time Animal Behavior Event Tagger</em>
-(Version 1.4.0) [Computer software].
+(Version 1.4.1) [Computer software].
 https://github.com/mi2e-K/RABET
 doi:<a href="https://doi.org/10.5281/zenodo.15313025">10.5281/zenodo.15313025</a></p>
 </blockquote>
@@ -2577,7 +2577,7 @@ doi:<a href="https://doi.org/10.5281/zenodo.15313025">10.5281/zenodo.15313025</a
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.indexes", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link", "content.tooltips"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
