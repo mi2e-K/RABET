@@ -48,9 +48,9 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 
 **Windows インストーラー**
 
-1. `RABET-Windows-1.4.2-Setup.zip` を展開します。
-2. `RABET-Setup.exe` を実行します。
-3. スタートメニューまたはショートカットから RABET を起動します。
+1. `RABET-Windows-1.4.2-Setup.zip` を展開。
+2. `RABET-Setup.exe` を実行。
+3. スタートメニューまたはショートカットから RABET を起動。
 
 **Windows ポータブル版**
 
@@ -162,8 +162,8 @@ Point を選びます。この選択は行動の速さではなく、必要な�
 | 見出し | 意味 |
 | --- | --- |
 | `Action Map` | プロジェクトを開いていない。グローバルのマップを使用中 |
-| `Action Map — <プロジェクト名>` | 開いているプロジェクト専用のマップを使用中。編集内容はプロジェクトに保存され、グローバルのマップは変更されません |
-| `Action Map — global` | プロジェクトを開いているが専用マップを持たないため、グローバルのマップを使用中。ここでの編集はグローバルのマップを書き換えます |
+| `Action Map — <プロジェクト名>` | 開いているプロジェクト専用のマップを使用中。編集内容はプロジェクトに保存され、グローバルのマップは変更されない |
+| `Action Map — global` | プロジェクトを開いているが専用マップを持たないため、グローバルのマップを使用中。ここでの編集はグローバルのマップを書き換える |
 
 プロジェクトに専用マップを持たせる方法は
 [プロジェクトのアクションマップ](#プロジェクトのアクションマップ) を参照してください。
@@ -322,12 +322,12 @@ Point 行動は通常、Duration ではなく Frequency を見る指標です。
 
 ### 3.5 出力
 
-- **Copy to Clipboard**: 表をタブ区切りでコピーします
-- **Export Summary Table**: `summary_table.csv` を保存します。インターバル解析
-  が有効なら `summary_intervals.csv` も保存します
-- **Visualize**: 読み込んだファイルを Visualization タブへ送ります
-- **Bout Analysis...**: バウト解析を開きます
-- **Transition Analysis...**: 遷移解析を開きます
+- **Copy to Clipboard**: 表をタブ区切りでコピー
+- **Export Summary Table**: `summary_table.csv` を保存。インターバル解析
+  が有効なら `summary_intervals.csv` も保存する
+- **Visualize**: 読み込んだファイルを Visualization タブへ送る
+- **Bout Analysis...**: バウト解析を開く
+- **Transition Analysis...**: 遷移解析を開く
 
 バウト解析と遷移解析は、通常の Summary / Intervals 集計とは独立した別ウィンドウ
 です。開いても通常のサマリー出力は変更されません。
@@ -342,10 +342,10 @@ Point 行動は通常、Duration ではなく Frequency を見る指標です。
 
 ### 4.1 解析を開く
 
-1. Analysis タブでアノテーション CSV を読み込みます。
-2. **Bout Analysis...** を押します。
-3. 対象行動にチェックを入れます。
-4. **Bout criterion (s)**、つまり BCI を設定します。
+1. Analysis タブでアノテーション CSV を読み込む。
+2. **Bout Analysis...** を押す。
+3. 対象行動にチェックを入れる。
+4. **Bout criterion (s)**、つまり BCI を設定する。
 
 同じ行動の連続イベントについて、間隔が BCI 以下なら同じバウトにまとめられます。
 
@@ -400,11 +400,11 @@ Raster タブでは、個体ごとのバウトが時系列で表示されます�
 
 ### 5.1 解析を開く
 
-1. Analysis タブでアノテーション CSV を読み込みます。
-2. **Transition Analysis...** を押します。
-3. 個体、または **All animals (pooled)** を選びます。
-4. Event レベルか Bout レベルを選びます。
-5. 必要に応じて時間窓や self-transition 除外を設定します。
+1. Analysis タブでアノテーション CSV を読み込む。
+2. **Transition Analysis...** を押す。
+3. 個体、または **All animals (pooled)** を選ぶ。
+4. Event レベルか Bout レベルを選ぶ。
+5. 必要に応じて時間窓や self-transition 除外を設定。
 
 pooled 解析では、まず個体ごとに遷移を数え、その行列を足し合わせます。ある個体の
 最後のイベントと次の個体の最初のイベントをつなげるような、人工的な遷移は作りません。
