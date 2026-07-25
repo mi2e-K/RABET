@@ -8,14 +8,14 @@
 ;   - clean uninstaller
 ;
 ; Build (from the repo root) AFTER building the onedir dist:
-;   "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=1.4.1 packaging\RABET.iss
+;   "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=1.4.2 packaging\RABET.iss
 ; Produces: dist\RABET-Setup-<AppVersion>.exe
 ;
 ; AppVersion / SourceDir may be overridden with /D defines; the defaults suit a
 ; local build from the repo root.
 
 #ifndef AppVersion
-  #define AppVersion "1.4.1"
+  #define AppVersion "1.4.2"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\RABET"

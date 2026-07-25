@@ -32,7 +32,12 @@ class ProjectModel(QObject):
     project_saved = Signal()
     project_closed = Signal()
     error_occurred = Signal(str)   # Error message
-    
+
+    # 1.4.2: filename used when a project's own action map is created by
+    # snapshotting the active map. Lives under the project's action_maps/
+    # folder; the manifest's "action_map" key stores the relative path.
+    PROJECT_ACTION_MAP_NAME = "project_action_map.json"
+
     def __init__(self, file_manager):
         super().__init__()
         self.logger = logging.getLogger(__name__)
@@ -51,6 +56,10 @@ class ProjectModel(QObject):
             "videos": [],
             "annotations": [],
             "action_maps": [],
+            # Project-relative path of the action map bound to this project
+            # (1.4.2). Empty means "not bound" — the global user action map is
+            # used, which is how every pre-1.4.2 project behaves.
+            "action_map": "",
             "analyses": [],
             "video_annotation_files": {},
         }
@@ -103,6 +112,10 @@ class ProjectModel(QObject):
                 "videos": [],
                 "annotations": [],
                 "action_maps": [],
+                # Bound on creation by ProjectController, which snapshots the
+                # active action map into action_maps/ so the project is
+                # self-contained from the start (1.4.2).
+                "action_map": "",
                 "analyses": [],
                 "video_annotation_status": {},  # New field to track annotation status
                 "video_annotation_files": {},
@@ -604,6 +617,7 @@ class ProjectModel(QObject):
                 "videos": [],
                 "annotations": [],
                 "action_maps": [],
+                "action_map": "",
                 "analyses": [],
                 "video_annotation_status": {},
                 "video_annotation_files": {},
@@ -1086,7 +1100,77 @@ class ProjectModel(QObject):
             return []
         
         return self._project_config.get("action_maps", [])
-    
+
+    # --- Bound project action map (1.4.2) ---------------------------------
+    #
+    # Distinct from ``action_maps`` above, which is a *library* of maps the
+    # user chose to store alongside the project. ``action_map`` names the one
+    # map this project actually annotates with, so the same key always means
+    # the same behaviour for every video in the project.
+
+    def get_action_map_rel_path(self):
+        """Return the project-relative path of the bound action map, or ""."""
+        if not self._project_path:
+            return ""
+        return self._project_config.get("action_map", "") or ""
+
+    def get_action_map_path(self):
+        """Return the absolute path of the bound action map, or None.
+
+        None means the project has no map bound — every project created before
+        1.4.2 is in this state, and keeps using the global user action map.
+        """
+        rel_path = self.get_action_map_rel_path()
+        if not rel_path:
+            return None
+        return self.resolve_path(rel_path)
+
+    def get_default_action_map_rel_path(self):
+        """Return the project-relative path used when binding a new map."""
+        return os.path.join("action_maps", self.PROJECT_ACTION_MAP_NAME)
+
+    def set_action_map(self, path):
+        """Bind an action map to this project.
+
+        Args:
+            path (str): Absolute path inside the project, or a project-relative
+                path. Paths under the project folder are stored relative so the
+                project stays portable; anything else is rejected, since an
+                external map would break the project's self-containment.
+
+        Returns:
+            bool: True if the binding was recorded.
+        """
+        if not self._project_path:
+            self.logger.warning("Cannot bind an action map with no project open")
+            return False
+
+        if not path:
+            # Explicit unbind.
+            self._project_config["action_map"] = ""
+            self._is_modified = True
+            return True
+
+        path_str = str(path)
+        if os.path.isabs(path_str):
+            try:
+                rel_path = os.path.relpath(path_str, self._project_path)
+            except ValueError:
+                # Different drive on Windows — cannot be project-relative.
+                rel_path = None
+            if rel_path is None or rel_path.startswith(os.pardir):
+                self.logger.warning(
+                    "Action map %s is outside the project; not binding.", path_str
+                )
+                return False
+        else:
+            rel_path = path_str
+
+        self._project_config["action_map"] = rel_path
+        self._is_modified = True
+        self.logger.info("Bound project action map: %s", rel_path)
+        return True
+
     def get_analyses(self):
         """
         Get the list of analyses in the current project.
@@ -1140,6 +1224,20 @@ class ProjectModel(QObject):
         legacy_id = self._get_legacy_video_id(resolved_reference)
         return self._project_config["video_annotation_status"].get(legacy_id, "not_annotated")
     
+    def get_annotated_video_count(self):
+        """Return how many videos in the project are already annotated.
+
+        Used by the action-map change guard (1.4.2): once a project holds
+        annotations, remapping keys makes later recordings incomparable with
+        the ones already collected, so the user is warned first.
+        """
+        if not self._project_path:
+            return 0
+        statuses = self.get_video_annotation_status()
+        if not isinstance(statuses, dict):
+            return 0
+        return sum(1 for status in statuses.values() if status == "annotated")
+
     def set_video_annotation_status(self, video_path, status):
         """
         Set the annotation status for a specific video.

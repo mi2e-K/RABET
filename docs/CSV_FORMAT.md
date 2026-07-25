@@ -81,7 +81,7 @@ to `Frequency`; their `Duration` contribution is zero.
 
 ```csv
 Metadata
-RABET Version,1.4.1
+RABET Version,1.4.2
 Test Duration (seconds),60
 
 Event,Onset,Offset

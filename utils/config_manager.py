@@ -13,7 +13,15 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         "general": {
             "remember_last_directory": True,
+            # Master on/off for end-of-recording annotation auto-save. Wired to
+            # AnnotationController at startup (app_controller); there is no
+            # dedicated UI yet, so it is currently toggled by editing
+            # settings.json. Default True preserves the historical always-on.
             "auto_save_annotations": True,
+            # Reserved placeholder for a future interval-based auto-save (save
+            # every N minutes during a long session). NOT YET IMPLEMENTED —
+            # nothing reads this value at present; kept so the setting has a
+            # stable home if/when the feature lands.
             "auto_save_interval_min": 5,
             "recent_files_max": 10,
         },
@@ -82,6 +90,12 @@ class ConfigManager:
             "last_reliability_summary_directory": "",
             "last_reliability_annotation_directory": "",
             "last_visualization_plot_directory": "",
+            # 1.4.2: Optional fixed folder for non-project auto-saves. Empty
+            # string (the default) preserves the historical behaviour of
+            # writing each recording's CSV next to its source video. When set,
+            # non-project auto-saves go here instead. Project-mode auto-save is
+            # unaffected and stays tied to the project's annotations folder.
+            "auto_save_directory": "",
         },
         "recent_files": {
             "videos": [],

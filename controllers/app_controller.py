@@ -81,6 +81,11 @@ class AppController(QObject):
         if _app is not None:
             _app.aboutToQuit.connect(self.video_model.shutdown)
         self.action_map_model = ActionMapModel()
+        # Action map edits are auto-saved on a 500ms debounce, so quitting
+        # right after an edit could drop it. Flush on exit; this matters more
+        # now that the pending write may belong to a project's own map.
+        if _app is not None:
+            _app.aboutToQuit.connect(self.action_map_model.flush_pending_save)
         self.annotation_model = AnnotationModel(self.action_map_model, self.video_model)
         # Analysis is lazy (PR-STARTUP-04): AnalysisModel/AnalysisController pull
         # in pandas, so they are built in _ensure_analysis on first switch to the
@@ -201,6 +206,18 @@ class AppController(QObject):
         self.video_controller.config_manager = self.config_manager
         self.video_controller.project_model = self.project_model
         self.annotation_controller.config_manager = self.config_manager
+        # Lets the action-map controller warn before a key change that would
+        # desynchronise an already-annotated project (1.4.2).
+        self.action_map_controller.project_model = self.project_model
+        # Activate the persisted auto-save preference so the general.
+        # auto_save_annotations config key actually governs end-of-recording
+        # auto-save (previously the key existed but nothing ever read it, and
+        # set_auto_save_enabled() was never called). Missing/None degrades to
+        # True, preserving the historical always-on behaviour.
+        _auto_save_pref = self.config_manager.get("general", "auto_save_annotations")
+        self.annotation_controller.set_auto_save_enabled(
+            True if _auto_save_pref is None else bool(_auto_save_pref)
+        )
         # The Reliability tab's ConfigManager wiring (picker-directory memory)
         # now happens in _ensure_reliability when that tab is first built.
 
@@ -442,9 +459,14 @@ class AppController(QObject):
         self.main_window.load_action_map_action.triggered.connect(self.action_map_controller.load_action_map_dialog)
         self.main_window.save_action_map_action.triggered.connect(self.action_map_controller.save_action_map_dialog)
         self.main_window.reset_action_map_action.triggered.connect(self.action_map_controller.reset_to_default)
-        
+        self.main_window.bind_action_map_action.triggered.connect(
+            self.project_controller.bind_current_action_map_dialog
+        )
+
         self.main_window.export_annotations_action.triggered.connect(self.annotation_controller.export_annotations_dialog)
         self.main_window.import_annotations_action.triggered.connect(self.annotation_controller.import_annotations_dialog)
+        self.main_window.set_auto_save_folder_action.triggered.connect(self.annotation_controller.set_auto_save_folder_dialog)
+        self.main_window.reset_auto_save_folder_action.triggered.connect(self.annotation_controller.reset_auto_save_folder)
         self.main_window.undo_annotation_action.triggered.connect(self.annotation_controller.undo_last_annotation)
         self.main_window.clear_annotations_action.triggered.connect(self.annotation_controller.clear_annotations)
         self.main_window.exit_action.triggered.connect(self.handle_exit_action)

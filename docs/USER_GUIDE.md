@@ -1,6 +1,6 @@
 # RABET User Guide
 
-This guide covers RABET 1.4.1. It is written for researchers who want to
+This guide covers RABET 1.4.2. It is written for researchers who want to
 annotate animal-behaviour videos, aggregate annotation files, visualise event
 patterns, assess scorer reliability, and run the bout and transition analyses
 included in RABET.
@@ -38,11 +38,11 @@ reference: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 | Platform | File |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.4.1-Setup.zip` |
-| Windows portable | `RABET-Windows-1.4.1-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.1.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.1.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.1.AppImage` |
+| Windows installer | `RABET-Windows-1.4.2-Setup.zip` |
+| Windows portable | `RABET-Windows-1.4.2-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.2.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.2.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.2.AppImage` |
 
 All packages are self-contained. You do not need a separate VLC, FFmpeg,
 Python, R, scipy, or codec-pack installation to use the released app.
@@ -51,13 +51,13 @@ Python, R, scipy, or codec-pack installation to use the released app.
 
 **Windows installer**
 
-1. Unzip `RABET-Windows-1.4.1-Setup.zip`.
+1. Unzip `RABET-Windows-1.4.2-Setup.zip`.
 2. Run `RABET-Setup.exe`.
 3. Launch RABET from the Start Menu or desktop shortcut.
 
 **Windows portable**
 
-1. Unzip `RABET-Windows-1.4.1-portable.zip`.
+1. Unzip `RABET-Windows-1.4.2-portable.zip`.
 2. Open the extracted folder.
 3. Run `RABET.exe`.
 
@@ -80,8 +80,8 @@ Then open `RABET.app` normally.
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.1.AppImage
-./RABET-Linux-x86_64-1.4.1.AppImage
+chmod +x RABET-Linux-x86_64-1.4.2.AppImage
+./RABET-Linux-x86_64-1.4.2.AppImage
 ```
 
 ### 1.3 What RABET Creates
@@ -141,12 +141,12 @@ each mapping also has a **Type**:
 
 | Type | Meaning | Recording behaviour |
 | --- | --- | --- |
-| State (duration) | Behaviour has a start and an end. | Press key to start, release key to end. |
-| Point (instant) | Behaviour is instantaneous. | Press key once to mark a zero-duration event. |
+| State | Records an interval with an onset and offset. | Press key to start, release key to end. |
+| Point | Records a single timestamp without duration. | Press key once to record the event. |
 
-Most behaviours such as grooming, chasing, or social contact are state events.
-Instantaneous behaviours such as head dips, bites counted as discrete acts, or
-entry crossings may be better represented as point events.
+Choose State when onset and offset should be recorded, and Point when the event
+should be represented by a single timestamp. This choice reflects the desired
+data representation rather than how quickly the behaviour occurs.
 
 Use the Action Map buttons:
 
@@ -157,6 +157,32 @@ Use the Action Map buttons:
 Action maps are saved as JSON. Older maps remain compatible: a plain
 `"key": "Behaviour"` entry is treated as a State event. Point mappings are
 stored with an explicit `kind`.
+
+#### Which action map is in use
+
+The heading above the mapping table names the map you are currently editing
+and recording with:
+
+| Heading | Meaning |
+| --- | --- |
+| `Action Map` | No project is open. The global action map is in use. |
+| `Action Map — <project>` | The open project has its own action map. Edits are saved into the project and leave the global map untouched. |
+| `Action Map — global` | A project is open but has no action map of its own, so the global one is in use. Edits here change the global map. |
+
+See [Project action maps](#project-action-maps) for how a project gets its own
+map.
+
+#### Changing a map that already has annotations
+
+If the open project already contains annotated videos, RABET asks for
+confirmation before a change that redefines what a key means — renaming a
+behaviour, switching a key between State and Point, removing a mapping, or
+replacing the whole map through Load or Reset. Adding a new key is purely
+additive and is never questioned.
+
+Existing annotation CSVs are never modified. The warning is about consistency:
+recordings made after the change may not be directly comparable with those
+already collected. You can always continue if the change is intended.
 
 ### 2.3 Video Controls
 
@@ -225,6 +251,24 @@ events. Duration for point events is zero.
 
 `File > Import Annotations` reloads a RABET annotation CSV into the timeline.
 If events are already loaded, RABET asks before replacing them.
+
+#### Where recordings are auto-saved
+
+When a timed recording ends, RABET writes the annotation CSV automatically.
+
+Outside Project mode the file is saved next to the source video as
+`<video name>_annotations.csv`. To collect these in one place instead, use
+`File > Set Auto-Save Folder` and choose a directory; every later non-project
+recording is written there. `File > Reset Auto-Save Folder to Default` returns
+to saving next to each video. The choice persists across sessions.
+
+If a file of that name already exists, RABET appends a timestamp rather than
+overwriting it. Note that videos with the same filename in different folders
+produce the same CSV name, so collecting them into a shared folder makes the
+timestamped copies harder to tell apart.
+
+In Project mode the destination is fixed to the project's `annotations`
+folder and is not affected by this setting.
 
 ---
 
@@ -512,7 +556,83 @@ chance-corrected reliability where the statistic is undefined.
 The disagreement review table and raster overlay help identify timing offsets,
 missed events, and category confusions.
 
-### 7.3 Interpreting Reliability Values
+### 7.3 Disagreement Review
+
+After computing agreement in Detailed mode, click **Review disagreements...**
+to inspect individual event-level differences. The first annotation CSV loaded
+in Detailed mode is treated as the **Reference**, and the second as the
+**Trainee**. Click **Load video...** and select the video scored in both files.
+The dialog then links each review item to the corresponding position in the
+video and shows the Reference and Trainee annotations in separate raster rows.
+
+Use **First**, **Prev**, **Next**, and **Last** to move through review items in
+time order. **Behavior** restricts the displayed list to one behaviour, and
+**Type** restricts it to one disagreement class. These filters affect only the
+displayed list; they do not change the agreement calculations, event matching,
+or CSV export. **Behavior display settings...**, **Show legend**, and
+**White background** change only the raster appearance.
+
+#### Review parameters
+
+- **Window: +/-** is the temporal tolerance used for event matching. The
+  default is 2 s. A same-behaviour pair is classified as **Time matched** only
+  when both its onset difference and offset difference are no greater than the
+  selected Window. Smaller values apply stricter temporal matching; larger
+  values allow greater scorer-to-scorer timing variation and may pair events
+  that should instead be reviewed separately.
+- **Pre-roll** controls how many seconds before the selected review item video
+  playback begins. The default is 1 s. It is a navigation aid only and does not
+  affect matching, kappa, alpha, or the exported review CSV.
+
+The Disagreement Review Window is separate from the **bin width** used by
+Detailed mode. Bin width controls the time bins used to compute Cohen's kappa,
+Krippendorff's alpha, and raw agreement. Changing the review Window rebuilds
+the event matches but does not recompute those bin-based statistics.
+
+RABET compares only events with the same behaviour label and creates
+one-to-one pairs. It prioritises pairs with stronger temporal overlap, then
+closer event timing. Each event is assigned one of four statuses:
+
+- **Time matched**: both onset and offset differences are within Window.
+  These events appear in the counts but are omitted from the disagreement
+  navigation list and review CSV.
+- **Timing offset**: RABET found a plausible same-behaviour pair, but its onset
+  or offset difference exceeds Window.
+- **Reference only**: no Trainee event was paired with the Reference event.
+- **Trainee only**: no Reference event was paired with the Trainee event.
+
+#### Disagreement review CSV
+
+Click **Export review CSV...** to write `disagreement_review.csv`. The export
+contains one row for every **Timing offset**, **Reference only**, and
+**Trainee only** item. It always contains the complete disagreement set,
+regardless of the current Behavior and Type filters. Time-matched pairs are not
+included.
+
+| Column | Meaning |
+| --- | --- |
+| `Type` | Disagreement class: `timing_offset`, `reference_only`, or `trainee_only`. |
+| `Behavior` | Behaviour label shared by the event pair, or belonging to the unmatched event. |
+| `Jump_time_s` | Video navigation target before Pre-roll is applied. For a paired row, this is the earlier onset; for an unmatched row, it is that event's onset. |
+| `Review_start_s` | Start of the event interval to review: the earlier onset for a pair, or the unmatched event onset. |
+| `Review_end_s` | End of the event interval to review: the later offset for a pair, or the unmatched event offset. |
+| `Reference_onset_s` | Original Reference onset. Blank for `trainee_only`. |
+| `Reference_offset_s` | Original Reference offset. Blank for `trainee_only`. |
+| `Trainee_onset_s` | Original Trainee onset. Blank for `reference_only`. |
+| `Trainee_offset_s` | Original Trainee offset. Blank for `reference_only`. |
+| `Onset_delta_s` | Absolute onset difference for a paired row. Blank for an unmatched row. |
+| `Offset_delta_s` | Absolute offset difference for a paired row. Blank for an unmatched row. |
+| `Overlap_s` | Temporal intersection of the paired events in seconds; 0 for non-overlapping or unmatched events. |
+| `IoU` | Intersection over union of the two event intervals, from 0 to 1; larger values indicate greater temporal overlap. Blank for an unmatched row. |
+| `Matching_window_s` | Window value used to build and classify the event matches. |
+
+Use the `Type` and scorer-specific timestamp columns first to identify a missed,
+extra, or mistimed event. The delta, overlap, and IoU columns then quantify the
+size of a timing discrepancy. The review CSV is a quality-control aid; it does
+not replace the per-behaviour kappa, alpha, and raw-agreement table exported
+from Detailed mode with **Export results...**.
+
+### 7.4 Interpreting Reliability Values
 
 Colour bands are screening aids, not field-independent rules. Cicchetti-style
 ICC bands and Landis-Koch-style kappa bands are widely used, but acceptable
@@ -544,6 +664,33 @@ Project mode after the recording ends.
 
 Project manifests are saved automatically after changes.
 
+### Project action maps
+
+A project keeps its own action map so that one key means the same behaviour
+for every video in it, no matter what the global map is changed to later.
+
+When you create a project, RABET saves a copy of the action map you are using
+at that moment into the project's `action_maps` folder and records it in
+`project.json`. Opening the project loads that map; closing it restores your
+global map. While the project is open, any edit you make to the map is saved
+into the project, so your global map is never altered.
+
+**Projects created before RABET 1.4.2** have no map of their own and keep using
+the global action map, exactly as before. To give one its own map, open it and
+choose `File > Use Current Action Map for This Project`. RABET does not do this
+automatically: it cannot know whether the map loaded right now is the one those
+videos were originally scored with, so the decision is left to you. Once bound,
+the project behaves like any newly created one.
+
+#### When the map changes on opening a project
+
+If opening a project changes what any key means, RABET shows the differences
+before you can record. This happens when you switch between projects that use
+different schemes, and also when you move from a project with its own map to
+one without. Nothing is shown when the map is unchanged.
+
+Check the Action Map panel heading if you are unsure which scheme is active.
+
 ---
 
 ## 9. Configuration and Files
@@ -566,10 +713,15 @@ RABET persists:
 Typical files under the RABET user data folder:
 
 - `configs/default_action_map.json`
-- `configs/user_action_map.json`
+- `configs/user_action_map.json` — the global action map. A project with its
+  own map stores it in the project instead (see
+  [Project action maps](#project-action-maps)).
 - `configs/default_metrics.json`
 - `configs/custom_color_map.json`
 - `logs/rabet_<date>.log`
+
+Configuration and project files are read as UTF-8, with or without a byte
+order mark, so a hand-edited file keeps non-ASCII behaviour labels intact.
 
 ### 9.3 CSV Files
 
@@ -632,7 +784,7 @@ Issues: <https://github.com/mi2e-K/RABET/issues>
 If RABET supports your research, please cite:
 
 > Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.1) [Computer software].
+> (Version 1.4.2) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 

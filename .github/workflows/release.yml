@@ -363,25 +363,73 @@ jobs:
           cat > release_body.md <<'EOF'
           ## RABET vVERSION_PLACEHOLDER
 
-          RABET vVERSION_PLACEHOLDER is a patch release that restores the
-          intended recording-start workflow and aligns the documentation and
-          packaging metadata with that behaviour.
+          RABET vVERSION_PLACEHOLDER gives each project its own action map, so
+          one key means the same behaviour for every video in a project, and
+          makes the auto-save destination configurable outside Project mode.
+
+          ### Added
+
+          - **Project action maps.**
+            Creating a project now saves a copy of the action map in use into
+            the project and records it in `project.json`. Opening the project
+            loads that map; closing it restores your global map. Edits made
+            while the project is open are saved into the project, so the global
+            action map is never altered by working on a project.
+
+          - **The active action map is always identifiable.**
+            The Action Map panel heading names what you are recording with:
+            the project name when the project has its own map, or "global"
+            when it does not.
+
+          - **Notification when opening a project changes the keys.**
+            If opening a project changes what any key means, RABET lists the
+            differences before you can record. Nothing is shown when the map is
+            unchanged.
+
+          - **Guard on changing an action map that already has annotations.**
+            Renaming a behaviour, switching a key between State and Point,
+            removing a mapping, or replacing the whole map now asks for
+            confirmation when the open project already contains annotated
+            videos. Adding a new key is additive and is never questioned.
+            Existing annotation CSVs are never modified.
+
+          - **Configurable auto-save folder for non-project recordings.**
+            File > Set Auto-Save Folder chooses where annotation CSVs are
+            written when a recording ends outside Project mode. File > Reset
+            Auto-Save Folder to Default restores saving next to each video.
+            Project-mode auto-save remains fixed to the project's `annotations`
+            folder.
+
+          ### Changed
+
+          - **Clearer Action Map type labels.**
+            The editor now shows the concise labels State and Point, and the
+            guides explain that State records an onset and offset whereas Point
+            records a single timestamp. The choice describes the data
+            representation rather than how quickly the behaviour occurs.
 
           ### Fixed
 
-          - **The first keypress is start-signal-only.**
-            After selecting Start Recording, the first non-autorepeat keypress
-            starts the timed session and video playback but is not forwarded as
-            an annotation. This applies even when the key is mapped to a
-            behaviour, preventing an unintended event from opening at time 0.
+          - **Configuration and project files are read as UTF-8.**
+            Action maps, `project.json`, settings, and metric configurations
+            are now read as UTF-8 and tolerate a byte order mark. Previously a
+            hand-edited or externally generated file could fail to load, or
+            load with corrupted non-ASCII behaviour labels, depending on the
+            system locale. Files written by RABET were unaffected.
 
-          - **Recording instructions now match the application.**
-            The English and Japanese guides now state explicitly that any key
-            starts the session and that the triggering key is not recorded.
+          - **The annotation auto-save preference is applied at startup.**
+            The existing `general.auto_save_annotations` setting now controls
+            end-of-recording auto-save instead of being stored but ignored. It
+            remains enabled by default.
 
-          - **Release metadata stays version-aligned.**
-            The Inno Setup fallback version now matches the application version,
-            and the version-bump helper updates both values together.
+          ### Compatibility
+
+          Projects created before vVERSION_PLACEHOLDER have no action map of
+          their own and continue to use the global map exactly as before. To
+          give one its own map, open it and choose
+          `File > Use Current Action Map for This Project`. RABET does not do
+          this automatically, because it cannot know whether the map loaded now
+          is the one those videos were originally scored with.
 
           ### Packaging
 

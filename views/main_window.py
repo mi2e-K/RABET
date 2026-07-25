@@ -526,6 +526,14 @@ class MainWindow(QMainWindow):
         self.reset_action_map_action.setStatusTip("Reset action map to default settings")
         self.file_menu.addAction(self.reset_action_map_action)
 
+        # Opt-in for projects created before 1.4.2, which have no action map
+        # of their own. New projects are bound automatically on creation.
+        self.bind_action_map_action = QAction("Use Current Action Map for This Project", self)
+        self.bind_action_map_action.setStatusTip(
+            "Save the current action map into the open project and use it whenever it is open"
+        )
+        self.file_menu.addAction(self.bind_action_map_action)
+
         self.file_menu.addSeparator()
 
         self.export_annotations_action = QAction("Export Annotations", self)
@@ -542,7 +550,23 @@ class MainWindow(QMainWindow):
         self.file_menu.addMenu(self.recent_annotations_menu)
 
         self.file_menu.addSeparator()
-        
+
+        # Auto-save destination controls (non-project mode). "Set" opens a
+        # folder picker; "Reset" reverts to saving next to each video.
+        self.set_auto_save_folder_action = QAction("Set Auto-Save Folder", self)
+        self.set_auto_save_folder_action.setStatusTip(
+            "Choose the folder where recordings auto-save in non-project mode"
+        )
+        self.file_menu.addAction(self.set_auto_save_folder_action)
+
+        self.reset_auto_save_folder_action = QAction("Reset Auto-Save Folder to Default", self)
+        self.reset_auto_save_folder_action.setStatusTip(
+            "Auto-save next to each video again (default)"
+        )
+        self.file_menu.addAction(self.reset_auto_save_folder_action)
+
+        self.file_menu.addSeparator()
+
         self.exit_action = QAction("Exit", self)
         self.exit_action.setStatusTip("Exit the application")
         self.file_menu.addAction(self.exit_action)

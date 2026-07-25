@@ -13,7 +13,7 @@ authors:
     given-names: "Koshiro"
     orcid: "https://orcid.org/0009-0009-0556-3906"
 type: software
-version: "1.4.1"
+version: "1.4.2"
 date-released: "2026-07-22"
 license: MIT
 repository-code: "https://github.com/mi2e-K/RABET"
