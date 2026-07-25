@@ -30,7 +30,12 @@ def read_version() -> str:
 
 
 def write_version(new_version: str) -> None:
-    inno_text = INNO_FILE.read_text(encoding="utf-8")
+    # utf-8-sig on both sides: RABET.iss carries a BOM because it holds
+    # Japanese [Messages] text, and Inno reads a BOM-less .iss as the system
+    # codepage. Plain "utf-8" happens to round-trip the BOM as a stray
+    # character, which is luck rather than intent -- being explicit keeps a
+    # future edit from silently stripping it and mangling the wizard text.
+    inno_text = INNO_FILE.read_text(encoding="utf-8-sig")
     inno_text, define_count = re.subn(
         r'(#define AppVersion ")[^"]+("\s*)$',
         rf"\g<1>{new_version}\g<2>",
@@ -47,7 +52,7 @@ def write_version(new_version: str) -> None:
         count=1,
     )
     VERSION_FILE.write_text(f'__version__ = "{new_version}"\n', encoding="utf-8")
-    INNO_FILE.write_text(inno_text, encoding="utf-8")
+    INNO_FILE.write_text(inno_text, encoding="utf-8-sig")
 
 
 def bump(version: str, part: str) -> str:

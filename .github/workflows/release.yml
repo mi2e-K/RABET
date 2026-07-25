@@ -402,6 +402,12 @@ jobs:
 
           ### Changed
 
+          - **Refreshed Windows installer.**
+            The setup wizard now carries RABET's own artwork, and its opening
+            page no longer asks you to close all other applications — RABET
+            installs per-user and registers nothing, so the only thing worth
+            closing is RABET itself when upgrading.
+
           - **Clearer Action Map type labels.**
             The editor now shows the concise labels State and Point, and the
             guides explain that State records an onset and offset whereas Point
