@@ -68,16 +68,218 @@ class ProjectController(QObject):
             project_path (str): Path to the created project
         """
         self.logger.info(f"Project created: {project_path}")
-        
+
+        # Freeze the ethogram in use right now into the project, so every
+        # video in it is annotated with the same key->behaviour mapping
+        # regardless of what the global map is changed to later (1.4.2).
+        bound = self._bind_current_action_map_to_project()
+
         # Update view with project information
         self._update_view_with_project_info()
-        
+
         # Show success message
+        extra = (
+            "\n\nThe current action map has been saved into this project and "
+            "will be used whenever it is open."
+            if bound else ""
+        )
         QMessageBox.information(
             self._view,
             "Project Created",
-            f"Project created successfully at:\n{project_path}"
+            f"Project created successfully at:\n{project_path}{extra}"
         )
+
+    def _bind_current_action_map_to_project(self):
+        """Snapshot the active action map into the project and bind it.
+
+        Returns:
+            bool: True if the project now has its own action map.
+        """
+        if not self._model.is_project_open():
+            return False
+
+        rel_path = self._model.get_default_action_map_rel_path()
+        abs_path = self._model.resolve_path(rel_path)
+
+        try:
+            # snapshot_always: bind the map the user is actually looking at.
+            # A leftover project_action_map.json at that path must not be
+            # adopted silently in its place.
+            if not self._action_map_controller.enter_project_scope(
+                abs_path, snapshot_always=True
+            ):
+                self.logger.warning("Could not bind action map to project")
+                return False
+        except Exception as exc:
+            self.logger.warning("Failed to bind project action map: %s", exc)
+            return False
+
+        if not self._model.set_action_map(rel_path):
+            return False
+        self._save_project_silently()
+        return True
+
+    @Slot()
+    def bind_current_action_map_dialog(self):
+        """Bind the currently active action map to the open project.
+
+        The opt-in path for projects created before 1.4.2, which have no bound
+        map. Deliberately explicit: RABET cannot know whether the map loaded
+        right now is the one those videos were annotated with, so it must not
+        guess on the user's behalf.
+        """
+        if not self._model.is_project_open():
+            QMessageBox.information(
+                self._view,
+                "No Project Open",
+                "Open a project first to give it its own action map.",
+            )
+            return
+
+        if self._action_map_controller.is_project_scoped():
+            QMessageBox.information(
+                self._view,
+                "Already Using a Project Action Map",
+                "This project already has its own action map. Edits you make "
+                "while it is open are saved into the project.",
+            )
+            return
+
+        # Naming the count makes the risk concrete: the more annotations are
+        # already in the project, the more there is to be inconsistent with.
+        annotated = self._model.get_annotated_video_count()
+        if annotated:
+            videos = "1 video" if annotated == 1 else f"{annotated} videos"
+            stakes = (
+                f"\n\nThis project already has {videos} annotated. Existing "
+                "annotation files are not changed, but make sure the mappings "
+                "shown now are the ones those recordings were made with."
+            )
+        else:
+            stakes = (
+                "\n\nMake sure the mappings shown now are the ones you want "
+                "this project annotated with."
+            )
+
+        result = QMessageBox.question(
+            self._view,
+            "Use Current Action Map for This Project",
+            "Save the current action map into this project and use it "
+            f"whenever the project is open?{stakes}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if result != QMessageBox.StandardButton.Yes:
+            return
+
+        if self._bind_current_action_map_to_project():
+            self._update_view_with_project_info()
+            QMessageBox.information(
+                self._view,
+                "Project Action Map Set",
+                "This project now has its own action map.",
+            )
+        else:
+            QMessageBox.warning(
+                self._view,
+                "Could Not Set Project Action Map",
+                "Failed to save the action map into the project.",
+            )
+
+    def _apply_project_action_map(self):
+        """Enter the open project's action map scope, if it has one.
+
+        Projects created before 1.4.2 have no bound map; they keep using the
+        global user map so their behaviour is unchanged.
+        """
+        map_path = self._model.get_action_map_path()
+        if not map_path:
+            self.logger.info(
+                "Project has no bound action map; using the global user map."
+            )
+            return False
+
+        if not os.path.exists(map_path):
+            self.logger.warning(
+                "Project action map is missing: %s; using the global user map.",
+                map_path,
+            )
+            QMessageBox.warning(
+                self._view,
+                "Project Action Map Missing",
+                f"This project's action map could not be found:\n{map_path}\n\n"
+                "The global action map will be used instead. Check the key "
+                "mappings before annotating.",
+            )
+            return False
+
+        if not self._action_map_controller.enter_project_scope(
+            map_path, snapshot_if_missing=False
+        ):
+            QMessageBox.warning(
+                self._view,
+                "Project Action Map Not Loaded",
+                f"This project's action map could not be loaded:\n{map_path}\n\n"
+                "The global action map will be used instead. Check the key "
+                "mappings before annotating.",
+            )
+            return False
+
+        self.logger.info("Applied project action map: %s", map_path)
+        return True
+
+    def _notify_if_action_map_changed(self, before_map, before_kinds):
+        """Tell the user when opening this project changed what the keys mean.
+
+        Deliberately silent when the map is identical to the one already in
+        use: a notice on every project open would be dismissed unread, and
+        then missed on the one switch that mattered. Firing only on a real
+        change keeps the interruption meaningful.
+        """
+        after_map, after_kinds = self._action_map_controller.get_mappings_snapshot()
+        if after_map == before_map and after_kinds == before_kinds:
+            return
+
+        changed = []
+        for key in sorted(set(before_map) | set(after_map)):
+            was = before_map.get(key)
+            now = after_map.get(key)
+            if was == now and before_kinds.get(key) == after_kinds.get(key):
+                continue
+            if was is None:
+                changed.append(f"  '{key}': (unused) -> {now}")
+            elif now is None:
+                changed.append(f"  '{key}': {was} -> (unused)")
+            else:
+                changed.append(f"  '{key}': {was} -> {now}")
+
+        # Keep the dialog readable; the panel holds the authoritative list.
+        shown = changed[:8]
+        if len(changed) > len(shown):
+            shown.append(f"  ...and {len(changed) - len(shown)} more")
+
+        project_name = self._model.get_project_name() or "this project"
+        if self._action_map_controller.is_project_scoped():
+            lead = (
+                f"Opening '{project_name}' switched the action map to the one "
+                "saved in it, so some keys now record different behaviours:"
+            )
+        else:
+            # Reached when the previous project was bound and this one is not:
+            # the map reverted to the global one on the way in.
+            lead = (
+                f"'{project_name}' has no action map of its own, so the global "
+                "one is now in use and some keys record different behaviours:"
+            )
+
+        QMessageBox.information(
+            self._view,
+            "Action Map Changed",
+            lead
+            + "\n\n"
+            + "\n".join(shown)
+            + "\n\nCheck the Action Map panel before recording.",
+        )
+        self.logger.info("Notified user of %d action map changes", len(changed))
     
     @Slot(str)
     def on_project_loaded(self, project_path):
@@ -88,6 +290,15 @@ class ProjectController(QObject):
             project_path (str): Path to the loaded project
         """
         self.logger.info(f"Project loaded: {project_path}")
+
+        # Switch to the project's own action map before anything can be
+        # annotated, so the keys mean what this project says they mean (1.4.2).
+        # Snapshot around the whole switch, not just the bound-map branch:
+        # going from a bound project back to an unbound one also changes what
+        # the keys mean, and that path would otherwise stay silent.
+        before_map, before_kinds = self._action_map_controller.get_mappings_snapshot()
+        self._apply_project_action_map()
+        self._notify_if_action_map_changed(before_map, before_kinds)
 
         # Update view with project information
         self._update_view_with_project_info()
@@ -182,6 +393,17 @@ class ProjectController(QObject):
     def on_project_closed(self):
         """Handle project closed event."""
         self.logger.info("Project closed")
+
+        # Hand the action map back to global scope so the next non-project
+        # session uses the user's own map, not this project's (1.4.2).
+        try:
+            self._action_map_controller.exit_project_scope()
+        except Exception as exc:
+            self.logger.warning("Failed to leave project action map scope: %s", exc)
+        # Drop the project name from the panel heading now that the global
+        # map is back in use.
+        self._refresh_action_map_scope_display()
+
         if hasattr(self._video_controller, 'close_video'):
             self._video_controller.close_video()
         if hasattr(self._annotation_controller, 'clear_project_context'):
@@ -607,8 +829,20 @@ class ProjectController(QObject):
             self._model.get_project_modification_date()
         )
         
+        # Name the active action map scope in the annotation panel (1.4.2).
+        self._refresh_action_map_scope_display()
+
         # Update file lists
         self._update_file_lists()
+
+    def _refresh_action_map_scope_display(self):
+        """Keep the Action Map panel heading in step with the open project."""
+        try:
+            self._action_map_controller.refresh_scope_display(
+                self._model.get_project_name() or ""
+            )
+        except Exception as exc:
+            self.logger.debug("Could not refresh action map scope display: %s", exc)
     
     def _update_file_lists(self):
         """Update view with current file lists."""

@@ -194,7 +194,13 @@ class FileManager:
             return None
         
         try:
-            with open(file_path, 'r') as f:
+            # utf-8-sig, not the platform default: JSON written outside RABET
+            # (hand-edited, script-generated) is UTF-8, and reading it with a
+            # locale codepage such as cp932 either fails or — worse — succeeds
+            # with mojibake. "-sig" also strips a BOM if one is present, which
+            # plain utf-8 would choke on. Files RABET writes are ASCII
+            # (json.dumps escapes non-ASCII), so they are unaffected.
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             self.logger.debug(f"Loaded JSON from {file_path}")
             return data
@@ -308,7 +314,9 @@ class FileManager:
         
         try:
             data = []
-            with open(file_path, 'r', newline='') as f:
+            # See load_json: read as UTF-8 and tolerate a BOM rather than
+            # falling back to the platform codepage.
+            with open(file_path, 'r', newline='', encoding='utf-8-sig') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     data.append(row)

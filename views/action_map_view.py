@@ -44,7 +44,10 @@ class ActionMapView(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(0)
         
-        # Title
+        # Title. Carries the active scope while a project is open (1.4.2) so
+        # it is always visible which scheme the keys belong to — the panel is
+        # on screen throughout annotation, and muscle memory does not read
+        # the table.
         self.title_label = QLabel("Action Map")
         self.title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.layout.addWidget(self.title_label)
@@ -185,6 +188,39 @@ class ActionMapView(QWidget):
         if result == QMessageBox.StandardButton.Yes:
             self.remove_mapping_requested.emit(key)
     
+    def set_scope(self, project_name="", project_scoped=False):
+        """Show which action map the panel is displaying (1.4.2).
+
+        Args:
+            project_name (str): Open project's name, or "" when none is open.
+            project_scoped (bool): Whether the map belongs to that project.
+
+        A project that is open but *not* bound is deliberately labelled
+        "global" rather than with its name: its mappings are the shared user
+        map, so naming the project would imply an ownership that does not
+        exist — and edits made there really do change the global map.
+        """
+        if not project_name:
+            self.title_label.setText("Action Map")
+            self.title_label.setToolTip("")
+            return
+
+        if project_scoped:
+            self.title_label.setText(f"Action Map — {project_name}")
+            self.title_label.setToolTip(
+                f"These mappings belong to the project '{project_name}'. "
+                "Edits are saved into the project and do not affect your "
+                "global action map."
+            )
+        else:
+            self.title_label.setText("Action Map — global")
+            self.title_label.setToolTip(
+                f"The project '{project_name}' has no action map of its own, "
+                "so the global one is in use. Edits here change the global "
+                "map. Use File > Use Current Action Map for This Project to "
+                "give the project its own."
+            )
+
     @Slot(dict)
     def update_mappings(self, mappings, kinds=None):
         """
@@ -285,13 +321,17 @@ class ActionMapDialog(QDialog):
         self.behavior_layout.addWidget(self.behavior_edit)
         self.layout.addLayout(self.behavior_layout)
 
-        # Type (kind) input: a state has a duration (key down/up), a point is
-        # instantaneous (a single press marks one moment) (1.4.0).
+        # Type (kind) input: State records onset/offset; Point records one
+        # timestamp without duration (1.4.0).
         self.kind_layout = QHBoxLayout()
         self.kind_label = QLabel("Type:")
         self.kind_combo = QComboBox()
-        self.kind_combo.addItem("State (duration)", "state")
-        self.kind_combo.addItem("Point (instant)", "point")
+        self.kind_combo.addItem("State", "state")
+        self.kind_combo.addItem("Point", "point")
+        self.kind_combo.setToolTip(
+            "State records an onset and offset; Point records a single "
+            "timestamp without duration."
+        )
         kind_index = self.kind_combo.findData("point" if kind == "point" else "state")
         self.kind_combo.setCurrentIndex(max(0, kind_index))
         self.kind_layout.addWidget(self.kind_label)

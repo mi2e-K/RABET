@@ -404,8 +404,9 @@ class AnalysisMetricsConfig:
                 self.logger.warning(f"Configuration file not found: {file_path}")
                 return False
             
-            # Load from file
-            with open(file_path, 'r') as f:
+            # Load from file. utf-8-sig so a hand-edited or BOM-carrying
+            # config is read correctly instead of via the platform codepage.
+            with open(file_path, 'r', encoding='utf-8-sig') as f:
                 config_dict = json.load(f)
             
             # Apply configuration

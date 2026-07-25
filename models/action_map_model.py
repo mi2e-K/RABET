@@ -48,7 +48,14 @@ class ActionMapModel(QObject):
         self._auto_save_timer.setSingleShot(True)
         self._auto_save_timer.timeout.connect(self._auto_save)
         self._auto_save_pending = False
-        
+
+        # Project scope (1.4.2). When a project with a bound action map is
+        # open this holds that map's absolute path, and every auto-save is
+        # redirected to it instead of user_action_map.json. The global map is
+        # therefore never touched while a project is open, and edits made
+        # during the project belong to the project. ``None`` = global scope.
+        self._project_map_path = None
+
         # Flag to track if we've loaded successfully
         self._loaded_successfully = False
         
@@ -147,7 +154,11 @@ class ActionMapModel(QObject):
         """
         try:
             self.logger.info(f"Loading action map from: {json_path}")
-            with open(json_path, 'r') as f:
+            # Action maps are meant to be shared and hand-edited, so they can
+            # arrive as UTF-8 (with or without a BOM) rather than the ASCII
+            # this model writes. Reading them with the platform codepage
+            # rejected Japanese behaviour labels outright.
+            with open(json_path, 'r', encoding='utf-8-sig') as f:
                 data = json.load(f)
             
             # Validate format
@@ -251,16 +262,141 @@ class ActionMapModel(QObject):
             self._auto_save_timer.start(500)  # Save after 500ms of inactivity
     
     def _auto_save(self):
-        """Automatically save the current action map to user storage."""
+        """Automatically save the current action map to its scope's storage.
+
+        Writes to the bound project map while a project is open, otherwise to
+        the global user map.
+        """
         self._auto_save_pending = False
+
+        if self._project_map_path is not None:
+            if self.save_to_json(self._project_map_path):
+                self.logger.debug("Auto-saved project action map")
+            else:
+                self.logger.error("Failed to auto-save project action map")
+            return
+
         user_map_path = self._config_path_manager.get_action_map_config_path("user_action_map.json")
-        
+
         if user_map_path:
             if self.save_to_json(user_map_path):
                 self.logger.debug("Auto-saved user action map")
             else:
                 self.logger.error("Failed to auto-save user action map")
-    
+
+    def _flush_auto_save(self):
+        """Write any debounced auto-save immediately.
+
+        Called before a scope switch so a pending edit lands in the scope it
+        was made in rather than in whichever scope happens to be active 500ms
+        later.
+        """
+        if self._auto_save_pending:
+            self._auto_save_timer.stop()
+            self._auto_save()
+
+    def flush_pending_save(self):
+        """Public accessor for the application-exit flush."""
+        self._flush_auto_save()
+
+    # --- Project scope (1.4.2) -------------------------------------------
+
+    def is_project_scoped(self):
+        """Return whether the model is currently bound to a project's map."""
+        return self._project_map_path is not None
+
+    def get_scope_path(self):
+        """Return the bound project map path, or None in global scope."""
+        return self._project_map_path
+
+    def enter_project_scope(self, map_path, snapshot_if_missing=True,
+                            snapshot_always=False):
+        """Switch to a project's own action map.
+
+        The map at ``map_path`` becomes both the active map and the auto-save
+        target, so the global user map is left exactly as it was until
+        :meth:`exit_project_scope` restores it.
+
+        Args:
+            map_path (str): Absolute path to the project's action map JSON.
+            snapshot_if_missing (bool): When the file does not exist yet, write
+                the currently active map to it (used when creating a project,
+                which freezes the ethogram in use at that moment).
+            snapshot_always (bool): Write the currently active map to
+                ``map_path`` even if a file is already there. Used when the
+                user explicitly binds "the map I am looking at now" to a
+                project, where silently adopting a leftover file instead would
+                bind mappings they never chose.
+
+        Returns:
+            bool: True if the model is now scoped to the project.
+        """
+        if not map_path:
+            return False
+
+        # Any debounced edit belongs to the scope it was made in.
+        self._flush_auto_save()
+
+        map_path = str(map_path)
+        if snapshot_always:
+            previous = self._project_map_path
+            self._project_map_path = map_path
+            if not self.save_to_json(map_path):
+                self._project_map_path = previous
+                self.logger.error("Failed to write action map to %s", map_path)
+                return False
+            self.logger.info("Bound current action map to project: %s", map_path)
+            self.map_changed.emit()
+            return True
+
+        if Path(map_path).exists():
+            if not self.load_from_json(map_path, auto_save=False, emit_signal=False):
+                # A corrupt project map must not silently leave the user on
+                # some other project's mappings; stay global and let the
+                # caller surface the problem.
+                self.logger.error(
+                    "Failed to load project action map %s; staying on the global map.",
+                    map_path,
+                )
+                return False
+            self._project_map_path = map_path
+            self._loaded_successfully = True
+            self.logger.info("Entered project action map scope: %s", map_path)
+        elif snapshot_if_missing:
+            self._project_map_path = map_path
+            if not self.save_to_json(map_path):
+                self._project_map_path = None
+                self.logger.error("Failed to snapshot action map to %s", map_path)
+                return False
+            self.logger.info("Snapshotted current action map to project: %s", map_path)
+        else:
+            return False
+
+        self.map_changed.emit()
+        return True
+
+    def exit_project_scope(self):
+        """Leave project scope and restore the global user action map.
+
+        Safe to call when not scoped, so project-close paths can call it
+        unconditionally.
+        """
+        if self._project_map_path is None:
+            return False
+
+        # Flush while still scoped so the last edit lands in the project map.
+        self._flush_auto_save()
+
+        previous = self._project_map_path
+        self._project_map_path = None
+
+        # Reload the global map from disk. It was never overwritten while
+        # scoped, so this restores exactly what the user had before.
+        self._load_action_map()
+        self.map_changed.emit()
+        self.logger.info("Left project action map scope (was %s)", previous)
+        return True
+
     def add_mapping(self, key, behavior, kind=None):
         """
         Add a new key-to-behavior mapping.

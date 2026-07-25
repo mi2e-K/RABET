@@ -1577,7 +1577,38 @@ class AnnotationController(QObject):
             # In non-project mode, save to default location based on video filename
             if self._current_video_path:
                 self._auto_export_non_project_annotations()
-    
+
+    def _resolve_auto_save_dir(self, video_dir):
+        """Return the folder that a non-project auto-save should write to.
+
+        Uses ``directories.auto_save_directory`` from the config when the user
+        has set it (and it can be created/used); otherwise falls back to
+        ``video_dir`` — the folder next to the source video, which is the
+        historical default. An empty config value means "use the default".
+
+        Project-mode auto-save never calls this; it stays bound to the
+        project's own annotations folder.
+        """
+        configured = ""
+        if self.config_manager is not None:
+            configured = (
+                self.config_manager.get("directories", "auto_save_directory") or ""
+            ).strip()
+
+        if not configured:
+            return video_dir
+
+        try:
+            os.makedirs(configured, exist_ok=True)
+            return configured
+        except Exception as exc:
+            self.logger.warning(
+                "Configured auto-save folder '%s' is unusable (%s); "
+                "falling back to the video's own folder.",
+                configured, exc,
+            )
+            return video_dir
+
     def _auto_export_non_project_annotations(self):
         """Automatically export annotations in non-project mode."""
         if not self._current_video_path:
@@ -1588,17 +1619,21 @@ class AnnotationController(QObject):
             # Generate default export path based on video filename
             video_dir = os.path.dirname(self._current_video_path)
             video_name = os.path.splitext(os.path.basename(self._current_video_path))[0]
-            
+
+            # Honour the user-configured auto-save folder when set; otherwise
+            # fall back to the video's own folder (the historical default).
+            target_dir = self._resolve_auto_save_dir(video_dir)
+
             # Create timestamp for uniqueness if file exists
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+
             # Try without timestamp first
-            export_path = os.path.join(video_dir, f"{video_name}_annotations.csv")
-            
+            export_path = os.path.join(target_dir, f"{video_name}_annotations.csv")
+
             # If file exists, add timestamp
             if os.path.exists(export_path):
-                export_path = os.path.join(video_dir, f"{video_name}_annotations_{timestamp}.csv")
+                export_path = os.path.join(target_dir, f"{video_name}_annotations_{timestamp}.csv")
             
             # Export annotations
             if self._annotation_model.export_to_csv(export_path, include_header=True):
@@ -1634,7 +1669,78 @@ class AnnotationController(QObject):
                 "Auto-Save Error",
                 f"Error auto-saving annotations: {str(e)}\nPlease save manually using File > Export Annotations."
             )
-    
+
+    def set_auto_save_folder_dialog(self):
+        """Let the user pick the folder used for non-project auto-saves.
+
+        Wired to File > "Set Auto-Save Folder". The choice is persisted in the
+        config so it survives restarts. Leaving it unset (see
+        ``reset_auto_save_folder``) keeps the default of saving next to each
+        video. Project-mode auto-save is intentionally left unaffected.
+        """
+        if self.config_manager is None:
+            self.logger.warning("No config manager; cannot set auto-save folder")
+            return
+
+        current = (
+            self.config_manager.get("directories", "auto_save_directory") or ""
+        ).strip()
+        start_dir = current or self.config_manager.get_last_directory("annotation") or ""
+
+        chosen = QFileDialog.getExistingDirectory(
+            self._main_window,
+            "Select Auto-Save Folder",
+            start_dir,
+        )
+        if not chosen:
+            return  # User cancelled
+
+        self.config_manager.set("directories", "auto_save_directory", chosen)
+        self.config_manager.save_config()
+        self._main_window.set_status_message(f"Auto-save folder set to {chosen}")
+        self.logger.info("Auto-save folder set to %s", chosen)
+        AutoCloseMessageBox.information(
+            self._main_window,
+            "Auto-Save Folder Set",
+            f"Non-project recordings will now auto-save to:\n{chosen}",
+            timeout=2500,
+        )
+
+    def reset_auto_save_folder(self):
+        """Clear the custom auto-save folder, reverting to saving next to each video.
+
+        Wired to File > "Reset Auto-Save Folder to Default".
+        """
+        if self.config_manager is None:
+            self.logger.warning("No config manager; cannot reset auto-save folder")
+            return
+
+        current = (
+            self.config_manager.get("directories", "auto_save_directory") or ""
+        ).strip()
+        if not current:
+            AutoCloseMessageBox.information(
+                self._main_window,
+                "Auto-Save Folder",
+                "Auto-save is already using the default location "
+                "(the same folder as each video).",
+                timeout=2500,
+            )
+            return
+
+        self.config_manager.set("directories", "auto_save_directory", "")
+        self.config_manager.save_config()
+        self._main_window.set_status_message(
+            "Auto-save folder reset to default (next to each video)"
+        )
+        self.logger.info("Auto-save folder reset to default")
+        AutoCloseMessageBox.information(
+            self._main_window,
+            "Auto-Save Folder Reset",
+            "Non-project recordings will again auto-save next to each video.",
+            timeout=2500,
+        )
+
     def _auto_export_annotations(self):
         """Automatically export annotations to the project directory."""
         if not self._auto_export_path or not self._annotation_model.get_all_events():
