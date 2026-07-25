@@ -40,7 +40,10 @@ class AnnotationController(QObject):
         # Flag to skip auto-export when explicitly resetting
         self._skip_auto_export = False
         
-        # Toggle for preserving annotations on rewind (default: False - delete annotations)
+        # Toggle for preserving annotations on rewind. This initial value only
+        # covers the window before settings are restored: the effective default
+        # is ``annotation.preserve_on_rewind`` (ON since 1.3.3), which reaches
+        # here via the recording panel's checkbox once MainWindow restores it.
         self._preserve_annotations_on_rewind = False
         
         # Last loaded video path
@@ -1609,6 +1612,52 @@ class AnnotationController(QObject):
             )
             return video_dir
 
+    @staticmethod
+    def _sanitize_path_segment(name):
+        """Make a folder name safe to embed in a filename.
+
+        Drops the characters Windows forbids plus control codes, and trims the
+        trailing dots/spaces Windows silently strips. Length is capped so the
+        combined name cannot push the path over MAX_PATH on its own.
+        """
+        cleaned = "".join(
+            "_" if (ch in '<>:"/\\|?*' or ord(ch) < 32) else ch
+            for ch in str(name)
+        ).strip(" .")
+        return cleaned[:64]
+
+    def _auto_save_stem(self, video_path, target_dir, video_dir):
+        """Return the CSV stem for a non-project auto-save.
+
+        Saving next to the video needs no qualifier — the folder already tells
+        the files apart. A shared auto-save folder does not, so videos that
+        share a basename across folders (``subject1/trial.mp4`` and
+        ``subject2/trial.mp4``) would otherwise land on the same name. The
+        immediate parent folder is prefixed to keep them distinguishable, which
+        matches the per-subject/per-condition layouts these recordings use.
+        """
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+
+        def _same(a, b):
+            try:
+                return os.path.normcase(os.path.abspath(a)) == os.path.normcase(
+                    os.path.abspath(b)
+                )
+            except Exception:
+                return False
+
+        if _same(target_dir, video_dir):
+            return video_name
+
+        # basename("D:\\") is empty, so a video at a drive root has no parent
+        # to qualify with; fall back to the bare name.
+        parent = self._sanitize_path_segment(
+            os.path.basename(str(video_dir).rstrip("\\/"))
+        )
+        if not parent:
+            return video_name
+        return f"{parent}_{video_name}"
+
     def _auto_export_non_project_annotations(self):
         """Automatically export annotations in non-project mode."""
         if not self._current_video_path:
@@ -1618,22 +1667,28 @@ class AnnotationController(QObject):
         try:
             # Generate default export path based on video filename
             video_dir = os.path.dirname(self._current_video_path)
-            video_name = os.path.splitext(os.path.basename(self._current_video_path))[0]
 
             # Honour the user-configured auto-save folder when set; otherwise
             # fall back to the video's own folder (the historical default).
             target_dir = self._resolve_auto_save_dir(video_dir)
+
+            # Qualified with the source folder when saving to a shared folder,
+            # so same-named videos from different folders stay distinguishable.
+            stem = self._auto_save_stem(
+                self._current_video_path, target_dir, video_dir
+            )
 
             # Create timestamp for uniqueness if file exists
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
             # Try without timestamp first
-            export_path = os.path.join(target_dir, f"{video_name}_annotations.csv")
+            export_path = os.path.join(target_dir, f"{stem}_annotations.csv")
 
-            # If file exists, add timestamp
+            # If file exists, add timestamp. Still needed: two folders can
+            # share a name, and re-recording the same video collides too.
             if os.path.exists(export_path):
-                export_path = os.path.join(target_dir, f"{video_name}_annotations_{timestamp}.csv")
+                export_path = os.path.join(target_dir, f"{stem}_annotations_{timestamp}.csv")
             
             # Export annotations
             if self._annotation_model.export_to_csv(export_path, include_header=True):

@@ -142,10 +142,14 @@ class RecordingControlView(QWidget):
         # Add preserve annotations on rewind checkbox
         self.options_layout = QHBoxLayout()
         self.preserve_annotations_checkbox = QCheckBox("Preserve annotations on rewind")
-        self.preserve_annotations_checkbox.setChecked(False)  # Default is to delete annotations
+        # Construction-time state only. The effective default is
+        # ``annotation.preserve_on_rewind`` (ON since 1.3.3), applied by
+        # MainWindow._restore_settings once the ConfigManager is attached;
+        # an existing user's stored choice wins over it.
+        self.preserve_annotations_checkbox.setChecked(False)
         self.preserve_annotations_checkbox.setToolTip(
-            "When unchecked (default), annotations in rewound video sections will be removed. "
-            "When checked, annotations will be preserved when rewinding."
+            "When checked (default), a still-pressed event survives rewinding past its onset. "
+            "When unchecked, that event is discarded instead."
         )
         # CRITICAL FIX: Set focus policy to prevent space key from toggling the checkbox
         self.preserve_annotations_checkbox.setFocusPolicy(Qt.FocusPolicy.TabFocus)
