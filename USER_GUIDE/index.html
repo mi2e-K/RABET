@@ -2450,10 +2450,13 @@ If events are already loaded, RABET asks before replacing them.</p>
 <code>File &gt; Set Auto-Save Folder</code> and choose a directory; every later non-project
 recording is written there. <code>File &gt; Reset Auto-Save Folder to Default</code> returns
 to saving next to each video. The choice persists across sessions.</p>
+<p>When saving to a chosen folder, the name is prefixed with the video's own
+folder — <code>subject1/trial.mp4</code> becomes <code>subject1_trial_annotations.csv</code> — so
+videos that share a filename across folders stay distinguishable. Saving next
+to the video keeps the plain <code>&lt;video name&gt;_annotations.csv</code>, since the folder
+already tells them apart.</p>
 <p>If a file of that name already exists, RABET appends a timestamp rather than
-overwriting it. Note that videos with the same filename in different folders
-produce the same CSV name, so collecting them into a shared folder makes the
-timestamped copies harder to tell apart.</p>
+overwriting it.</p>
 <p>In Project mode the destination is fixed to the project's <code>annotations</code>
 folder and is not affected by this setting.</p>
 <hr />
