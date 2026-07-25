@@ -262,10 +262,14 @@ Outside Project mode the file is saved next to the source video as
 recording is written there. `File > Reset Auto-Save Folder to Default` returns
 to saving next to each video. The choice persists across sessions.
 
+When saving to a chosen folder, the name is prefixed with the video's own
+folder — `subject1/trial.mp4` becomes `subject1_trial_annotations.csv` — so
+videos that share a filename across folders stay distinguishable. Saving next
+to the video keeps the plain `<video name>_annotations.csv`, since the folder
+already tells them apart.
+
 If a file of that name already exists, RABET appends a timestamp rather than
-overwriting it. Note that videos with the same filename in different folders
-produce the same CSV name, so collecting them into a shared folder makes the
-timestamped copies harder to tell apart.
+overwriting it.
 
 In Project mode the destination is fixed to the project's `annotations`
 folder and is not affected by this setting.
