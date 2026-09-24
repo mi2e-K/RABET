@@ -921,6 +921,11 @@ class ReliabilityView(QWidget):
         self.detailed_status.setWordWrap(True)
         self.detailed_status.setStyleSheet(f"color: {_STATUS_TEXT_COLOR};")
         left_layout.addWidget(self.detailed_status)
+        self.detailed_warning = QLabel("")
+        self.detailed_warning.setWordWrap(True)
+        self.detailed_warning.setStyleSheet(f"color: {_WARN_COLOR};")
+        self.detailed_warning.setVisible(False)
+        left_layout.addWidget(self.detailed_warning)
 
         self.detailed_table = QTableWidget(0, 6)
         self.detailed_table.setHorizontalHeaderLabels(
@@ -1073,6 +1078,7 @@ class ReliabilityView(QWidget):
             return
         bin_seconds = float(self.detailed_bin_spin.value())
         self.detailed_status.setText("Computing agreement...")
+        self.detailed_warning.setVisible(False)
         # Same lock as the Summary side.
         self.detailed_compute_btn.setEnabled(False)
         self.detailed_progress_label.setVisible(True)
@@ -1179,6 +1185,7 @@ class ReliabilityView(QWidget):
         self.detailed_table.setRowCount(0)
         self._clear_detailed_plot()
         self.detailed_status.setText("")
+        self.detailed_warning.setVisible(False)
         self.detailed_export_btn.setEnabled(False)
         self.detailed_review_btn.setEnabled(False)
         self.detailed_compute_btn.setEnabled(True)
@@ -1303,6 +1310,7 @@ class ReliabilityView(QWidget):
             and (bool(result.events_a) or bool(result.events_b))
         )
         self.detailed_review_btn.setEnabled(has_events)
+        self._show_detailed_warning(result)
 
         if result is None or not result.rows:
             self.detailed_status.setText(
@@ -1312,8 +1320,17 @@ class ReliabilityView(QWidget):
             self._clear_detailed_plot()
             return
 
+        start = result.window_start_seconds
+        end = result.window_end_seconds
+        if end > start:
+            span = (
+                f"Compared window: {start:.1f}\u2013{end:.1f} s "
+                f"({end - start:.1f} s), "
+            )
+        else:  # a result built without a window (older callers)
+            span = f"Test duration: {result.test_duration_seconds:.1f} s, "
         self.detailed_status.setText(
-            f"Test duration: {result.test_duration_seconds:.1f} s, "
+            f"{span}"
             f"bin width: {result.bin_seconds:.2f} s, "
             f"behaviours: {len(result.behaviors)}"
         )
@@ -1378,6 +1395,19 @@ class ReliabilityView(QWidget):
         self.summary_figure.tight_layout()
         self.summary_canvas.draw_idle()
 
+    def _show_detailed_warning(self, result) -> None:
+        """Say so on screen when the two files' Test Durations differ."""
+        if result is None or not result.test_durations_differ:
+            self.detailed_warning.setVisible(False)
+            return
+        label_a, label_b = self._detailed_labels
+        self.detailed_warning.setText(
+            f"Test durations differ ({label_a}: {result.test_duration_a:g} s, "
+            f"{label_b}: {result.test_duration_b:g} s). Only the time both "
+            f"recorded is compared, up to {result.window_end_seconds:.1f} s."
+        )
+        self.detailed_warning.setVisible(True)
+
     def _draw_detailed_raster(self, result) -> None:
         """Draw events from both scorers as a horizontal raster:
         behaviours stacked on the y-axis, each row split into an A
@@ -1424,7 +1454,9 @@ class ReliabilityView(QWidget):
         ax.set_yticks(list(y_positions.values()))
         ax.set_yticklabels(behaviors)
         ax.set_xlabel("Time (seconds)")
-        ax.set_xlim(0, max(result.test_duration_seconds, 1.0))
+        ax.set_xlim(
+            0, max(result.test_duration_seconds, result.window_end_seconds, 1.0)
+        )
         ax.invert_yaxis()
         ax.grid(True, axis="x", linestyle=":", alpha=0.3)
 

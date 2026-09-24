@@ -113,6 +113,22 @@ class DetailedAgreementResult:
     events_b: List[Tuple[str, float, float]] = field(default_factory=list)
     label_a: str = "Scorer A"
     label_b: str = "Scorer B"
+    # Compared window in video seconds: only the bins that overlap
+    # [window_start_seconds, window_end_seconds) are compared (see
+    # _comparison_window). test_duration_seconds keeps its meaning.
+    window_start_seconds: float = 0.0
+    window_end_seconds: float = 0.0
+    # Test Duration metadata of each file (0.0 when absent or untimed).
+    test_duration_a: float = 0.0
+    test_duration_b: float = 0.0
+
+    @property
+    def test_durations_differ(self) -> bool:
+        return (
+            self.test_duration_a > 0
+            and self.test_duration_b > 0
+            and not np.isclose(self.test_duration_a, self.test_duration_b)
+        )
 
 
 # -------------------------------------------------------------------- #
@@ -652,16 +668,22 @@ def _krippendorff_alpha(values_a: np.ndarray, values_b: np.ndarray) -> Optional[
 # -------------------------------------------------------------------- #
 
 
-def _load_annotation_events(
-    path: str,
-) -> Tuple[List[Tuple[str, float, float]], float]:
-    """Return ``(events, test_duration_seconds)``.
+@dataclass
+class _AnnotationSession:
+    """What Detailed mode reads from one annotation CSV."""
+    events: List[Tuple[str, float, float]]
+    test_duration: float = 0.0  # Test Duration metadata; 0.0 = absent/untimed
+    recording_start: Optional[float] = None  # earliest RecordingStart onset
+    duration: float = 0.0  # max(test_duration, last offset), as before
+
+
+def _load_annotation_session(path: str) -> _AnnotationSession:
+    """Read the events, Test Duration and RecordingStart of one file.
 
     ``events`` is a list of (behavior, onset_seconds, offset_seconds)
     tuples in the order they appear, excluding the synthetic
-    ``RecordingStart`` marker. ``test_duration_seconds`` is taken from
-    the metadata section if present; otherwise it falls back to the
-    largest offset observed in the event log.
+    ``RecordingStart`` marker. ``duration`` is the Test Duration metadata
+    or, when larger, the largest offset observed in the event log.
     """
     # Extract the Event section using the utility shipped with RABET.
     events_df = load_event_dataframe(path)
@@ -689,26 +711,81 @@ def _load_annotation_events(
     except OSError:
         pass
 
-    events: List[Tuple[str, float, float]] = []
+    session = _AnnotationSession(
+        events=[], test_duration=test_duration, duration=test_duration
+    )
     if events_df is None or events_df.empty:
-        return events, test_duration
+        return session
 
     for _, row in events_df.iterrows():
         behavior = str(row.get("Event", "")).strip()
-        if not behavior or behavior == "RecordingStart":
+        if not behavior:
             continue
         try:
             onset = float(row.get("Onset", "nan"))
             offset = float(row.get("Offset", "nan"))
         except (TypeError, ValueError):
             continue
+        if behavior == "RecordingStart":
+            if np.isfinite(onset) and (
+                session.recording_start is None or onset < session.recording_start
+            ):
+                session.recording_start = onset
+            continue
         if not np.isfinite(onset) or not np.isfinite(offset):
             continue
-        events.append((behavior, onset, offset))
-        if offset > test_duration:
-            test_duration = offset
+        session.events.append((behavior, onset, offset))
+        if offset > session.duration:
+            session.duration = offset
 
-    return events, test_duration
+    return session
+
+
+def _comparison_window(
+    a: _AnnotationSession, b: _AnnotationSession
+) -> Tuple[float, float]:
+    """Return ``(start, end)`` in video seconds of the time both files cover.
+
+    Start is the later RecordingStart when both files have one (0 as
+    before otherwise), so video before a session is not compared as "both
+    absent". End is the earlier ``RecordingStart + Test Duration`` when
+    both durations are known, so a longer session is not compared against
+    one that had already ended; otherwise the previous end is kept.
+    """
+    if a.recording_start is not None and b.recording_start is not None:
+        start = max(a.recording_start, b.recording_start)
+    else:
+        start = 0.0
+    if a.test_duration > 0 and b.test_duration > 0:
+        end = min(
+            (a.recording_start or 0.0) + a.test_duration,
+            (b.recording_start or 0.0) + b.test_duration,
+        )
+    else:
+        end = max(a.duration, b.duration)
+    return start, end
+
+
+def _events_from(
+    events: List[Tuple[str, float, float]], start: float
+) -> List[Tuple[str, float, float]]:
+    """Clip events to begin no earlier than ``start`` (the window start).
+
+    ``_bin_events`` already clips at the window end; this is the matching
+    cut at the start, so activity before it does not mark the first bin.
+    """
+    if start <= 0:
+        return list(events)
+    clipped = []
+    for behavior, onset, offset in events:
+        if offset < onset:
+            onset, offset = offset, onset
+        if onset == offset:
+            if onset >= start:
+                clipped.append((behavior, onset, offset))
+        elif offset > start:
+            clipped.append((behavior, max(onset, start), offset))
+    return clipped
 
 
 def _bin_events(
@@ -1240,6 +1317,9 @@ class ReliabilityModel(QObject):
         """Time-window-bin two annotation CSVs and compute per-behavior
         Cohen's kappa, Krippendorff's alpha, and raw percentage agreement.
 
+        Only the time both files cover is compared (see
+        :func:`_comparison_window`); bins stay on the video-time grid.
+
         Returns the raw events as well so the caller can render a
         pairwise raster overlay."""
         if bin_seconds <= 0:
@@ -1247,13 +1327,14 @@ class ReliabilityModel(QObject):
             return None
 
         try:
-            events_a, dur_a = _load_annotation_events(annotation_path_a)
-            events_b, dur_b = _load_annotation_events(annotation_path_b)
+            session_a = _load_annotation_session(annotation_path_a)
+            session_b = _load_annotation_session(annotation_path_b)
         except Exception as exc:
             msg = f"Could not parse annotation CSV: {exc}"
             self.logger.error(msg)
             self.error_occurred.emit(msg)
             return None
+        events_a, events_b = session_a.events, session_b.events
 
         if not events_a and not events_b:
             self.error_occurred.emit(
@@ -1261,14 +1342,7 @@ class ReliabilityModel(QObject):
             )
             return None
 
-        duration = max(dur_a, dur_b)
-        if dur_a > 0 and dur_b > 0 and not np.isclose(dur_a, dur_b):
-            self.logger.warning(
-                "Annotation durations differ (%.6fs vs %.6fs); comparing over %.6fs",
-                dur_a,
-                dur_b,
-                duration,
-            )
+        duration = max(session_a.duration, session_b.duration)
         if duration <= 0:
             self.error_occurred.emit(
                 "Could not determine the test duration from the annotation "
@@ -1277,12 +1351,28 @@ class ReliabilityModel(QObject):
             )
             return None
 
+        window_start, window_end = _comparison_window(session_a, session_b)
+        if window_end <= window_start:
+            self.error_occurred.emit(
+                "The two annotation files have no recorded time in common: "
+                f"the comparison would start at {window_start:.1f} s but end at "
+                f"{window_end:.1f} s. Check that both were scored on the same video."
+            )
+            return None
+
         behaviors = sorted(
             {beh for beh, _, _ in events_a} | {beh for beh, _, _ in events_b}
         )
 
-        bins_a = _bin_events(events_a, behaviors, duration, bin_seconds)
-        bins_b = _bin_events(events_b, behaviors, duration, bin_seconds)
+        # Bins keep the video-time grid; the comparison uses the ones that
+        # overlap the window, with events clipped to it at both ends.
+        first_bin = int(np.floor(window_start / bin_seconds + 1e-9))
+        bins_a = _bin_events(
+            _events_from(events_a, window_start), behaviors, window_end, bin_seconds
+        )
+        bins_b = _bin_events(
+            _events_from(events_b, window_start), behaviors, window_end, bin_seconds
+        )
 
         result = DetailedAgreementResult(
             behaviors=behaviors,
@@ -1292,11 +1382,23 @@ class ReliabilityModel(QObject):
             events_b=events_b,
             label_a=label_a,
             label_b=label_b,
+            window_start_seconds=window_start,
+            window_end_seconds=window_end,
+            test_duration_a=session_a.test_duration,
+            test_duration_b=session_b.test_duration,
         )
+        if result.test_durations_differ:
+            self.logger.warning(
+                "Test durations differ (%.6fs vs %.6fs); comparing %.6f-%.6fs",
+                session_a.test_duration,
+                session_b.test_duration,
+                window_start,
+                window_end,
+            )
 
         for behavior in behaviors:
-            va = bins_a[behavior]
-            vb = bins_b[behavior]
+            va = bins_a[behavior][first_bin:]
+            vb = bins_b[behavior][first_bin:]
 
             kappa = _cohen_kappa(va, vb)
             alpha = _krippendorff_alpha(va, vb)

@@ -320,7 +320,16 @@ class ReliabilityController(QObject):
             writer.writerow([
                 "Bin width (s)", f"{result.bin_seconds:.3f}",
                 "Test duration (s)", f"{result.test_duration_seconds:.3f}",
+                "Compared from (s)", f"{result.window_start_seconds:.3f}",
+                "Compared to (s)", f"{result.window_end_seconds:.3f}",
             ])
+            if result.test_durations_differ:
+                writer.writerow([
+                    "Warning",
+                    f"Test durations differ (A: {result.test_duration_a:g} s, "
+                    f"B: {result.test_duration_b:g} s); only the time both "
+                    "recorded is compared.",
+                ])
             writer.writerow([])
             writer.writerow([
                 "Behaviour", "Bins_total", "Bins_active_A", "Bins_active_B",

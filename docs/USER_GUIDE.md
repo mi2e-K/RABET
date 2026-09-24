@@ -565,6 +565,18 @@ Use Detailed mode when you have two annotation CSVs scored on the same video.
 RABET bins time into a user-selected bin width and compares behaviour presence
 per bin.
 
+Only the time both files recorded is compared:
+
+- Start: the later `RecordingStart` of the two files (video time 0 when either
+  file has no `RecordingStart`).
+- End: the earlier `RecordingStart` + Test Duration when both files have a
+  Test Duration; otherwise the latest event offset in either file, or a Test
+  Duration if that is longer.
+
+Bins stay aligned to video time (0, 1, 2 … s for 1 s bins), and the bins that
+overlap this window are compared. The window is shown above the results table
+and in the exported CSV. A warning is shown when the two Test Durations differ.
+
 For each behaviour, RABET reports:
 
 - Cohen's kappa
