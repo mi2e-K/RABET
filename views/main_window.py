@@ -990,11 +990,30 @@ class MainWindow(QMainWindow):
         for widget in focus_managed_widgets:
             widget.installEventFilter(self)
 
+        # Clicks on a table's cells land on its viewport, not on the table, so
+        # the filter above never saw them: the reset timer was not armed and
+        # the table kept focus, swallowing behaviour keys through its
+        # type-to-search.
+        for table in (self.action_map_view.mappings_table,
+                      self.action_map_view.active_behaviors):
+            table.viewport().installEventFilter(self)
+
+        # Enter in the step-size box hands the keyboard back for annotation
+        # (clicks into its text area never reach the filter either).
+        self.video_player_view.step_size_spin.editingFinished.connect(
+            self._on_step_size_edited
+        )
+
         # Add hover tracking to step buttons
         self.video_player_view.step_forward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.video_player_view.step_backward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         self.logger.debug(f"Installed event filters on {len(focus_managed_widgets)} widgets")
+
+    def _on_step_size_edited(self):
+        """Return focus after Enter; a focus-out is handled by eventFilter."""
+        if self.video_player_view.step_size_spin.hasFocus():
+            self.resetFocus()
 
     def _schedule_focus_reset(self):
         """Re-arm the shared focus-reset timer (single allocation)."""

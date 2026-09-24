@@ -239,6 +239,10 @@ class VideoPlayerView(QWidget):
         self.position_slider.setMinimum(0)
         self.position_slider.setMaximum(1000)
         self.position_slider.setValue(0)
+        # Like the other playback controls: a drag must not leave keyboard
+        # focus here, where the arrow keys were eaten by the slider (without
+        # even seeking) instead of stepping frames.
+        self.position_slider.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.controls_container_layout.addWidget(self.position_slider)
         
         # Control buttons layout
