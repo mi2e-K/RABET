@@ -1616,10 +1616,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'recording_control_view'):
                 from PySide6.QtCore import QTime
                 rcv = self.recording_control_view
+
+                # Only a missing value takes the default: ``or 5`` also
+                # replaced a saved 0, so 00:00:30 came back as 00:05:30.
+                def _saved_part(key, default):
+                    value = annotation_section.get(key)
+                    try:
+                        return default if value is None else int(value)
+                    except (TypeError, ValueError):
+                        return default
+
                 rcv.duration_time_edit.setTime(QTime(
-                    int(annotation_section.get("last_recording_hours", 0) or 0),
-                    int(annotation_section.get("last_recording_minutes", 5) or 5),
-                    int(annotation_section.get("last_recording_seconds", 0) or 0),
+                    _saved_part("last_recording_hours", 0),
+                    _saved_part("last_recording_minutes", 5),
+                    _saved_part("last_recording_seconds", 0),
                 ))
                 rcv.preserve_annotations_checkbox.setChecked(
                     bool(annotation_section.get("preserve_on_rewind", False))

@@ -154,8 +154,7 @@ class MetricsConfigDialog(QDialog):
         # Load total time metrics
         self.total_time_table.setRowCount(0)
         for metric in self._config.get_total_time_metrics():
-            behaviors_str = ", ".join(metric["behaviors"])
-            self._add_total_time_row(metric["name"], behaviors_str, metric["enabled"])
+            self._add_total_time_row(metric["name"], metric["behaviors"], metric["enabled"])
     
     def _add_latency_row(self, name, behavior, enabled):
         """
@@ -189,24 +188,25 @@ class MetricsConfigDialog(QDialog):
     def _add_total_time_row(self, name, behaviors, enabled):
         """
         Add a row to the total time metrics table.
-        
+
         Args:
             name (str): Metric name
-            behaviors (str): Comma-separated list of behaviors
+            behaviors (list[str]): Behaviors summed by the metric
             enabled (bool): Whether the metric is enabled
         """
         # Create new row
         row = self.total_time_table.rowCount()
         self.total_time_table.insertRow(row)
-        
+
         # Add name item
         name_item = QTableWidgetItem(name)
         name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)  # Make non-editable
         self.total_time_table.setItem(row, 0, name_item)
-        
+
         # Add behaviors item
-        behaviors_item = QTableWidgetItem(behaviors)
+        behaviors_item = QTableWidgetItem()
         behaviors_item.setFlags(behaviors_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self._set_row_behaviors(behaviors_item, behaviors)
         self.total_time_table.setItem(row, 1, behaviors_item)
         
         # Add enabled checkbox
@@ -214,7 +214,26 @@ class MetricsConfigDialog(QDialog):
         enabled_checkbox.setFlags(enabled_checkbox.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         enabled_checkbox.setCheckState(Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
         self.total_time_table.setItem(row, 2, enabled_checkbox)
-    
+
+    @staticmethod
+    def _set_row_behaviors(item, behaviors):
+        """Show ``behaviors`` joined, keeping the list itself on the item.
+
+        The list used to be recovered by splitting the displayed text on
+        commas, which broke up any behaviour name containing a comma.
+        """
+        behaviors = list(behaviors)
+        item.setText(", ".join(behaviors))
+        item.setData(Qt.ItemDataRole.UserRole, behaviors)
+
+    def _row_behaviors(self, row):
+        """Return the behaviour list stored on a total-time row."""
+        item = self.total_time_table.item(row, 1)
+        stored = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(stored, list):
+            return list(stored)
+        return [b.strip() for b in item.text().split(",")]
+
     def add_latency_metric(self):
         """Show dialog to add a new latency metric."""
         # Create dialog
@@ -329,8 +348,7 @@ class MetricsConfigDialog(QDialog):
                 return
             
             # Add to table
-            behaviors_str = ", ".join(selected_behaviors)
-            self._add_total_time_row(name, behaviors_str, enabled)
+            self._add_total_time_row(name, selected_behaviors, enabled)
     
     def edit_total_time_metric(self):
         """Show dialog to edit a selected total time metric."""
@@ -344,8 +362,7 @@ class MetricsConfigDialog(QDialog):
         
         # Get current values
         name = self.total_time_table.item(row, 0).text()
-        behaviors_str = self.total_time_table.item(row, 1).text()
-        behaviors = [b.strip() for b in behaviors_str.split(",")]
+        behaviors = self._row_behaviors(row)
         enabled = self.total_time_table.item(row, 2).checkState() == Qt.CheckState.Checked
         
         # Create dialog
@@ -369,9 +386,8 @@ class MetricsConfigDialog(QDialog):
                 return
             
             # Update table
-            behaviors_str = ", ".join(selected_behaviors)
             self.total_time_table.item(row, 0).setText(new_name)
-            self.total_time_table.item(row, 1).setText(behaviors_str)
+            self._set_row_behaviors(self.total_time_table.item(row, 1), selected_behaviors)
             self.total_time_table.item(row, 2).setCheckState(
                 Qt.CheckState.Checked if new_enabled else Qt.CheckState.Unchecked
             )
@@ -524,10 +540,9 @@ class MetricsConfigDialog(QDialog):
             
             self.total_time_table.setRowCount(0)
             for metric in temp_config.get_total_time_metrics():
-                behaviors_str = ", ".join(metric["behaviors"])
                 self._add_total_time_row(
                     metric["name"],
-                    behaviors_str,
+                    metric["behaviors"],
                     metric.get("enabled", True)
                 )
             
@@ -537,10 +552,12 @@ class MetricsConfigDialog(QDialog):
                 f"Metrics configuration loaded from:\n{file_path}"
             )
         else:
+            detail = getattr(temp_config, "last_load_error", "")
             QMessageBox.warning(
                 self,
                 "Load Failed",
                 f"Failed to load metrics configuration from:\n{file_path}"
+                + (f"\n\n{detail}" if detail else "")
             )
             
     def _get_configs_directory(self):
@@ -634,8 +651,7 @@ class MetricsConfigDialog(QDialog):
         metrics = []
         for row in range(self.total_time_table.rowCount()):
             name = self.total_time_table.item(row, 0).text()
-            behaviors_str = self.total_time_table.item(row, 1).text()
-            behaviors = [b.strip() for b in behaviors_str.split(",")]
+            behaviors = self._row_behaviors(row)
             enabled = self.total_time_table.item(row, 2).checkState() == Qt.CheckState.Checked
             
             metrics.append({
@@ -655,7 +671,13 @@ class LatencyMetricDialog(QDialog):
         
         self._behaviors = behaviors or []
         self._custom_behaviors = []  # List to store custom behaviors added during this dialog session
-        
+        # A metric can target a name the current data does not contain (a
+        # custom name, or one from another action map). Offer it, or the
+        # combo fell back to its first entry and OK silently retargeted the
+        # metric to that behaviour.
+        if behavior and behavior not in self._behaviors:
+            self._custom_behaviors.append(behavior)
+
         self.setWindowTitle("Latency Metric")
         self.resize(400, 250)
         
@@ -790,8 +812,12 @@ class TotalTimeMetricDialog(QDialog):
         
         self._behaviors = behaviors or []
         self._selected_behaviors = selected_behaviors or []
-        self._custom_behaviors = []  # List to store custom behaviors added during this dialog session
-        
+        # Selected names missing from the current data are listed too;
+        # otherwise they were not shown and OK dropped them from the metric.
+        self._custom_behaviors = [
+            b for b in dict.fromkeys(self._selected_behaviors) if b not in self._behaviors
+        ]
+
         self.setWindowTitle("Total Time Metric")
         self.resize(500, 500)
         
