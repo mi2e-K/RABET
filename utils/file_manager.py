@@ -4,7 +4,38 @@ import json
 import csv
 import logging
 import shutil
+from datetime import datetime
 from pathlib import Path
+
+
+def set_aside_unreadable_file(path, keep_original=False):
+    """Preserve an unreadable settings file as ``<name>.corrupt-<YYYYmmdd-HHMMSS>``.
+
+    Callers fall back to defaults and later write a fresh file; setting the
+    original aside first means it is kept for manual recovery instead of being
+    overwritten. ``keep_original`` copies instead of renaming (for a file that
+    stays in use). Returns the new path, or None if nothing could be kept.
+    """
+    path = str(path)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = f"{path}.corrupt-{stamp}"
+    for suffix in range(2, 100):
+        if not os.path.exists(target):
+            break
+        target = f"{path}.corrupt-{stamp}-{suffix}"
+    try:
+        if keep_original:
+            shutil.copy2(path, target)
+        else:
+            os.replace(path, target)
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "Could not set aside unreadable file %s: %s", path, exc
+        )
+        return None
+    logging.getLogger(__name__).warning("Set aside unreadable file %s as %s", path, target)
+    return target
+
 
 class FileManager:
     """

@@ -2,6 +2,7 @@
 import copy
 import logging
 from utils.config_path_manager import ConfigPathManager
+from utils.file_manager import set_aside_unreadable_file
 
 class ConfigManager:
     """
@@ -121,7 +122,11 @@ class ConfigManager:
         
         # Path to the config file
         self._config_file = self._file_manager.app_data_dir / 'config' / 'settings.json'
-        
+
+        # [(original, set-aside copy)] when settings.json could not be read in
+        # full; reported once after startup.
+        self.recovered_files = []
+
         # Load config on initialization
         self.load_config()
     
@@ -148,7 +153,12 @@ class ConfigManager:
                 # Validate structure before merging so a corrupt settings.json
                 # degrades to defaults explicitly instead of silently breaking
                 # config.get() downstream (BUG-005 robustness).
-                loaded_config = self._validate_loaded_config(loaded_config)
+                sane_config = self._validate_loaded_config(loaded_config)
+                if not isinstance(loaded_config, dict) or len(sane_config) < len(loaded_config):
+                    # The dropped parts are overwritten at the next save;
+                    # keep a copy of the file as it was.
+                    self._keep_unreadable_copy(keep_original=True)
+                loaded_config = sane_config
 
                 # Deep merge with defaults to ensure all keys exist
                 self._deep_merge(self._config, loaded_config)
@@ -160,11 +170,20 @@ class ConfigManager:
                 return True
             else:
                 self.logger.warning("Invalid config file, using defaults")
+                if loaded_config is None:
+                    # Unparseable: keep it rather than overwrite it below.
+                    self._keep_unreadable_copy(keep_original=False)
                 return self.save_config()  # Re-create config file with defaults
         except Exception as e:
             self.logger.error(f"Error loading config: {str(e)}")
             return False
     
+    def _keep_unreadable_copy(self, keep_original):
+        """Set settings.json aside before defaults replace (part of) it."""
+        backup = set_aside_unreadable_file(self._config_file, keep_original=keep_original)
+        if backup:
+            self.recovered_files.append((str(self._config_file), backup))
+
     def _validate_loaded_config(self, loaded):
         """Return a structurally-sane subset of ``loaded`` to merge over defaults.
 

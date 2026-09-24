@@ -682,6 +682,10 @@ When you annotate a video from Project mode, RABET switches to Annotation,
 loads the video, saves the annotation into the project, then returns to
 Project mode after the recording ends.
 
+**Remove from Project** deletes a file that lives inside the project folder
+(the project's copy) from disk; a file referenced from elsewhere is only
+removed from the list. The confirmation says which applies.
+
 Project manifests are saved automatically after changes.
 
 ### Project action maps
@@ -747,6 +751,10 @@ Action Map panel and the metrics with **Configure Metrics...**
 
 Configuration and project files are read as UTF-8, with or without a byte
 order mark, so a hand-edited file keeps non-ASCII behaviour labels intact.
+
+If `settings.json` or `user_action_map.json` cannot be read, RABET starts with
+defaults and keeps the unreadable file next to it as
+`<name>.corrupt-<date-time>`, then tells you after start-up.
 
 ### 9.3 CSV Files
 
