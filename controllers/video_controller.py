@@ -1,7 +1,7 @@
 # controllers/video_controller.py - Enhanced for reliable loading and improved state handling
 import logging
 import os
-from PySide6.QtCore import QObject, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from PySide6.QtWidgets import QFileDialog, QProgressDialog, QApplication, QMessageBox
 
 from utils.threaded_loader import ThreadedVideoLoader
@@ -11,7 +11,11 @@ class VideoController(QObject):
     """
     Controller for video playback operations.
     """
-    
+
+    # (path, success) once a started load settles. Callers that prepared state
+    # for the load (the project annotation context) undo it on failure.
+    video_load_finished = Signal(str, bool)
+
     def __init__(self, video_model, video_player_view):
         super().__init__()
         self.logger = logging.getLogger(__name__)
@@ -27,7 +31,8 @@ class VideoController(QObject):
 
         # Create threaded loader
         self._loader = ThreadedVideoLoader(self._video_model)
-        
+        self._loading_path = None
+
         # Progress dialog for loading
         self._progress_dialog = None
         
@@ -149,7 +154,10 @@ class VideoController(QObject):
             # If loading failed, hide the overlay
             self._view.show_loading_overlay(False)
             self._video_initializing = False
-    
+
+        path, self._loading_path = self._loading_path, None
+        self.video_load_finished.emit(path or "", bool(success))
+
     def _record_recent_video(self):
         """Append the current video path to the Recent Videos list."""
         if self.config_manager is None:
@@ -249,6 +257,16 @@ class VideoController(QObject):
         # than a 50 ms timer guess. The timer stays as a fallback.
         if hasattr(self._video_model, "step_finished"):
             self._video_model.step_finished.connect(self._on_step_finished)
+        # A failed open leaves nothing loaded; the model publishes duration and
+        # position 0 itself, the info line is cleared here.
+        if hasattr(self._video_model, "video_unloaded"):
+            self._video_model.video_unloaded.connect(self._on_video_unloaded)
+
+    def _on_video_unloaded(self):
+        """Clear the previous video's info line after a failed open."""
+        main_window = self._view.window()
+        if main_window and hasattr(main_window, "set_video_info"):
+            main_window.set_video_info("")
 
     def _update_frame_rate(self, video_path):
         """Update frame rate info when a video is loaded."""
@@ -607,4 +625,5 @@ class VideoController(QObject):
         # the surface-prep step is gone.
 
         # Start loading in background thread
+        self._loading_path = file_path
         return self._loader.load_video(file_path)

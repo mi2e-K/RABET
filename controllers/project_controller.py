@@ -27,13 +27,21 @@ class ProjectController(QObject):
         self._annotation_controller = annotation_controller
         self._analysis_controller = analysis_controller
         self._suppress_next_saved_message = False
-        
+        # Annotation routing in place before annotate_video retargeted it;
+        # restored if that video then fails to load.
+        self._context_before_annotate = None
+
         # Connect model signals
         self._connect_model_signals()
-        
+
         # Connect view signals
         self._connect_view_signals()
-    
+
+        if hasattr(self._video_controller, "video_load_finished"):
+            self._video_controller.video_load_finished.connect(
+                self._on_video_load_finished
+            )
+
     def _connect_model_signals(self):
         """Connect signals from the model."""
         self._model.project_created.connect(self.on_project_created)
@@ -708,7 +716,15 @@ class ProjectController(QObject):
         """
         # Prepare for annotation
         project_video_ref = project_video_ref or video_path
-        
+
+        # The routing below is retargeted before the load starts (the loader
+        # needs it to offer the video's existing annotations). If the file
+        # then fails to load, the video that stays open must not keep this
+        # video's export path, or its session is saved under the wrong name.
+        self._context_before_annotate = (
+            self._annotation_controller.snapshot_project_context()
+        )
+
         # Tell the annotation controller this is a project video being annotated
         self._annotation_controller.set_project_mode(True)
         self._annotation_controller.set_current_video_id(project_video_ref)
@@ -740,6 +756,7 @@ class ProjectController(QObject):
         
         # Load the video using video controller
         if not self._video_controller.load_video(video_path, preserve_project_context=True):
+            self._restore_context_before_annotate()
             QMessageBox.warning(
                 self._view,
                 "Cannot Annotate Video",
@@ -750,7 +767,21 @@ class ProjectController(QObject):
         video_name = os.path.basename(video_path)
         if hasattr(main_window, 'set_status_message'):
             main_window.set_status_message(f"Ready to annotate: {video_name}")
-    
+
+    def _restore_context_before_annotate(self):
+        """Undo annotate_video's routing change after its load failed."""
+        snapshot, self._context_before_annotate = self._context_before_annotate, None
+        if snapshot is not None:
+            self._annotation_controller.restore_project_context(snapshot)
+
+    @Slot(str, bool)
+    def _on_video_load_finished(self, _video_path, success):
+        """A threaded load settled: keep the new routing, or undo it on failure."""
+        if success:
+            self._context_before_annotate = None
+        else:
+            self._restore_context_before_annotate()
+
     def _open_video(self, video_path):
         """
         Open a video file with the system's default video player.

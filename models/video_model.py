@@ -65,6 +65,7 @@ import logging
 import os
 import threading
 import time
+from collections import deque
 from fractions import Fraction
 from pathlib import Path
 from typing import Optional
@@ -136,6 +137,14 @@ class _VideoDecodeWorker(QObject):
     # real position instead of a 50 ms timer guess.
     step_finished = Signal(int)
 
+    # Worker -> facade: a failed open already tore down the previous video, so
+    # nothing is loaded any more (duration/position 0 are published with it).
+    video_unloaded = Signal()
+
+    # Playback ran off the end of the stream (the tick found no further frame
+    # and paused itself).
+    end_of_stream = Signal()
+
     # Reasonable defaults for codecs that don't report a frame rate.
     _DEFAULT_FRAME_RATE = 30.0
     _DEFAULT_FRAME_DURATION_MS = 33
@@ -194,6 +203,11 @@ class _VideoDecodeWorker(QObject):
         # Cache the most recent QImage so a resize / re-paint can reuse it
         # without re-decoding.
         self._last_frame_image: Optional[QImage] = None
+
+        # Frames already decoded but not yet shown, in presentation order. One
+        # packet can decode to several frames (notably the flush at end of
+        # stream); _decode_next_frame hands the extras out on later calls.
+        self._frame_buffer: deque = deque()
 
         # ----- Display-size / load-adaptation state (Changes A & B) -----
         # Retain the most recent *decoded* frame (not just its QImage) so a
@@ -402,14 +416,21 @@ class _VideoDecodeWorker(QObject):
         )
         self.frame_rate_changed.emit(self._frame_rate, self._frame_duration_ms)
 
-    def _close_container(self) -> None:
+    def _close_container(self, notify: bool = False) -> None:
         """Tear down the current PyAV container if any.
 
         Idempotent — safe to call from ``load_video`` (before opening a
         new file), from ``stop``, and from ``__del__``. Releasing the
         container is what frees the FFmpeg codec context and any
         internally-held memory.
+
+        ``notify`` publishes the implicit stop when this runs mid-playback
+        (a new file opened while the old one played). Without it the facade
+        kept reporting "playing", so every toggle sent pause() to a worker
+        that had already stopped and playback could not be restarted. Only
+        ``load_video`` asks for it; teardown paths stay silent.
         """
+        was_playing = self._is_playing
         if self._playback_timer.isActive():
             self._playback_timer.stop()
         self._is_playing = False
@@ -437,21 +458,43 @@ class _VideoDecodeWorker(QObject):
         self._ontime_tick_count = 0
         self._pending_seek_ms = None
         self._last_drained_seek = None
+        self._frame_buffer.clear()
+        if notify and was_playing:
+            self.playback_state_changed.emit(False)
+
+    def _publish_unloaded(self) -> None:
+        """Report that no video is loaded after a failed open.
+
+        The previous container is already gone by the time the new file
+        fails to open. Without this the facade kept the old duration and
+        path, so a recording could be started against a closed video.
+        """
+        self._video_path = None
+        self._duration = 0
+        self.duration_changed.emit(0)
+        self.position_changed.emit(0)
+        self.video_unloaded.emit()
 
     def _decode_next_frame(self) -> Optional[av.VideoFrame]:
-        """Pull the next decoded video frame from the demuxer.
+        """Pull the next decoded video frame, in presentation order.
 
-        Returns ``None`` at EOF or when no container is loaded.
+        Returns ``None`` at EOF or when no container is loaded. Frames a
+        packet decodes beyond the first are queued in ``_frame_buffer`` and
+        returned by later calls; returning only the first one dropped the
+        frames released by the decoder flush, i.e. the last frames of every
+        video with B-frames or frame threading.
         """
         if self._stream is None or self._container is None:
             return None
         with self._decode_lock:
+            if self._frame_buffer:
+                return self._frame_buffer.popleft()
             try:
                 for packet in self._container.demux(self._stream):
-                    for frame in packet.decode():
-                        if frame is None:
-                            continue
-                        return frame
+                    frames = [frame for frame in packet.decode() if frame is not None]
+                    if frames:
+                        self._frame_buffer.extend(frames[1:])
+                        return frames[0]
             except av.error.EOFError:
                 return None
             except Exception as exc:
@@ -508,7 +551,7 @@ class _VideoDecodeWorker(QObject):
         # Always close the previous container BEFORE opening a new one,
         # otherwise FFmpeg's codec context (which can be tens of MB for
         # high-resolution H.264) leaks until we exit the app.
-        self._close_container()
+        self._close_container(notify=True)
 
         try:
             self.logger.info("Opening video with PyAV: %s", video_path)
@@ -518,6 +561,7 @@ class _VideoDecodeWorker(QObject):
                 self.logger.error(msg)
                 self.error_occurred.emit(msg)
                 self._close_container()
+                self._publish_unloaded()
                 return False
 
             self._stream = self._container.streams.video[0]
@@ -552,6 +596,7 @@ class _VideoDecodeWorker(QObject):
             self.logger.error(msg, exc_info=True)
             self.error_occurred.emit(msg)
             self._close_container()
+            self._publish_unloaded()
             return False
 
     @Slot()
@@ -651,6 +696,7 @@ class _VideoDecodeWorker(QObject):
                 # EOF
                 self.logger.debug("Reached end of stream")
                 self.pause()
+                self.end_of_stream.emit()
                 return
             self._update_current_position(frame)
             self._emit_frame(frame, for_playback=True)
@@ -757,6 +803,8 @@ class _VideoDecodeWorker(QObject):
         target_pts = self._ms_to_pts(position_ms)
 
         with self._decode_lock:
+            # Frames decoded ahead of the old position are stale now.
+            self._frame_buffer.clear()
             try:
                 # ``backward=True`` lands us on the nearest keyframe <=
                 # target_pts; ``any_frame=False`` ensures we don't end up
@@ -781,16 +829,23 @@ class _VideoDecodeWorker(QObject):
             # then pick whichever is closer to target_pts.
             last_before: Optional[av.VideoFrame] = None
             first_at_or_after: Optional[av.VideoFrame] = None
+            # Frames the same packet decoded after first_at_or_after. They are
+            # the next frames in presentation order, so they are kept for the
+            # following tick/step instead of being dropped.
+            decoded_ahead: list = []
             try:
                 done = False
                 for packet in self._container.demux(self._stream):
-                    for frame in packet.decode():
-                        if frame is None or frame.pts is None:
-                            continue
+                    frames = [
+                        frame for frame in packet.decode()
+                        if frame is not None and frame.pts is not None
+                    ]
+                    for index, frame in enumerate(frames):
                         if frame.pts < target_pts:
                             last_before = frame
                         else:
                             first_at_or_after = frame
+                            decoded_ahead = frames[index + 1:]
                             done = True
                             break
                     if done:
@@ -829,6 +884,13 @@ class _VideoDecodeWorker(QObject):
                 if was_playing:
                     self.play()
                 return False
+
+            # When the earlier frame won, first_at_or_after has already left
+            # the decoder; queue it so a following step forward shows it
+            # instead of skipping to the frame after.
+            if chosen is last_before and first_at_or_after is not None:
+                decoded_ahead.insert(0, first_at_or_after)
+            self._frame_buffer.extend(decoded_ahead)
 
             self._update_current_position(chosen)
             self._emit_frame(chosen)
@@ -1028,6 +1090,8 @@ class VideoModel(QObject):
     frame_ready = Signal(QImage)
     render_load_changed = Signal(bool)
     step_finished = Signal(int)  # landed position after a frame step (A-1)
+    video_unloaded = Signal()  # a failed open left no video loaded
+    end_of_stream = Signal()  # playback ran off the end of the stream
 
     def __init__(self):
         super().__init__()
@@ -1060,6 +1124,8 @@ class VideoModel(QObject):
         self._worker.video_loaded.connect(self._on_worker_loaded)
         self._worker.frame_rate_changed.connect(self._on_worker_frame_rate)
         self._worker.step_finished.connect(self.step_finished)
+        self._worker.video_unloaded.connect(self._on_worker_unloaded)
+        self._worker.end_of_stream.connect(self.end_of_stream)
 
     # ----- relay slots (run on the UI thread: refresh cache + re-emit) -----
     @Slot(bool)
@@ -1081,6 +1147,11 @@ class VideoModel(QObject):
     def _on_worker_loaded(self, path: str) -> None:
         self._video_path = path
         self.video_loaded.emit(path)
+
+    @Slot()
+    def _on_worker_unloaded(self) -> None:
+        self._video_path = None
+        self.video_unloaded.emit()
 
     @Slot(float, int)
     def _on_worker_frame_rate(self, rate: float, frame_duration_ms: int) -> None:

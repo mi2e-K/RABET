@@ -103,7 +103,9 @@ class AnnotationController(QObject):
         self._video_model.duration_changed.connect(self._timeline_view.set_duration)
         self._video_model.video_loaded.connect(self._on_video_loaded)
         self._video_model.playback_state_changed.connect(self._on_playback_state_changed)
-        
+        if hasattr(self._video_model, 'end_of_stream'):
+            self._video_model.end_of_stream.connect(self._on_end_of_stream)
+
         # Connect annotation model signals
         self._annotation_model.annotation_added.connect(self.on_annotation_added)
         self._annotation_model.annotation_updated.connect(self.on_annotation_updated)
@@ -255,7 +257,28 @@ class AnnotationController(QObject):
         self._current_video_id = None
         self._auto_export_path = None
         self.logger.info("Project annotation context cleared")
-    
+
+    def snapshot_project_context(self):
+        """Return the project annotation routing, for ``restore_project_context``."""
+        return {
+            "project_mode": self._project_mode,
+            "project_model": self._project_model,
+            "current_video_id": self._current_video_id,
+            "auto_export_path": self._auto_export_path,
+        }
+
+    def restore_project_context(self, snapshot):
+        """Reinstate routing captured by ``snapshot_project_context``.
+
+        Used when a project video fails to load: the routing prepared for it
+        must not stay attached to the video that is still (or was last) open.
+        """
+        self._project_mode = snapshot["project_mode"]
+        self._project_model = snapshot["project_model"]
+        self._current_video_id = snapshot["current_video_id"]
+        self._auto_export_path = snapshot["auto_export_path"]
+        self.logger.info("Project annotation context restored after a failed load")
+
     def set_project_model(self, project_model):
         """
         Set the project model for integration.
@@ -1497,6 +1520,22 @@ class AnnotationController(QObject):
         if remaining_seconds <= 0 and self._is_recording:
             self._complete_recording()
     
+    @Slot()
+    def _on_end_of_stream(self):
+        """Complete a timed session whose end falls on the video's last frame.
+
+        The last frame starts one frame before the end of the video, so a
+        session running to the very end never reaches its exact end position
+        and used to stay open. A session with more than a frame still to go
+        keeps waiting for Stop, as before.
+        """
+        if not self._is_recording:
+            return
+        end_position = self._recording_start_position + self._recording_duration * 1000
+        remaining_ms = end_position - self._video_model.get_position()
+        if remaining_ms <= self._frame_duration_ms * 1.5:
+            self._complete_recording()
+
     def _update_recording_time(self):
         """
         Timer callback to update recording time.
