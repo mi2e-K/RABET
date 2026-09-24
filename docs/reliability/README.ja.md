@@ -106,7 +106,7 @@ R 参照実装と RABET アプリ内出力は、ICC と Pearson r ではおお�
 - 使用した RABET のバージョン
 - Summary モードか Detailed モードか
 - Summary モードの場合、解析した `summary_table.csv` の作成条件
-- Detailed モードの場合、bin width と対象行動
+- Detailed モードの場合、bin width、比較区間（結果表の上に表示）、対象行動
 - 比較した個体数、または動画数
 - 欠損・未対応の `animal_id` があったかどうか
 

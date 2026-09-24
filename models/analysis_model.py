@@ -1459,6 +1459,24 @@ class AnalysisModel(QObject):
                 result[str(behavior)] = pairs
         return result
 
+    def get_file_recording_start(self, file_path):
+        """Return the file's RecordingStart onset in seconds (0.0 when absent).
+
+        The earliest marker wins if there are several. Used by the optional
+        sequence tools to put event times on the session's own clock.
+        """
+        context = self._analysis_inputs.get(file_path)
+        if not context:
+            return 0.0
+        df = context.get("dataframe")
+        if df is None or df.empty or 'Event' not in df.columns:
+            return 0.0
+        onsets = pd.to_numeric(
+            df.loc[df['Event'] == 'RecordingStart', 'Onset'], errors='coerce'
+        ).dropna()
+        onsets = onsets[np.isfinite(onsets)]
+        return float(onsets.min()) if not onsets.empty else 0.0
+
     def get_event_tuples(self, file_path):
         """Return ``[(behavior, onset, offset), ...]`` sorted by onset for a file.
 

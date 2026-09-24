@@ -1180,6 +1180,10 @@ class MatplotlibCanvas(FigureCanvas):
 class RasterPlotWidget(QWidget):
     """Widget for displaying raster plots of behavioral events."""
 
+    # Length (seconds) given to point-event segments so they can be stroked;
+    # far below one pixel at any zoom, the projecting caps set the drawn size.
+    _POINT_EVENT_SPAN_S = 1e-6
+
     files_selected = Signal(list)
     selected_colormap_changed = Signal(str)
     plot_save_directory_changed = Signal(str)
@@ -2558,7 +2562,8 @@ class RasterPlotWidget(QWidget):
 
     def _read_action_map_behaviors(self, file_path):
         """Return unique behavior names from a RABET action map JSON file."""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        # Read like ActionMapModel.load_from_json (utf-8-sig tolerates a BOM).
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
 
         if not isinstance(data, dict):
@@ -2566,9 +2571,12 @@ class RasterPlotWidget(QWidget):
 
         behaviors = []
         seen = set()
-        for key, behavior in data.items():
+        for key, value in data.items():
             if not isinstance(key, str) or len(key) != 1:
                 raise ValueError(f"Invalid key in action map: {key!r}")
+            # 1.4.0 union form: a point behaviour is stored as
+            # {"behavior": name, "kind": "point"}; such maps were rejected.
+            behavior = value.get("behavior") if isinstance(value, dict) else value
             if not isinstance(behavior, str) or not behavior.strip():
                 raise ValueError(f"Invalid behavior label for key {key!r}.")
             behavior = behavior.strip()
@@ -2748,7 +2756,9 @@ class RasterPlotWidget(QWidget):
                             for path in self._data
                         }
                         self.update_file_list()
-                        self._schedule_plot_update()
+                        # Redraw now: the debounced update would only run after
+                        # the save, so every file got the same, stale figure.
+                        self.update_plot()
 
                         individual_stem = self._safe_export_stem(individual_path, index)
                         output_name = (
@@ -3097,6 +3107,7 @@ class RasterPlotWidget(QWidget):
         autoscaling is fine.
         """
         segments = []
+        point_segments = []
         for _, event in behavior_events.iterrows():
             if 'Onset' not in event or 'Offset' not in event:
                 continue
@@ -3104,23 +3115,44 @@ class RasterPlotWidget(QWidget):
                 onset = float(event['Onset']) - recording_start
                 offset = float(event['Offset']) - recording_start
                 if onset >= 0:
-                    segments.append([(onset, y_pos), (offset, y_pos)])
+                    if offset == onset:
+                        point_segments.append(
+                            [(onset, y_pos), (onset + self._POINT_EVENT_SPAN_S, y_pos)]
+                        )
+                    else:
+                        segments.append([(onset, y_pos), (offset, y_pos)])
             except (ValueError, TypeError) as e:
                 self.logger.warning(
                     f"Invalid timestamp in event: {event}, error: {str(e)}"
                 )
-        if not segments:
+        if not segments and not point_segments:
             return 0
-        collection = LineCollection(
-            segments,
-            linewidths=self._bar_height,
-            colors=[tuple(color)],
-            alpha=alpha,
-            zorder=zorder,
-        )
-        collection.set_capstyle('butt')
-        ax.add_collection(collection)
-        return len(segments)
+        if segments:
+            collection = LineCollection(
+                segments,
+                linewidths=self._bar_height,
+                colors=[tuple(color)],
+                alpha=alpha,
+                zorder=zorder,
+            )
+            collection.set_capstyle('butt')
+            ax.add_collection(collection)
+        if point_segments:
+            # Point events (onset == offset) drew nothing: a zero-length
+            # segment is not stroked, and pixel snapping collapses a tiny one.
+            # A hair-length, unsnapped segment with projecting caps draws a
+            # bar-thick square at the onset, whatever the axis range.
+            points = LineCollection(
+                point_segments,
+                linewidths=self._bar_height,
+                colors=[tuple(color)],
+                alpha=alpha,
+                zorder=zorder,
+            )
+            points.set_capstyle('projecting')
+            points.set_snap(False)
+            ax.add_collection(points)
+        return len(segments) + len(point_segments)
 
     def _plot_behavior_events_on_axis(
         self,

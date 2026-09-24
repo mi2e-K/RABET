@@ -1,6 +1,7 @@
 # models/annotation_model.py - Enhanced with high time accuracy for keypresses
 import csv
 import logging
+import math
 import time
 from PySide6.QtCore import QObject, Signal
 
@@ -696,12 +697,19 @@ class AnnotationModel(QObject):
             # in-memory annotations (including the RecordingStart marker) even
             # though the import then returned False.
             parsed_events = []
+            # Test Duration from the metadata block. It used to be skipped, so a
+            # re-export wrote 0 or a stale value left over from an earlier
+            # session, and the analysis then used the wrong session length.
+            parsed_test_duration = None
 
             imported_count = 0
             skipped_count = 0
             in_metadata = True  # Assume file might start with metadata
-            
-            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+
+            # utf-8-sig: a BOM (e.g. a CSV re-saved by Excel) otherwise sticks
+            # to the first cell, and a file starting with the header row then
+            # imported nothing.
+            with open(csv_path, 'r', newline='', encoding='utf-8-sig') as f:
                 reader = csv.reader(f)
                 
                 # Track if we've found the header row
@@ -718,6 +726,10 @@ class AnnotationModel(QObject):
                         self.logger.debug(f"Skipping row {row_num + 1}: insufficient columns")
                         continue
                     
+                    if not header_found and row[0].strip().lower().startswith('test duration'):
+                        parsed_test_duration = self._parse_test_duration(row[1])
+                        continue
+
                     # Check if this is a metadata row (single value rows or special markers)
                     if len(row) == 1 or row[0].lower() in ['metadata', 'test duration', 'events']:
                         in_metadata = True
@@ -853,6 +865,7 @@ class AnnotationModel(QObject):
             for event in parsed_events:
                 self._events.append(event)
                 self.annotation_added.emit(event)
+            self._test_duration = parsed_test_duration
 
             return True
             
@@ -861,6 +874,21 @@ class AnnotationModel(QObject):
             self.logger.error(error_msg, exc_info=True)
             self.error_occurred.emit(error_msg)
             return False
+
+    @staticmethod
+    def _parse_test_duration(text):
+        """Parse the metadata Test Duration in seconds; None when unreadable.
+
+        Whole numbers stay ints so a re-export writes them exactly as the
+        recorder did ("300", not "300.0").
+        """
+        try:
+            value = float(str(text).strip())
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value) or value < 0:
+            return None
+        return int(value) if value.is_integer() else value
 
     def _parse_timestamp(self, timestamp_text):
         """
@@ -881,8 +909,9 @@ class AnnotationModel(QObject):
             
             # Check if it contains a decimal (likely seconds)
             if '.' in timestamp_text:
-                # Parse as seconds with decimal
-                return int(float(timestamp_text) * 1000)
+                # Parse as seconds with decimal. Round: 1.001 * 1000 is
+                # 1000.999..., which int() truncated to 1000 ms.
+                return int(round(float(timestamp_text) * 1000))
             else:
                 # Parse as milliseconds
                 return int(timestamp_text)

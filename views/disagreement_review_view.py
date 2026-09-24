@@ -1524,7 +1524,12 @@ class DisagreementReviewDialog(QDialog):
         ):
             self._video_model.toggle_play()
 
-    def closeEvent(self, event):
+    def _release_video_model(self) -> None:
+        """Stop the dedicated decode thread and release its PyAV container.
+
+        Safe to call more than once (shutdown() is a no-op once the thread
+        has stopped).
+        """
         # Release the dedicated PyAV container so we don't hold a file
         # handle (or ~50MB of codec context) until Python GCs the dialog.
         try:
@@ -1534,5 +1539,17 @@ class DisagreementReviewDialog(QDialog):
                 self._video_model.shutdown()
         except Exception:
             self.logger.exception("DisagreementReviewDialog: video model close failed")
+
+    def done(self, result):
+        # Esc and reject()/accept() end the dialog through done() without a
+        # closeEvent (Qt >= 6.3). The decode thread then outlived the dialog
+        # and the app aborted at exit ("QThread: Destroyed while thread is
+        # still running").
+        self._release_video_model()
+        super().done(result)
+
+    def closeEvent(self, event):
+        try:
+            self._release_video_model()
         finally:
             super().closeEvent(event)

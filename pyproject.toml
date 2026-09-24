@@ -70,7 +70,7 @@ rabet = "main:main"
 Homepage = "https://github.com/mi2e-K/RABET"
 Repository = "https://github.com/mi2e-K/RABET"
 Documentation = "https://github.com/mi2e-K/RABET/blob/main/docs/BUILD_MACOS_LINUX.md"
-Changelog = "https://github.com/mi2e-K/RABET/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/mi2e-K/RABET/releases"
 Issues = "https://github.com/mi2e-K/RABET/issues"
 # Concept DOI - always resolves to the latest RABET version on Zenodo.
 "Zenodo (all versions)" = "https://doi.org/10.5281/zenodo.15313025"

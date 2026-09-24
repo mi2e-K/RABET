@@ -21,6 +21,9 @@ class AnalysisMetricsConfig:
         self._latency_metrics = default_latency_metrics()
         self._total_time_metrics = default_total_time_metrics()
 
+        # Why the last from_dict/load was refused, for the UI to show.
+        self.last_load_error = ""
+
         # Try to load from default configuration file if it exists
         self._try_load_default_config()
     
@@ -352,13 +355,28 @@ class AnalysisMetricsConfig:
         Returns:
             bool: True if loaded successfully, False otherwise
         """
+        self.last_load_error = ""
         try:
-            if "latency_metrics" in config_dict:
-                self._latency_metrics = config_dict["latency_metrics"]
-            
-            if "total_time_metrics" in config_dict:
-                self._total_time_metrics = config_dict["total_time_metrics"]
-            
+            latency = config_dict.get("latency_metrics", self._latency_metrics)
+            total = config_dict.get("total_time_metrics", self._total_time_metrics)
+
+            # Same invariant replace_metrics enforces (BUG-013). Loading used to
+            # bypass it, and colliding names made one metric's result column
+            # overwrite the other's in the summary.
+            collisions = self.find_slug_collisions(latency, total)
+            if collisions:
+                detail = "; ".join(f"'{a}' / '{b}'" for a, b in collisions)
+                self.last_load_error = (
+                    "Metric names collide after normalisation (case- and "
+                    f"space-insensitive): {detail}."
+                )
+                self.logger.error(
+                    "Refusing metrics configuration: %s", self.last_load_error
+                )
+                return False
+
+            self._latency_metrics = latency
+            self._total_time_metrics = total
             return True
         except Exception as e:
             self.logger.error(f"Error loading metrics configuration: {str(e)}")

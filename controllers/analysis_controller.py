@@ -100,7 +100,8 @@ class AnalysisController(QObject):
                 continue
             animal_id = self._model._animal_id_from_path(path)
             duration = self._model.get_file_test_duration(path)
-            per_file.append((animal_id, events_by_behavior, duration))
+            start = self._model.get_file_recording_start(path)
+            per_file.append((animal_id, events_by_behavior, duration, start))
             for behavior in events_by_behavior:
                 if behavior not in seen_set:
                     seen_set.add(behavior)
@@ -153,6 +154,17 @@ class AnalysisController(QObject):
             events = self._model.get_event_tuples(path)
             if not events:
                 continue
+            # Session clock (RecordingStart = 0). The predictability chance
+            # baseline circularly shifts onsets over [0, last offset); on raw
+            # video time a session that started late was padded with its
+            # pre-session gap, inflating above_chance. Transition counts only
+            # use order and time differences, so they are unaffected.
+            start = self._model.get_file_recording_start(path)
+            if start:
+                events = [
+                    (behavior, onset - start, offset - start)
+                    for behavior, onset, offset in events
+                ]
             animal_id = self._model._animal_id_from_path(path)
             per_file.append((animal_id, events))
             for behavior, _onset, _offset in events:

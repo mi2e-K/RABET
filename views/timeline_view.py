@@ -1,7 +1,7 @@
 # views/timeline_view.py - Updated RecordingStart marker display
 import logging
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QScrollArea, QSpinBox, QSizePolicy,
     QCheckBox, QFrame
 )
@@ -357,11 +357,23 @@ class TimelineView(QWidget):
         Args:
             events (list): List of BehaviorEvent objects
         """
+        # The selection is an index into the list. Events are appended,
+        # removed and moved from the active tail into the completed list, so
+        # an index kept as-is could silently point at another event (and
+        # Delete would remove that one). Re-find the selected event itself.
+        selected = self._selected_event
+        if 0 <= selected < len(self._events):
+            selected_event = self._events[selected]
+            self._selected_event = next(
+                (i for i, event in enumerate(events) if event is selected_event), -1
+            )
+        else:
+            self._selected_event = -1
         self._events = events
         self._update_colors()
         self._refresh_timeline_geometry()
         self.timeline_canvas.update()
-    
+
     @Slot(int)
     def set_duration(self, duration_ms):
         """
@@ -1186,6 +1198,15 @@ class TimelineCanvas(QWidget):
             self.timeline_view.request_delete_selected_event()
             event.accept()
             return
+
+        # The canvas holds focus only so Delete reaches it. Left/Right are
+        # frame stepping in the main window; left to propagate, they were
+        # consumed by the enclosing scroll area instead.
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            window = self.window()
+            if window is not None and window is not self:
+                QApplication.sendEvent(window, event)
+                return
 
         super().keyPressEvent(event)
 

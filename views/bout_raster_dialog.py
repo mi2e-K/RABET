@@ -3,7 +3,7 @@
 # Draws, for one behaviour, one timeline row per animal with each bout a block
 # (width = duration, height/colour = events in the bout). Embedded as the
 # "Raster" tab of the Bout Analysis dialog (1.4.0). Pure-visual; bout numbers
-# come from models.bout_analysis.
+# come from models.bout_analysis. Times are seconds from recording start.
 
 from __future__ import annotations
 
@@ -35,7 +35,8 @@ class _RasterCanvas(QWidget):
     def set_data(self, data, max_t):
         self._data = data
         self._max_t = max(1.0, max_t)
-        self.setMinimumHeight(40 + len(data) * self._row_h + 6)
+        # Rows, then the tick labels and the axis title underneath.
+        self.setMinimumHeight(16 + len(data) * self._row_h + 42)
         self.updateGeometry()
         self.update()
 
@@ -62,6 +63,10 @@ class _RasterCanvas(QWidget):
             qp.setPen(QPen(axis_col))
             qp.drawText(x - 8, bottom + 14, f"{t}s")
             t += 60
+        axis_title = "Time from recording start (s)"
+        title_w = qp.fontMetrics().horizontalAdvance(axis_title)
+        qp.setPen(QPen(axis_col))
+        qp.drawText(left + max(0, (plot_w - title_w) // 2), bottom + 32, axis_title)
         for i, (animal_id, bouts) in enumerate(self._data):
             base = top + i * rh + rh - 6
             qp.setPen(QPen(QColor(80, 80, 80)))

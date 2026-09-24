@@ -68,7 +68,10 @@ class VideoPlayerView(QWidget):
         # Add throttling for slider updates
         self._last_seek_time = 0
         self._slider_throttle_ms = 100  # Limit seek rate to every 100ms
-        
+        # Whether the handle actually moved since it was pressed; a bare click
+        # on the handle must not seek (see on_position_released).
+        self._slider_dragged = False
+
         # Flag to prevent button rapid-fire issues
         self._step_in_progress = False
         self._step_cooldown_ms = 300  # Longer cooldown to ensure proper refresh
@@ -236,6 +239,10 @@ class VideoPlayerView(QWidget):
         self.position_slider.setMinimum(0)
         self.position_slider.setMaximum(1000)
         self.position_slider.setValue(0)
+        # Like the other playback controls: a drag must not leave keyboard
+        # focus here, where the arrow keys were eaten by the slider (without
+        # even seeking) instead of stepping frames.
+        self.position_slider.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.controls_container_layout.addWidget(self.position_slider)
         
         # Control buttons layout
@@ -486,6 +493,7 @@ class VideoPlayerView(QWidget):
         self.step_forward_button.clicked.connect(self.on_step_forward)
         self.step_backward_button.clicked.connect(self.on_step_backward)
         
+        self.position_slider.sliderPressed.connect(self.on_position_pressed)
         self.position_slider.sliderMoved.connect(self.on_position_moved)
         self.position_slider.sliderReleased.connect(self.on_position_released)
         
@@ -692,18 +700,24 @@ class VideoPlayerView(QWidget):
         worktree) still works.
         """
         return self.video_frame
-    
+
+    def on_position_pressed(self):
+        """Handle the position slider handle being pressed."""
+        self._slider_dragged = False
+
     def on_position_moved(self, position):
         """
         Handle position slider moved.
-        
+
         Args:
             position (int): Slider position
         """
         # Skip if controls are disabled
         if self._controls_disabled:
             return
-            
+
+        self._slider_dragged = True
+
         # Update the time label
         self.update_time_label(position)
         
@@ -720,7 +734,15 @@ class VideoPlayerView(QWidget):
         # Skip if controls are disabled
         if self._controls_disabled:
             return
-            
+
+        # A click on the handle without dragging leaves the slider on its
+        # 1/1000-quantised value, which lies up to a whole step behind the
+        # playhead. Seeking there was a small user rewind that, with
+        # "Preserve on rewind" off, deleted the most recent annotations.
+        if not self._slider_dragged:
+            return
+        self._slider_dragged = False
+
         position = self.position_slider.value()
         # Convert to milliseconds based on slider range
         position_ms = int(position / 1000.0 * max(1, self._duration))

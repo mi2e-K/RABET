@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QTimer
 from utils.config_path_manager import ConfigPathManager  # Import the new class
+from utils.file_manager import set_aside_unreadable_file
 from utils.defaults import default_action_map
 
 class ActionMapModel(QObject):
@@ -58,7 +59,11 @@ class ActionMapModel(QObject):
 
         # Flag to track if we've loaded successfully
         self._loaded_successfully = False
-        
+
+        # [(original, set-aside copy)] for an unreadable user map, reported
+        # once after startup (signals are not connected yet at this point).
+        self.recovered_files = []
+
         # Try to load user's action map or default
         self._load_action_map()
         
@@ -83,6 +88,11 @@ class ActionMapModel(QObject):
                 return
             else:
                 self.logger.warning("Failed to load user action map, trying default")
+                # The default map is saved as the new user map below; keep
+                # the unreadable one instead of overwriting it.
+                backup = set_aside_unreadable_file(user_map_path)
+                if backup:
+                    self.recovered_files.append((str(user_map_path), backup))
         
         # If no user map, try default
         self._try_load_default_map()

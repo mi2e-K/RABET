@@ -451,6 +451,32 @@ class AppController(QObject):
         # PhaseLoadingOverlay still covers the case where the user opens a tab
         # before the warm-up finishes.
         QTimer.singleShot(600, self._warm_up_heavy_imports)
+        QTimer.singleShot(0, self._report_recovered_config_files)
+
+    def _report_recovered_config_files(self):
+        """Tell the user once which unreadable settings files were set aside.
+
+        The models fall back to defaults during construction, before any
+        signal is connected, so they only record what they set aside.
+        """
+        recovered = list(getattr(self.config_manager, "recovered_files", []))
+        recovered += list(getattr(self.action_map_model, "recovered_files", []))
+        if not recovered:
+            return
+        import os
+        from PySide6.QtWidgets import QMessageBox
+
+        details = "\n".join(
+            f"{original}\n    kept as: {os.path.basename(backup)}"
+            for original, backup in recovered
+        )
+        QMessageBox.warning(
+            self.main_window,
+            "Settings Could Not Be Read",
+            "These settings files could not be read in full, so RABET used "
+            "default values for them. The original files were kept next to "
+            f"them:\n\n{details}",
+        )
     
     def connect_main_window_signals(self):
         """Connect main window signals to controllers."""

@@ -990,11 +990,30 @@ class MainWindow(QMainWindow):
         for widget in focus_managed_widgets:
             widget.installEventFilter(self)
 
+        # Clicks on a table's cells land on its viewport, not on the table, so
+        # the filter above never saw them: the reset timer was not armed and
+        # the table kept focus, swallowing behaviour keys through its
+        # type-to-search.
+        for table in (self.action_map_view.mappings_table,
+                      self.action_map_view.active_behaviors):
+            table.viewport().installEventFilter(self)
+
+        # Enter in the step-size box hands the keyboard back for annotation
+        # (clicks into its text area never reach the filter either).
+        self.video_player_view.step_size_spin.editingFinished.connect(
+            self._on_step_size_edited
+        )
+
         # Add hover tracking to step buttons
         self.video_player_view.step_forward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.video_player_view.step_backward_button.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         self.logger.debug(f"Installed event filters on {len(focus_managed_widgets)} widgets")
+
+    def _on_step_size_edited(self):
+        """Return focus after Enter; a focus-out is handled by eventFilter."""
+        if self.video_player_view.step_size_spin.hasFocus():
+            self.resetFocus()
 
     def _schedule_focus_reset(self):
         """Re-arm the shared focus-reset timer (single allocation)."""
@@ -1267,7 +1286,11 @@ class MainWindow(QMainWindow):
             message (str): Status message
         """
         self.timeline_view.set_status_message(message)
-    
+
+    def status_message_text(self):
+        """Return the message currently shown by ``set_status_message``."""
+        return self.timeline_view.status_message.text()
+
     def set_video_info(self, info):
         """
         Set video information in status bar.
@@ -1593,10 +1616,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'recording_control_view'):
                 from PySide6.QtCore import QTime
                 rcv = self.recording_control_view
+
+                # Only a missing value takes the default: ``or 5`` also
+                # replaced a saved 0, so 00:00:30 came back as 00:05:30.
+                def _saved_part(key, default):
+                    value = annotation_section.get(key)
+                    try:
+                        return default if value is None else int(value)
+                    except (TypeError, ValueError):
+                        return default
+
                 rcv.duration_time_edit.setTime(QTime(
-                    int(annotation_section.get("last_recording_hours", 0) or 0),
-                    int(annotation_section.get("last_recording_minutes", 5) or 5),
-                    int(annotation_section.get("last_recording_seconds", 0) or 0),
+                    _saved_part("last_recording_hours", 0),
+                    _saved_part("last_recording_minutes", 5),
+                    _saved_part("last_recording_seconds", 0),
                 ))
                 rcv.preserve_annotations_checkbox.setChecked(
                     bool(annotation_section.get("preserve_on_rewind", False))

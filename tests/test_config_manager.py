@@ -6,8 +6,17 @@ validation that degrades a corrupt settings.json to defaults (BUG-005).
 
 from __future__ import annotations
 
+import pytest
+
 from utils.config_manager import ConfigManager
 from utils.file_manager import FileManager
+
+
+@pytest.fixture(autouse=True)
+def _isolated_app_data(tmp_path, monkeypatch):
+    """Keep settings.json (and anything set aside next to it) out of the
+    real user folder while these tests load and save it."""
+    monkeypatch.setattr(FileManager, "_get_app_data_dir", lambda self: tmp_path)
 
 
 def _new_config():

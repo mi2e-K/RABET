@@ -245,6 +245,15 @@ class ProjectModel(QObject):
             ambiguous_legacy_ids = set()
 
             for annotation_path in annotation_files:
+                # The explicit video -> file link wins. Same-name videos get
+                # unique files (mouse_2_annotations.csv) that the basename
+                # match below cannot tie back to their video, so their status
+                # was reset to "not annotated" on every reload.
+                linked_videos = self._videos_linked_to_annotation(annotation_path)
+                if linked_videos:
+                    matched_videos.update(linked_videos)
+                    continue
+
                 annotation_base = os.path.splitext(os.path.basename(annotation_path))[0]
                 if annotation_base.endswith("_annotations"):
                     annotation_base = annotation_base[:-12]
@@ -292,6 +301,23 @@ class ProjectModel(QObject):
                 self.logger.info("Updated annotation status based on existing files")
         except Exception as e:
             self.logger.error(f"Error updating annotation status: {str(e)}")
+
+    @staticmethod
+    def _annotation_key(annotation_path):
+        """Comparable form of a project-relative annotation path."""
+        return os.path.normcase(os.path.normpath(str(annotation_path).replace("\\", "/")))
+
+    def _videos_linked_to_annotation(self, annotation_path):
+        """Videos whose recorded annotation file (``video_annotation_files``)
+        is ``annotation_path``."""
+        key = self._annotation_key(annotation_path)
+        files_map = self._project_config.get("video_annotation_files", {}) or {}
+        linked = []
+        for video_path in self._project_config.get("videos", []):
+            linked_path = files_map.get(self._get_video_id(video_path))
+            if linked_path and self._annotation_key(linked_path) == key:
+                linked.append(video_path)
+        return linked
 
     def _migrate_video_annotation_status(self):
         """
@@ -775,7 +801,13 @@ class ProjectModel(QObject):
             self._is_modified = True
             
             # Update annotation status if requested
-            if update_status:
+            linked_videos = self._videos_linked_to_annotation(rel_path) if update_status else []
+            if linked_videos:
+                # A recording's own file: the explicit link names its video
+                # even when the file name alone matches none (mouse_2_...).
+                for video_path in linked_videos:
+                    self.set_video_annotation_status(video_path, "annotated")
+            elif update_status:
                 # Extract base filename without extension and remove "_annotations" suffix if present
                 base_name = os.path.splitext(os.path.basename(annotation_path))[0]
                 if base_name.endswith("_annotations"):

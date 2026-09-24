@@ -573,13 +573,31 @@ class ProjectView(QWidget):
             file_type: Type of file (videos, annotations, action_maps, analyses)
         """
         path = item.text(1)
-        
+
+        # Same rule as ProjectModel.remove_file: a file stored under the
+        # project's own folder for its type (e.g. "annotations/...") is the
+        # project's copy and is deleted from disk; any other file is only
+        # dropped from the list. The old wording did not say either.
+        parts = Path(path).parts
+        deletes_from_disk = bool(parts) and parts[0] == file_type
+        if deletes_from_disk:
+            detail = (
+                "This file is inside the project folder and will be deleted "
+                "from disk. (Files added from elsewhere were copied in; their "
+                "originals are not affected.)"
+            )
+            default = QMessageBox.StandardButton.No
+        else:
+            detail = "The file itself stays on disk; it is only removed from the project list."
+            default = QMessageBox.StandardButton.NoButton  # Qt's choice, as before
+
         # Confirm removal
         result = QMessageBox.question(
             self,
             "Remove File",
-            f"Remove this file from the project?\n\n{path}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            f"Remove this file from the project?\n\n{path}\n\n{detail}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            default,
         )
         
         if result == QMessageBox.StandardButton.Yes:
