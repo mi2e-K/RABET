@@ -560,21 +560,7 @@ class AnnotationController(QObject):
             if result == QMessageBox.StandardButton.Yes:
                 # Stop the current recording and clear all annotations
                 self.logger.info("User chose to reset recording session after rewinding past start point")
-                # Set flag to skip auto-export when stopping recording
-                self._skip_auto_export = True
-                self.stop_timed_recording()
-                self._annotation_model.clear_events()
-                
-                # Provide feedback to the user
-                self._main_window.set_status_message("Recording session reset. Press 'Start Recording' to begin a new session.")
-                
-                # Update the timeline
-                self._timeline_view.set_events([])
-                
-                # Update project status if in project mode
-                if self._project_mode and self._project_model and self._current_video_id:
-                    self._project_model.set_video_annotation_status(self._current_video_id, "not_annotated")
-                
+                self.reset_recording_session()
                 return True
             else:
                 self.logger.info("User chose to continue recording after rewinding past start point")
@@ -636,6 +622,33 @@ class AnnotationController(QObject):
                 
         return False
     
+    def reset_recording_session(self):
+        """Discard the running session: stop it without saving, clear events.
+
+        The recorder returns to idle, ready for a new Start Recording. Used
+        after rewinding before the recording start and by Clear Annotations
+        during a recording.
+        """
+        # Set flag to skip auto-export when stopping recording
+        self._skip_auto_export = True
+        try:
+            self.stop_timed_recording()
+        finally:
+            # stop_timed_recording clears the flag on its normal path; make
+            # sure a failure there cannot silence the next real auto-save.
+            self._skip_auto_export = False
+        self._annotation_model.clear_events()
+
+        # Provide feedback to the user
+        self._main_window.set_status_message("Recording session reset. Press 'Start Recording' to begin a new session.")
+
+        # Update the timeline
+        self._timeline_view.set_events([])
+
+        # Update project status if in project mode
+        if self._project_mode and self._project_model and self._current_video_id:
+            self._project_model.set_video_annotation_status(self._current_video_id, "not_annotated")
+
     @Slot()
     def on_new_video_load_starting(self):
         """Hook called by ``VideoController.load_video`` BEFORE the
@@ -2099,6 +2112,17 @@ class AnnotationController(QObject):
     @Slot()
     def import_annotations_dialog(self):
         """Open a dialog to import annotations from CSV."""
+        if self._is_recording:
+            # Replacing the events mid-session drops its RecordingStart
+            # marker while the recording keeps running.
+            QMessageBox.information(
+                self._main_window,
+                "Import Annotations",
+                "A recording session is in progress. Stop it, or discard it "
+                "with Clear Annotations, before importing annotations.",
+            )
+            return
+
         # Confirm with user if there are existing annotations
         if self._annotation_model.get_all_events():
             result = QMessageBox.question(
@@ -2243,9 +2267,30 @@ class AnnotationController(QObject):
 
     @Slot()
     def clear_annotations(self):
-        """Clear all annotations after confirmation."""
+        """Clear all annotations after confirmation.
+
+        During a recording this discards the whole session instead (see
+        reset_recording_session): clearing only the events left the session
+        running without its RecordingStart marker, and the next save wrote
+        a file the analysis could not place in time.
+        """
         # Check if there are any annotations to clear
         if not self._annotation_model.get_all_events():
+            return
+
+        if self._is_recording:
+            result = QMessageBox.question(
+                self._main_window,
+                "Clear Annotations",
+                "A recording session is in progress.\n\n"
+                "Clearing stops the recording and discards this session's "
+                "annotations without saving them. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if result == QMessageBox.StandardButton.Yes:
+                self.logger.info("User cleared annotations during recording; session reset")
+                self.reset_recording_session()
             return
         
         # Confirm with user

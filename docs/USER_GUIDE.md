@@ -237,7 +237,8 @@ frames backward) is governed by **Preserve on rewind**:
 - **On** (the default): all annotations are kept.
 
 Rewinding before the session's start point asks whether to reset the whole
-session.
+session. `Edit > Clear Annotations` during a session offers the same reset:
+the session is stopped and its annotations are discarded without saving.
 
 Point events are completed immediately, so they are not held in the active
 key list.
@@ -266,7 +267,8 @@ Point events have `Onset == Offset`. Frequency counts both state and point
 events. Duration for point events is zero.
 
 `File > Import Annotations` reloads a RABET annotation CSV into the timeline.
-If events are already loaded, RABET asks before replacing them.
+If events are already loaded, RABET asks before replacing them. Import is not
+available while a recording session is running; stop the session first.
 
 #### Where recordings are auto-saved
 
