@@ -487,7 +487,9 @@ Predictability タブは、より焦点を絞った問いに答えます。
 - chance correction を行うか
 
 chance correction では、antecedent の時刻を円環シフトして、antecedent が単に
-多いだけで生じる基準値を推定します。表には個体ごとの observed、chance、
+多いだけで生じる基準値を推定します。時刻は各ファイルの記録開始
+（`RecordingStart`）を 0 として扱うため、記録開始前の動画区間によって基準値が
+薄まることはありません。表には個体ごとの observed、chance、
 above chance が表示されます。群間比較や統計検定は、エクスポート後に下流の
 統計ソフトで行ってください。
 

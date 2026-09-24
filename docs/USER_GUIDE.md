@@ -493,7 +493,9 @@ Choose:
 - optional chance correction
 
 Chance correction circularly shifts antecedent times to estimate a baseline
-given how common the antecedents are. The table reports per-animal observed
+given how common the antecedents are. Times are measured from each file's
+recording start (`RecordingStart`), so video before the session does not
+dilute the baseline. The table reports per-animal observed
 fraction, chance mean, and above-chance fraction. Group comparisons should be
 run downstream.
 
