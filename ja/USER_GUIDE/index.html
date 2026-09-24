@@ -2212,36 +2212,41 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.2.AppImage
 </span></code></pre></div>
 <h3 id="13">1.3 初回起動時に作られるもの<a class="headerlink" href="#13" title="Permanent link">&para;</a></h3>
-<p>RABET は初回起動時に、ユーザー設定用のフォルダを作成します。</p>
+<p>RABET は初回起動時に、ユーザー用のフォルダを 2 つ作成します。</p>
 <table>
 <thead>
 <tr>
 <th>OS</th>
-<th>場所</th>
+<th>設定フォルダ</th>
+<th>構成ファイルのフォルダ</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Windows</td>
-<td><code>%APPDATA%\RABET\</code></td>
+<td><code>%LOCALAPPDATA%\RABET\config\</code></td>
+<td><code>%APPDATA%\RABET\configs\</code></td>
 </tr>
 <tr>
 <td>macOS</td>
-<td><code>~/Library/Application Support/RABET/</code></td>
+<td><code>~/Library/Application Support/RABET/config/</code></td>
+<td><code>~/Library/Application Support/RABET/configs/</code></td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>~/.config/RABET/</code></td>
+<td><code>~/.rabet/config/</code></td>
+<td><code>~/.config/RABET/configs/</code></td>
 </tr>
 </tbody>
 </table>
-<p>主な中身は次のとおりです。</p>
 <ul>
-<li><code>configs/</code>: アクションマップ、解析メトリクス、色設定</li>
-<li><code>logs/</code>: トラブルシューティング用の実行ログ</li>
-<li><code>projects/</code>: プロジェクトの既定保存先</li>
+<li>設定フォルダには <code>settings.json</code> が入ります。ウィンドウの配置、最近使った
+  ファイル、テスト時間など、9.1 に挙げた設定が保存されます。</li>
+<li>構成ファイルのフォルダには、グローバルのアクションマップと、Visualization
+  タブで保存したカラーマップが入ります（9.2 を参照）。</li>
 </ul>
-<p>ファイル選択ダイアログで最後に開いたフォルダも記憶されます。</p>
+<p>プロジェクトは、作成時に選んだ場所に保存されます。ファイル選択ダイアログで
+最後に開いたフォルダも記憶されます。</p>
 <h3 id="14">1.4 画面構成<a class="headerlink" href="#14" title="Permanent link">&para;</a></h3>
 <p>RABET の主要な作業画面は 5 つのタブに分かれています。</p>
 <table>
@@ -2407,15 +2412,32 @@ Reset によるマップ全体の置き換え）を行うと、確認ダイア�
 <li><strong>Start Recording</strong> を押す</li>
 <li><code>Space</code> でセッションと動画再生を開始する</li>
 <li>行動キーを押してスコアリングする</li>
-<li>必要に応じて <strong>Pause</strong>、<strong>Resume</strong>、<strong>Stop</strong> を使う</li>
+<li>一時停止と再開は <code>Space</code> で行います（記録は動画の再生に連動します）。
+   途中で終えるときは <strong>Stop</strong> を押します。それまでに記録したアノテーションは
+   保存されます。（開始キーを待っている間はボタンが <strong>Cancel</strong> と表示され、
+   押すと記録せずに取り消します。）</li>
 </ol>
-<p>設定した時間が経過すると、録画は自動で終了し、動画も一時停止します。</p>
+<p>設定した時間が経過すると、録画は自動で終了し、動画も一時停止します。
+先に動画が終わった場合、セッションは開いたままになるので、<strong>Stop</strong> を押して
+終了・保存してください。</p>
+<p>Project モードでは動画ごとにアノテーションファイルが 1 つなので、新しい
+セッションで置き換わります。置き換わる前のファイルは同じ場所に
+<code>&lt;名前&gt;.&lt;日時&gt;.csv.bak</code> として残るので、拡張子を <code>.csv</code> に戻せば復元できます。</p>
 <h3 id="25">2.5 巻き戻し時の挙動<a class="headerlink" href="#25" title="Permanent link">&para;</a></h3>
-<p><strong>Preserve on rewind</strong> がオフの場合、まだキーを押している途中の State
-イベントについて、再生ヘッドをその開始時刻より前へ戻すと、そのイベントは
-破棄されます。早く押しすぎたイベントを取り消したいときに便利です。</p>
-<p>オンの場合は、そのような途中イベントも保持されます。Point イベントは押した
-瞬間に完了するため、アクティブキー一覧には残りません。</p>
+<p>セッション中の巻き戻し（位置スライダーを戻す、またはコマ戻し）の扱いは
+<strong>Preserve on rewind</strong> で決まります。</p>
+<ul>
+<li><strong>オフ</strong>: 戻した位置より後のアノテーションを削除します。戻した位置を
+  またぐイベントはその位置で終わるよう短くし、戻した位置より後に始まった
+  押し続け中のイベントは破棄します。採点をやり直したい区間があるときに
+  使います。</li>
+<li><strong>オン</strong>（既定）: アノテーションはすべて保持されます。</li>
+</ul>
+<p>セッションの開始位置より前まで戻すと、セッション全体をリセットするかを
+確認します。セッション中に <code>Edit &gt; Clear Annotations</code> を選んだ場合も同じ
+リセットになり、確認のうえで記録を停止し、そのセッションのアノテーションを
+保存せずに破棄します。</p>
+<p>Point イベントは押した瞬間に完了するため、アクティブキー一覧には残りません。</p>
 <h3 id="26">2.6 タイムライン編集<a class="headerlink" href="#26" title="Permanent link">&para;</a></h3>
 <p>タイムラインでは、State イベントは横長のバー、Point イベントは細い目印として
 表示されます。</p>
@@ -2438,7 +2460,8 @@ Reset によるマップ全体の置き換え）を行うと、確認ダイア�
 Frequency にはカウントされます。</p>
 <p><code>File &gt; Import Annotations</code> で、保存済みの RABET CSV をタイムラインへ
 読み込めます。既にイベントが読み込まれている場合は、置き換える前に確認
-ダイアログが表示されます。</p>
+ダイアログが表示されます。記録セッション中は読み込めないため、先に
+セッションを停止してください。</p>
 <h4 id="_4">自動保存の保存先<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h4>
 <p>タイムドセッションが終了すると、アノテーション CSV が自動保存されます。</p>
 <p>プロジェクトモード以外では、元動画と同じフォルダに
@@ -2541,11 +2564,15 @@ broken-stick 法へフォールバックします。イベント数が少ない�
 <p>表はクリップボードへコピーしたり、CSV として保存したりできます。</p>
 <h3 id="44-raster">4.4 Raster タブと図の出力<a class="headerlink" href="#44-raster" title="Permanent link">&para;</a></h3>
 <p>Raster タブでは、個体ごとのバウトが時系列で表示されます。バーの高さと色は、
-そのバウトに含まれるイベント数を表します。</p>
+そのバウトに含まれるイベント数を表します。時間軸は各ファイルの記録開始
+（<code>RecordingStart</code>）を 0 とするため、動画内でセッションを始めた位置が個体ごとに
+違っても、行どうしの時間が揃います。</p>
 <p>出力できるもの:</p>
 <ul>
 <li>バウトラスタ図: PNG / SVG / PDF</li>
-<li>バウト一覧: CSV</li>
+<li>バウト一覧: CSV。<code>start_s</code>／<code>end_s</code> は動画上の時刻（動画でバウトを探す
+  ときに使います）、<code>start_from_recording_s</code>／<code>end_from_recording_s</code> は
+  ラスタと同じ記録開始からの時刻です。</li>
 </ul>
 <p>図を出力する前に <strong>DPI</strong> を指定できます。出力完了ダイアログは 1 秒後に
 自動で閉じます。</p>
@@ -2628,7 +2655,9 @@ adjusted residual、odds ratio、フラグ、レベル、BCI、時間窓が含�
 <li>chance correction を行うか</li>
 </ul>
 <p>chance correction では、antecedent の時刻を円環シフトして、antecedent が単に
-多いだけで生じる基準値を推定します。表には個体ごとの observed、chance、
+多いだけで生じる基準値を推定します。時刻は各ファイルの記録開始
+（<code>RecordingStart</code>）を 0 として扱うため、記録開始前の動画区間によって基準値が
+薄まることはありません。表には個体ごとの observed、chance、
 above chance が表示されます。群間比較や統計検定は、エクスポート後に下流の
 統計ソフトで行ってください。</p>
 <p>棒グラフは PNG / SVG / PDF で出力できます。</p>
@@ -2679,6 +2708,17 @@ RABET は「2 つの出力を比較する」だけなので、2 人の評価者�
 <p>Detailed モードは、同じ動画をスコアリングした 2 つのアノテーション CSV を
 比較します。指定した bin width で時間を区切り、各ビンに行動が存在するかどうかを
 比較します。</p>
+<p>比較するのは、両方のファイルが記録していた区間だけです。</p>
+<ul>
+<li>開始：2 つのファイルの <code>RecordingStart</code> のうち遅い方（どちらかのファイルに
+  <code>RecordingStart</code> がなければ動画の 0 秒）</li>
+<li>終了：両方のファイルにテスト時間があれば、「<code>RecordingStart</code> ＋ テスト時間」の
+  早い方。なければ、両ファイルで最も遅いイベントの終了時刻（テスト時間の方が長ければ
+  テスト時間）</li>
+</ul>
+<p>ビンの区切りは動画の時刻に合わせたまま（1 秒幅なら 0, 1, 2 … 秒）で、この区間と
+重なるビンを比較します。比較区間は結果表の上と、エクスポートした CSV に表示されます。
+2 つのテスト時間が異なるときは、警告が表示されます。</p>
 <p>行動ごとに次を出力します。</p>
 <ul>
 <li>Cohen's kappa</li>
@@ -2823,6 +2863,9 @@ review CSV は品質管理の補助資料です。Detailed モードの <strong>
 <p>プロジェクト内の動画を選んで <strong>Annotate</strong> を押すと、Annotation タブに切り替わり、
 録画終了後にアノテーションがプロジェクトへ保存されます。その後、自動で Project
 タブに戻ります。</p>
+<p><strong>Remove from Project</strong> は、プロジェクトフォルダ内にあるファイル（プロジェクト用の
+コピー）をディスクから削除します。ほかの場所のファイルを参照している場合は、
+一覧から外すだけです。どちらになるかは確認画面に表示されます。</p>
 <p>プロジェクトのマニフェストは変更のたびに自動保存されます。</p>
 <h3 id="_6">プロジェクトのアクションマップ<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <p>プロジェクトは専用のアクションマップを持ちます。これにより、あとでグローバルの
@@ -2861,18 +2904,24 @@ review CSV は品質管理の補助資料です。Detailed モードの <strong>
 <li>ファイル選択ダイアログの直近フォルダ</li>
 </ul>
 <h3 id="92">9.2 設定ファイル<a class="headerlink" href="#92" title="Permanent link">&para;</a></h3>
-<p>ユーザーデータフォルダには主に次のファイルが入ります。</p>
+<p>構成ファイルのフォルダ（1.3 を参照）には次のファイルが入ります。</p>
 <ul>
-<li><code>configs/default_action_map.json</code></li>
-<li><code>configs/user_action_map.json</code> — グローバルのアクションマップ。専用マップを
+<li><code>user_action_map.json</code> — グローバルのアクションマップ。専用マップを
   持つプロジェクトでは、代わりにプロジェクト内に保存されます
   （<a href="#プロジェクトのアクションマップ">プロジェクトのアクションマップ</a> を参照）</li>
-<li><code>configs/default_metrics.json</code></li>
-<li><code>configs/custom_color_map.json</code></li>
-<li><code>logs/rabet_&lt;date&gt;.log</code></li>
+<li><code>custom_*.json</code> — Visualization タブで保存したカラーマップ</li>
 </ul>
+<p>同梱の既定ファイル（<code>default_action_map.json</code>、<code>default_metrics.json</code>、
+<code>custom_color_map.json</code>）はアプリ本体の <code>configs</code> フォルダから読み込まれ、
+ほかの場所に置いたコピーは使われません。アクションマップは Action Map
+パネルで、メトリクスは <strong>Configure Metrics...</strong>（<strong>Save Config...</strong> /
+<strong>Load Config...</strong>）で変更してください。</p>
+<p>設定フォルダの <code>settings.json</code> には、9.1 に挙げた設定が保存されます。</p>
 <p>設定ファイルとプロジェクトファイルは UTF-8（BOM の有無を問わず）として
 読み込まれるため、手動で編集した場合も日本語の行動名がそのまま保持されます。</p>
+<p><code>settings.json</code> や <code>user_action_map.json</code> が読み込めない場合、RABET は既定値で
+起動し、読めなかったファイルを <code>&lt;名前&gt;.corrupt-&lt;日時&gt;</code> として同じ場所に残して、
+起動後にお知らせします。</p>
 <h3 id="93-csv">9.3 CSV 出力<a class="headerlink" href="#93-csv" title="Permanent link">&para;</a></h3>
 <p>RABET が出力する主な CSV:</p>
 <ul>
@@ -2905,10 +2954,12 @@ kappa や alpha は未定義です。</p>
 <p>ソースから実行していて import error が出る場合は、<code>pyproject.toml</code> の依存関係を
 インストールするか、同梱の conda 環境を使ってください。</p>
 <h3 id="_10">ログを確認する<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
-<p><code>Log &gt; View Logs</code> でログフォルダを開けます。古いログは
-<code>Log &gt; Clean Up Logs</code> から削除できます。</p>
-<p>バグ報告時には、<code>Help &gt; About</code> に表示される RABET のバージョンと、該当するログを
-添付してください。</p>
+<p><code>Log &gt; View Logs</code> で、このセッションのログをログビューアに表示できます。
+ログはメモリ上に保持されるため（直近 5,000 件）、必要なら終了前に
+ビューアの <strong>Export Log</strong> で保存してください。ソースから <code>--dev</code> を付けて
+起動した場合は、<code>logs/rabet.log</code> にも書き出されます。</p>
+<p>バグ報告時には、<code>Help &gt; About</code> に表示される RABET のバージョンと、書き出した
+ログを添付してください。</p>
 <hr />
 <h2 id="11">11. 引用とサポート<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
 <p>Issues: <a href="https://github.com/mi2e-K/RABET/issues">https://github.com/mi2e-K/RABET/issues</a></p>

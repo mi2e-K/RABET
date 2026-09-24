@@ -2214,36 +2214,41 @@ signed. Choose <strong>More info</strong> and <strong>Run anyway</strong> if you
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./RABET-Linux-x86_64-1.4.2.AppImage
 </span></code></pre></div>
 <h3 id="13-what-rabet-creates">1.3 What RABET Creates<a class="headerlink" href="#13-what-rabet-creates" title="Permanent link">&para;</a></h3>
-<p>On first launch, RABET creates a user data folder:</p>
+<p>On first launch, RABET creates two folders for your files:</p>
 <table>
 <thead>
 <tr>
 <th>OS</th>
-<th>Location</th>
+<th>Settings folder</th>
+<th>Configuration folder</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Windows</td>
-<td><code>%APPDATA%\RABET\</code></td>
+<td><code>%LOCALAPPDATA%\RABET\config\</code></td>
+<td><code>%APPDATA%\RABET\configs\</code></td>
 </tr>
 <tr>
 <td>macOS</td>
-<td><code>~/Library/Application Support/RABET/</code></td>
+<td><code>~/Library/Application Support/RABET/config/</code></td>
+<td><code>~/Library/Application Support/RABET/configs/</code></td>
 </tr>
 <tr>
 <td>Linux</td>
-<td><code>~/.config/RABET/</code></td>
+<td><code>~/.rabet/config/</code></td>
+<td><code>~/.config/RABET/configs/</code></td>
 </tr>
 </tbody>
 </table>
-<p>The folder contains:</p>
 <ul>
-<li><code>configs/</code>: action maps, metric settings, and colour maps.</li>
-<li><code>logs/</code>: runtime logs for troubleshooting.</li>
-<li><code>projects/</code>: default location for RABET projects.</li>
+<li>The settings folder holds <code>settings.json</code>: window layout, recent files,
+  recording duration and the other preferences listed in 9.1.</li>
+<li>The configuration folder holds your global action map and the colour maps
+  you save from the Visualization tab (see 9.2).</li>
 </ul>
-<p>RABET also remembers the last folders used in file dialogs.</p>
+<p>Projects are stored wherever you choose when creating them. RABET also
+remembers the last folders used in file dialogs.</p>
 <h3 id="14-main-workflows">1.4 Main Workflows<a class="headerlink" href="#14-main-workflows" title="Permanent link">&para;</a></h3>
 <p>The main window is organised into five tabs:</p>
 <table>
@@ -2413,13 +2418,29 @@ signal and never creates an annotation, even if it is mapped to a behaviour.</p>
 <li>Click <strong>Start Recording</strong>.</li>
 <li>Press <code>Space</code> to start the session and play the video.</li>
 <li>Press behaviour keys while scoring.</li>
-<li>Use <strong>Pause</strong>, <strong>Resume</strong>, or <strong>Stop</strong> as needed.</li>
+<li>Press <code>Space</code> to pause or resume; the recording follows the video. To end
+   the session early, click <strong>Stop</strong>; the annotations recorded so far are
+   saved. (While RABET waits for the start key, the button reads <strong>Cancel</strong>
+   and leaves without recording.)</li>
 </ol>
-<p>When the duration elapses, RABET stops the recording and pauses playback.</p>
+<p>When the duration elapses, RABET stops the recording and pauses playback. If
+the video ends first, the session waits; click <strong>Stop</strong> to end and save it.</p>
+<p>In Project mode each video has one annotation file, so a new session
+replaces it. The previous version is kept next to it as
+<code>&lt;name&gt;.&lt;date-time&gt;.csv.bak</code>; rename it to <code>.csv</code> to restore it.</p>
 <h3 id="25-rewind-handling">2.5 Rewind Handling<a class="headerlink" href="#25-rewind-handling" title="Permanent link">&para;</a></h3>
-<p>If <strong>Preserve on rewind</strong> is off, an active state event is discarded when the
-playhead is moved backward past its onset. This is useful when you started an
-event too early. If the checkbox is on, that active event is kept.</p>
+<p>Rewinding during a session (dragging the position slider back or stepping
+frames backward) is governed by <strong>Preserve on rewind</strong>:</p>
+<ul>
+<li><strong>Off</strong>: annotations after the new position are removed. An event that
+  spans the new position is shortened to end there, and a still-held event
+  that started after it is discarded. Use this to redo a stretch you scored
+  wrongly.</li>
+<li><strong>On</strong> (the default): all annotations are kept.</li>
+</ul>
+<p>Rewinding before the session's start point asks whether to reset the whole
+session. <code>Edit &gt; Clear Annotations</code> during a session offers the same reset:
+the session is stopped and its annotations are discarded without saving.</p>
 <p>Point events are completed immediately, so they are not held in the active
 key list.</p>
 <h3 id="26-timeline-editing">2.6 Timeline Editing<a class="headerlink" href="#26-timeline-editing" title="Permanent link">&para;</a></h3>
@@ -2429,7 +2450,7 @@ key list.</p>
 <li>Click an event to select it.</li>
 <li>Press <code>Delete</code> or <code>Backspace</code> to remove the selected event.</li>
 <li>Use <code>Ctrl + Z</code> to undo the most recently recorded event.</li>
-<li>Use the zoom controls or mouse wheel to inspect dense sections.</li>
+<li>Use the zoom controls to inspect dense sections.</li>
 </ul>
 <h3 id="27-export-and-import-annotations">2.7 Export and Import Annotations<a class="headerlink" href="#27-export-and-import-annotations" title="Permanent link">&para;</a></h3>
 <p><code>File &gt; Export Annotations</code> writes an annotation CSV with:</p>
@@ -2442,7 +2463,8 @@ key list.</p>
 Point events have <code>Onset == Offset</code>. Frequency counts both state and point
 events. Duration for point events is zero.</p>
 <p><code>File &gt; Import Annotations</code> reloads a RABET annotation CSV into the timeline.
-If events are already loaded, RABET asks before replacing them.</p>
+If events are already loaded, RABET asks before replacing them. Import is not
+available while a recording session is running; stop the session first.</p>
 <h4 id="where-recordings-are-auto-saved">Where recordings are auto-saved<a class="headerlink" href="#where-recordings-are-auto-saved" title="Permanent link">&para;</a></h4>
 <p>When a timed recording ends, RABET writes the annotation CSV automatically.</p>
 <p>Outside Project mode the file is saved next to the source video as
@@ -2547,10 +2569,14 @@ statistics.</p>
 <p>You can copy the table or export it as CSV.</p>
 <h3 id="44-bout-raster-and-figure-export">4.4 Bout Raster and Figure Export<a class="headerlink" href="#44-bout-raster-and-figure-export" title="Permanent link">&para;</a></h3>
 <p>The Raster tab displays bouts per animal. Bar height and colour indicate the
-number of events in each bout. You can export:</p>
+number of events in each bout. Time runs from each file's recording start
+(<code>RecordingStart</code>), so animals whose sessions began at different points of
+their videos line up. You can export:</p>
 <ul>
 <li>the bout raster figure as PNG, SVG, or PDF</li>
-<li>the underlying bout list as CSV</li>
+<li>the underlying bout list as CSV. <code>start_s</code> and <code>end_s</code> are video times (for
+  finding a bout in the video); <code>start_from_recording_s</code> and
+  <code>end_from_recording_s</code> match the raster.</li>
 </ul>
 <p>Set <strong>DPI</strong> before exporting figures. The completion dialog closes
 automatically after one second.</p>
@@ -2637,7 +2663,9 @@ by any selected antecedent behaviour?</p>
 <li>optional chance correction</li>
 </ul>
 <p>Chance correction circularly shifts antecedent times to estimate a baseline
-given how common the antecedents are. The table reports per-animal observed
+given how common the antecedents are. Times are measured from each file's
+recording start (<code>RecordingStart</code>), so video before the session does not
+dilute the baseline. The table reports per-animal observed
 fraction, chance mean, and above-chance fraction. Group comparisons should be
 run downstream.</p>
 <p>The bar chart can be exported as PNG, SVG, or PDF.</p>
@@ -2686,6 +2714,17 @@ Summary-mode ICC, Pearson r, and mean absolute difference using R.</p>
 <p>Use Detailed mode when you have two annotation CSVs scored on the same video.
 RABET bins time into a user-selected bin width and compares behaviour presence
 per bin.</p>
+<p>Only the time both files recorded is compared:</p>
+<ul>
+<li>Start: the later <code>RecordingStart</code> of the two files (video time 0 when either
+  file has no <code>RecordingStart</code>).</li>
+<li>End: the earlier <code>RecordingStart</code> + Test Duration when both files have a
+  Test Duration; otherwise the latest event offset in either file, or a Test
+  Duration if that is longer.</li>
+</ul>
+<p>Bins stay aligned to video time (0, 1, 2 … s for 1 s bins), and the bins that
+overlap this window are compared. The window is shown above the results table
+and in the exported CSV. A warning is shown when the two Test Durations differ.</p>
 <p>For each behaviour, RABET reports:</p>
 <ul>
 <li>Cohen's kappa</li>
@@ -2838,6 +2877,9 @@ location.</p>
 <p>When you annotate a video from Project mode, RABET switches to Annotation,
 loads the video, saves the annotation into the project, then returns to
 Project mode after the recording ends.</p>
+<p><strong>Remove from Project</strong> deletes a file that lives inside the project folder
+(the project's copy) from disk; a file referenced from elsewhere is only
+removed from the list. The confirmation says which applies.</p>
 <p>Project manifests are saved automatically after changes.</p>
 <h3 id="project-action-maps">Project action maps<a class="headerlink" href="#project-action-maps" title="Permanent link">&para;</a></h3>
 <p>A project keeps its own action map so that one key means the same behaviour
@@ -2874,18 +2916,24 @@ one without. Nothing is shown when the map is unchanged.</p>
 <li>last-used file-dialog folders</li>
 </ul>
 <h3 id="92-configuration-files">9.2 Configuration Files<a class="headerlink" href="#92-configuration-files" title="Permanent link">&para;</a></h3>
-<p>Typical files under the RABET user data folder:</p>
+<p>In the configuration folder (see 1.3):</p>
 <ul>
-<li><code>configs/default_action_map.json</code></li>
-<li><code>configs/user_action_map.json</code> — the global action map. A project with its
+<li><code>user_action_map.json</code> — the global action map. A project with its
   own map stores it in the project instead (see
   <a href="#project-action-maps">Project action maps</a>).</li>
-<li><code>configs/default_metrics.json</code></li>
-<li><code>configs/custom_color_map.json</code></li>
-<li><code>logs/rabet_&lt;date&gt;.log</code></li>
+<li><code>custom_*.json</code> — colour maps saved from the Visualization tab.</li>
 </ul>
+<p>The bundled defaults (<code>default_action_map.json</code>, <code>default_metrics.json</code>,
+<code>custom_color_map.json</code>) are read from the application's own <code>configs</code>
+folder, so copies placed elsewhere are not used. Change the action map in the
+Action Map panel and the metrics with <strong>Configure Metrics...</strong>
+(<strong>Save Config...</strong> / <strong>Load Config...</strong>).</p>
+<p><code>settings.json</code> in the settings folder stores the preferences listed in 9.1.</p>
 <p>Configuration and project files are read as UTF-8, with or without a byte
 order mark, so a hand-edited file keeps non-ASCII behaviour labels intact.</p>
+<p>If <code>settings.json</code> or <code>user_action_map.json</code> cannot be read, RABET starts with
+defaults and keeps the unreadable file next to it as
+<code>&lt;name&gt;.corrupt-&lt;date-time&gt;</code>, then tells you after start-up.</p>
 <h3 id="93-csv-files">9.3 CSV Files<a class="headerlink" href="#93-csv-files" title="Permanent link">&para;</a></h3>
 <p>RABET writes:</p>
 <ul>
@@ -2916,9 +2964,11 @@ values, and kappa is undefined when both raters are all-zero for a behaviour.</p
 <p>If you run from source and imports fail, install the scientific dependencies
 from <code>pyproject.toml</code> or use the provided conda environment.</p>
 <h3 id="logs">Logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h3>
-<p>Use <code>Log &gt; View Logs</code> to open the log folder. <code>Log &gt; Clean Up Logs</code> removes
-old logs.</p>
-<p>When reporting a bug, include the log file and the RABET version shown in
+<p><code>Log &gt; View Logs</code> opens the log viewer with this session's log. RABET keeps
+the log in memory (the most recent 5,000 entries), so use <strong>Export Log</strong> in
+the viewer before quitting if you need it. When started from source with
+<code>--dev</code>, RABET also writes <code>logs/rabet.log</code>.</p>
+<p>When reporting a bug, include the exported log and the RABET version shown in
 <code>Help &gt; About</code>.</p>
 <hr />
 <h2 id="11-citation-and-support">11. Citation and Support<a class="headerlink" href="#11-citation-and-support" title="Permanent link">&para;</a></h2>
