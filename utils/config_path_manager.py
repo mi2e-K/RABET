@@ -114,6 +114,10 @@ class ConfigPathManager:
         self._config_dir = self._user_config_dir
         return self._user_config_dir
     
+    def get_user_config_directory(self):
+        """Return the per-user, always writable configs directory."""
+        return self._user_config_dir
+
     def get_user_config_file_path(self, file_name):
         """
         Get the path for a user-specific configuration file (read/write).

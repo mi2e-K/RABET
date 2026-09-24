@@ -220,17 +220,21 @@ class VisualizationController(QObject):
                 self.logger.warning("No config path manager available")
                 return
             
-            # Get configs directory
-            config_dir = self._config_path_manager.get_config_directory()
-            self.logger.info(f"Searching for custom colormaps in: {config_dir}")
-            
-            if not config_dir.exists():
-                self.logger.warning(f"Config directory does not exist: {config_dir}")
-                return
-            
+            # Bundled/configs directory first, then the per-user one where
+            # colormaps are saved; a same-named user file overrides.
+            search_dirs = []
+            for config_dir in self._colormap_directories():
+                self.logger.info(f"Searching for custom colormaps in: {config_dir}")
+                if config_dir.exists():
+                    search_dirs.append(config_dir)
+                else:
+                    self.logger.warning(f"Config directory does not exist: {config_dir}")
+
             # Find files matching pattern
             pattern = "*custom_*.json"
-            matching_files = list(config_dir.glob(pattern))
+            matching_files = [
+                path for config_dir in search_dirs for path in config_dir.glob(pattern)
+            ]
             self.logger.info(f"Found {len(matching_files)} files matching '{pattern}'")
             
             available_colormaps = {}
@@ -400,6 +404,18 @@ class VisualizationController(QObject):
         except Exception as e:
             self.logger.error(f"Error importing from analysis model: {e}")
     
+    def _colormap_directories(self):
+        """Directories searched for custom colormaps, lowest priority first."""
+        directories = [self._config_path_manager.get_config_directory()]
+        user_dir = self._config_path_manager.get_user_config_directory()
+        if user_dir is not None and all(
+            os.path.normcase(os.path.abspath(user_dir))
+            != os.path.normcase(os.path.abspath(directory))
+            for directory in directories
+        ):
+            directories.append(user_dir)
+        return directories
+
     def refresh_custom_colormaps(self):
         """Manually refresh custom colormaps from config directory."""
         self.logger.info("Refreshing custom colormaps")
@@ -434,7 +450,10 @@ class VisualizationController(QObject):
                 self.logger.error("Invalid colormap data requested for save")
                 return None
             if not file_path and self._config_path_manager:
-                config_dir = self._config_path_manager.get_config_directory()
+                # The per-user directory: in a frozen build the configs
+                # directory is the bundle's (a temp dir for onefile, possibly
+                # read-only for onedir), where saved colormaps were lost.
+                config_dir = self._config_path_manager.get_user_config_directory()
                 file_path = config_dir / f"{colormap_name}.json"
 
             if not file_path:

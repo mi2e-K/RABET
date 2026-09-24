@@ -267,8 +267,10 @@ def _parse_summary_table(path: str) -> pd.DataFrame:
 
     # Drop fully empty rows (e.g. a trailing blank line).
     data = data[data["animal_id"].astype(bool)].reset_index(drop=True)
+    # Besides the mean/SEM rows, the analysis export may append a trailing
+    # "Note" row (approximate metrics); it is not an animal either.
     data = data[
-        ~data["animal_id"].str.casefold().isin({"mean", "sem"})
+        ~data["animal_id"].str.casefold().isin({"mean", "sem", "note"})
     ].reset_index(drop=True)
 
     # Warn about and de-duplicate repeated animal_id values. Pandas would
