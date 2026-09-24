@@ -100,7 +100,8 @@ class AnalysisController(QObject):
                 continue
             animal_id = self._model._animal_id_from_path(path)
             duration = self._model.get_file_test_duration(path)
-            per_file.append((animal_id, events_by_behavior, duration))
+            start = self._model.get_file_recording_start(path)
+            per_file.append((animal_id, events_by_behavior, duration, start))
             for behavior in events_by_behavior:
                 if behavior not in seen_set:
                     seen_set.add(behavior)

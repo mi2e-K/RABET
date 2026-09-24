@@ -406,10 +406,14 @@ You can copy the table or export it as CSV.
 ### 4.4 Bout Raster and Figure Export
 
 The Raster tab displays bouts per animal. Bar height and colour indicate the
-number of events in each bout. You can export:
+number of events in each bout. Time runs from each file's recording start
+(`RecordingStart`), so animals whose sessions began at different points of
+their videos line up. You can export:
 
 - the bout raster figure as PNG, SVG, or PDF
-- the underlying bout list as CSV
+- the underlying bout list as CSV. `start_s` and `end_s` are video times (for
+  finding a bout in the video); `start_from_recording_s` and
+  `end_from_recording_s` match the raster.
 
 Set **DPI** before exporting figures. The completion dialog closes
 automatically after one second.

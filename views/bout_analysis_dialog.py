@@ -11,6 +11,7 @@ import csv
 import logging
 import os
 import statistics
+from dataclasses import replace
 from typing import List, Tuple
 
 from PySide6.QtCore import Qt
@@ -85,16 +86,22 @@ class BoutAnalysisDialog(QDialog):
 
     Args:
         parent: parent widget.
-        per_file: list of ``(animal_id, events_by_behavior, test_duration)``
-            where ``events_by_behavior`` is ``{behavior: [(onset, offset), ...]}``
-            in seconds.
+        per_file: list of ``(animal_id, events_by_behavior, test_duration,
+            recording_start)`` where ``events_by_behavior`` is
+            ``{behavior: [(onset, offset), ...]}`` in video seconds and
+            ``recording_start`` is the file's RecordingStart (the raster is
+            drawn from it). Three-item entries are read as starting at 0.
         behaviors: behaviour names to offer in the selector (ordered).
     """
 
     def __init__(self, parent, per_file, behaviors):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
-        self._per_file = per_file or []
+        self._per_file = [
+            (entry[0], entry[1], entry[2],
+             float(entry[3] or 0.0) if len(entry) > 3 else 0.0)
+            for entry in (per_file or [])
+        ]
         self._behaviors = list(behaviors or [])
         self._rows: List[Tuple[str, BoutStats]] = []
 
@@ -260,7 +267,7 @@ class BoutAnalysisDialog(QDialog):
         bci = float(self.bci_spin.value())
         behaviors = self._selected_behaviors()
         rows: List[Tuple[str, BoutStats]] = []
-        for animal_id, events_by_behavior, duration in self._per_file:
+        for animal_id, events_by_behavior, duration, _start in self._per_file:
             for behavior in behaviors:
                 events = events_by_behavior.get(behavior)
                 if not events:
@@ -278,7 +285,7 @@ class BoutAnalysisDialog(QDialog):
         (Tolkamp & Kyriazakis), with broken-stick (Sibly et al.) as fallback."""
         mixture_values = []
         broken_values = []
-        for _animal_id, events_by_behavior, _duration in self._per_file:
+        for _animal_id, events_by_behavior, _duration, _start in self._per_file:
             for behavior in self._selected_behaviors():
                 events = events_by_behavior.get(behavior)
                 if not events:
@@ -310,19 +317,31 @@ class BoutAnalysisDialog(QDialog):
     # Raster tab
     # ------------------------------------------------------------------ #
     def _raster_bouts(self):
+        """Return ``([(animal_id, bouts, recording_start)], max_t)``.
+
+        Bouts are on video time; ``max_t`` is the latest offset measured
+        from each file's recording start (the raster's time axis).
+        """
         behavior = self.raster_combo.currentText()
         bci = float(self.bci_spin.value())
         data, max_t = [], 1.0
-        for animal_id, events_by_behavior, _duration in self._per_file:
+        for animal_id, events_by_behavior, _duration, start in self._per_file:
             events = events_by_behavior.get(behavior, [])
-            data.append((animal_id, compute_bouts(events, bci)))
+            data.append((animal_id, compute_bouts(events, bci), start))
             for _onset, offset in events:
-                max_t = max(max_t, offset)
+                max_t = max(max_t, offset - start)
         return data, max_t
 
     def _refresh_raster(self, *_args):
         data, max_t = self._raster_bouts()
-        self.raster_canvas.set_data(data, max_t)
+        # Draw each row from its own recording start, so animals whose
+        # sessions began at different points of their videos line up.
+        rows = [
+            (animal_id,
+             [replace(bt, start=bt.start - start, end=bt.end - start) for bt in bouts])
+            for animal_id, bouts, start in data
+        ]
+        self.raster_canvas.set_data(rows, max_t)
 
     def _export_raster_figure(self):
         if not self._per_file:
@@ -367,13 +386,17 @@ class BoutAnalysisDialog(QDialog):
         try:
             with open(path, "w", newline="", encoding="utf-8") as handle:
                 writer = SafeCsvWriter(csv.writer(handle))
+                # start_s/end_s stay on video time (to find the bout in the
+                # video); the *_from_recording_s columns match the raster.
                 writer.writerow(["animal_id", "behavior", "bci_s", "bout_index",
-                                 "start_s", "end_s", "n_events", "duration_s"])
-                for animal_id, bouts in data:
+                                 "start_s", "end_s", "n_events", "duration_s",
+                                 "start_from_recording_s", "end_from_recording_s"])
+                for animal_id, bouts, start in data:
                     for k, bt in enumerate(bouts, 1):
                         writer.writerow([animal_id, behavior, f"{bci:.2f}", k,
                                          f"{bt.start:.4f}", f"{bt.end:.4f}", bt.n_events,
-                                         f"{bt.duration:.4f}"])
+                                         f"{bt.duration:.4f}",
+                                         f"{bt.start - start:.4f}", f"{bt.end - start:.4f}"])
         except OSError as exc:
             QMessageBox.warning(self, "Export Failed", f"Could not write file:\n{exc}")
             return
