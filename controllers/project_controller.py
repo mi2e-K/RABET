@@ -524,7 +524,10 @@ class ProjectController(QObject):
     def on_close_project_requested(self):
         """Handle close project requested event."""
         self.logger.debug("Close project requested")
-        
+
+        if not self._finish_annotation_session_before_close():
+            return
+
         # Check if project has unsaved changes
         if self._model.is_modified():
             result = QMessageBox.question(
@@ -544,7 +547,42 @@ class ProjectController(QObject):
         
         # Close project
         self._model.close_project()
-    
+
+    def _finish_annotation_session_before_close(self):
+        """End the annotation session the same way closing the app does.
+
+        A running recording is stopped first, which auto-saves it into this
+        project while the project is still open. Closing used to leave it
+        running with the project routing gone. Unsaved annotations then get
+        the export offer. Returns False if the user cancels.
+        """
+        annotation_controller = self._annotation_controller
+        try:
+            if annotation_controller.is_recording():
+                annotation_controller.stop_timed_recording()
+        except Exception:
+            self.logger.exception("Stopping the recording before closing the project failed")
+
+        if not annotation_controller.has_unsaved_annotations():
+            return True
+        result = QMessageBox.question(
+            self._view,
+            "Unsaved Annotations",
+            "You have unsaved annotations. Export them before closing the project?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if result == QMessageBox.StandardButton.Cancel:
+            return False
+        if result == QMessageBox.StandardButton.Yes:
+            annotation_controller.export_annotations_dialog()
+            # Still dirty means the save dialog was cancelled.
+            if annotation_controller.has_unsaved_annotations():
+                return False
+        return True
+
     @Slot(str)
     def on_description_changed(self, description):
         """

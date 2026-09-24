@@ -1267,7 +1267,11 @@ class MainWindow(QMainWindow):
             message (str): Status message
         """
         self.timeline_view.set_status_message(message)
-    
+
+    def status_message_text(self):
+        """Return the message currently shown by ``set_status_message``."""
+        return self.timeline_view.status_message.text()
+
     def set_video_info(self, info):
         """
         Set video information in status bar.

@@ -392,11 +392,33 @@ class AnnotationController(QObject):
         """Complete state synchronization process."""
         self._synchronizing_states = False
         self.logger.debug("State synchronization complete")
-        
+        self._reconcile_recording_with_playback()
+
         # CRITICAL FIX: Final check to ensure controls are visible
         if hasattr(self._timeline_view, 'ensure_controls_visible'):
             self._timeline_view.ensure_controls_visible()
-    
+
+    def _reconcile_recording_with_playback(self):
+        """Apply the playback state that arrived while the guard was up.
+
+        Changes during the guard are skipped. A seek during playback emits
+        pause and play a few milliseconds apart, so the play half was always
+        skipped: the recording stayed paused while the video played and every
+        real-time key press was ignored. The pause half still finalises held
+        keys at the pre-seek position, as before.
+        """
+        if not self._is_recording:
+            return
+        playing = self._video_model.is_playing()
+        if playing and self._is_recording_paused:
+            # Replace only the pause notice itself; keep anything posted since
+            # (e.g. the summary of annotations removed by the rewind).
+            status_text = getattr(self._main_window, "status_message_text", None)
+            announce = status_text is None or status_text() == "Recording paused"
+            self.resume_recording(announce=announce)
+        elif not playing and not self._is_recording_paused:
+            self.pause_recording()
+
     @Slot(int)
     def on_position_changed(self, position):
         """
@@ -429,8 +451,7 @@ class AnnotationController(QObject):
         # rewind-and-redo with frame steps). Steps now honour the toggle exactly
         # like the slider; only loader/playback are exempt (worker-prep intent
         # separation is kept).
-        origin = getattr(self, "_pending_seek_origin", None)
-        self._pending_seek_origin = None
+        origin = self._take_seek_intent(position)
         if getattr(self, "_skip_next_seek_rewind", False):
             # Loader-emitted reset (e.g. position=0 right after a video load).
             self._skip_next_seek_rewind = False
@@ -508,10 +529,15 @@ class AnnotationController(QObject):
             # Case 1: Annotation starts after current position - remove completely
             if event.onset > current_position:
                 future_annotations.append(i)
-                
+
             # Case 2: Annotation starts before but extends past current position - truncate it
             elif event.offset is not None and event.offset > current_position:
-                annotations_to_truncate.append((i, event))
+                if event.onset == current_position:
+                    # Truncating would leave onset == offset, which reads as
+                    # a point event everywhere downstream; remove it instead.
+                    future_annotations.append(i)
+                else:
+                    annotations_to_truncate.append((i, event))
         
         # Check if we've rewound past the recording start point
         if recording_start_event and current_position < recording_start_event.onset:
@@ -682,8 +708,19 @@ class AnnotationController(QObject):
             )
 
             if result == QMessageBox.StandardButton.Yes:
+                # Unsaved annotations still in memory (e.g. a session stopped
+                # by this very switch, which skips auto-export) get the same
+                # keep/discard prompt as the No path. Keeping them means the
+                # saved file is not loaded over them.
+                if not self._confirm_or_clear_existing_annotations_for_new_video(
+                    project_mode=True
+                ):
+                    self._main_window.set_status_message(
+                        "Kept unsaved annotations; the saved annotations for "
+                        "this video were not loaded."
+                    )
                 # Clear in-memory annotations first, then import saved ones
-                if self._replace_annotations_from_file(self._auto_export_path):
+                elif self._replace_annotations_from_file(self._auto_export_path):
                     self.logger.info(f"Loaded existing annotations from {self._auto_export_path}")
             else:
                 self._confirm_or_clear_existing_annotations_for_new_video(project_mode=True)
@@ -1034,13 +1071,14 @@ class AnnotationController(QObject):
             self.logger.debug(f"Started event for key {key} at {position}ms (system time: {system_time:.6f})")
             # Update timeline to show active event
             self._timeline_view.set_events(self._annotation_model.get_all_events_with_active())
-        else:
+        elif key in self._annotation_model.get_active_events():
             # 1.3.3+: duplicate press for an already-active key. In
             # real-time mode this normally only happens when the OS
             # produced two press events without an intervening release
             # (e.g. focus loss, foreign key-event hooks). Make the
             # situation visible so the user can release & re-press or
-            # use Esc to abort.
+            # use Esc to abort. (An unmapped key also fails to start an
+            # event; it is simply ignored, as in frame-by-frame mode.)
             self._main_window.set_status_message(
                 f"Key '{key}' is already active — release it before pressing again, "
                 f"or press Esc to cancel."
@@ -1411,23 +1449,24 @@ class AnnotationController(QObject):
         
         self.logger.info("Recording paused")
     
-    def resume_recording(self):
+    def resume_recording(self, announce=True):
         """Resume the paused recording."""
         # Skip if not paused or not recording
         if not self._is_recording or not self._is_recording_paused:
             return
-            
+
         self.logger.debug("Resuming recording...")
-            
+
         # Resume timer
         self._recording_timer.start()
         self._is_recording_paused = False
-        
+
         # Update UI in recording control view
         self._main_window.recording_control_view.resume_recording()
-        
+
         # Update status message
-        self._main_window.set_status_message("Recording resumed")
+        if announce:
+            self._main_window.set_status_message("Recording resumed")
         
         self.logger.info("Recording resumed")
     
@@ -1446,6 +1485,35 @@ class AnnotationController(QObject):
             origin (str): one of ``"user"``, ``"step"``, ``"loader"``.
         """
         self._pending_seek_origin = origin
+        self._pending_seek_time = time.monotonic()
+
+    # Safety net: a seek intent that no position update has claimed after this
+    # long is dropped rather than applied to some unrelated later update.
+    _SEEK_INTENT_TTL_S = 5.0
+
+    def _take_seek_intent(self, position):
+        """Consume the pending seek intent if ``position`` is the seek landing.
+
+        Playback keeps ticking until the worker gets to a queued seek, so the
+        first update after ``notify_seek_intent`` can be an ordinary tick. When
+        a tick consumed the intent, the real (backward) landing arrived
+        without one and a user rewind with "Preserve on rewind" off sometimes
+        deleted nothing. A tick is recognised as a forward move of about one
+        frame while playing; the worker pauses before it lands a seek or step,
+        so the landing itself is never mistaken for one.
+        """
+        origin = getattr(self, "_pending_seek_origin", None)
+        if origin is None:
+            return None
+        issued = getattr(self, "_pending_seek_time", None)
+        if issued is not None and time.monotonic() - issued > self._SEEK_INTENT_TTL_S:
+            self._pending_seek_origin = None
+            return None
+        advance = position - self._last_position
+        if self._video_model.is_playing() and 0 < advance <= self._frame_duration_ms * 1.5:
+            return None
+        self._pending_seek_origin = None
+        return origin
 
     def handle_seek(self, position, origin=None):
         """
@@ -1466,7 +1534,7 @@ class AnnotationController(QObject):
                 ``notify_seek_intent``.
         """
         if origin is not None:
-            self._pending_seek_origin = origin
+            self.notify_seek_intent(origin)
 
         # Loader-emitted seek right after a video load: swallow without any
         # rewind handling (kept for callers that reach handle_seek directly,
