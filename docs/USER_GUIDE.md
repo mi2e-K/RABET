@@ -214,12 +214,16 @@ Typical flow:
 4. Press `Space` to start the session and play the video.
 5. Press behaviour keys while scoring.
 6. Press `Space` to pause or resume; the recording follows the video. To end
-   the session early, click the recording button (labelled **Cancel** while a
-   session is armed or running); the annotations recorded so far are saved.
+   the session early, click **Stop**; the annotations recorded so far are
+   saved. (While RABET waits for the start key, the button reads **Cancel**
+   and leaves without recording.)
 
 When the duration elapses, RABET stops the recording and pauses playback. If
-the video ends first, the session waits; click the recording button to end
-and save it.
+the video ends first, the session waits; click **Stop** to end and save it.
+
+In Project mode each video has one annotation file, so a new session
+replaces it. The previous version is kept next to it as
+`<name>.<date-time>.csv.bak`; rename it to `.csv` to restore it.
 
 ### 2.5 Rewind Handling
 

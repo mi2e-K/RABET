@@ -334,7 +334,10 @@ class RecordingControlView(QWidget):
         self.log_layout_diagnostic("start_recording_before_ui_change")
         self._recording_state = self.STATE_RECORDING
 
-        # Update UI
+        # Update UI. From here the button ends the session and saves what was
+        # recorded, so it no longer reads "Cancel" (which it only means while
+        # waiting for the start key).
+        self.record_button.setText("Stop")
         self._apply_button_state("recording")
         self.status_label.setText("Recording Active")
         self._apply_status_role("active")

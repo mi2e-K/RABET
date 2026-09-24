@@ -1903,6 +1903,33 @@ class AnnotationController(QObject):
             timeout=2500,
         )
 
+    def _backup_before_overwrite(self, path):
+        """Copy an existing ``path`` to ``<name>.<YYYYmmdd-HHMMSS>.csv.bak``.
+
+        The copy does not end in ``.csv``, so the analysis tabs and CSV file
+        pickers never pick it up; rename it to restore. Returns the backup
+        path, or None when there was nothing to keep (or the copy failed).
+        """
+        if not os.path.exists(path):
+            return None
+        from datetime import datetime
+        import shutil
+
+        stem, extension = os.path.splitext(path)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = f"{stem}.{stamp}{extension}.bak"
+        suffix = 2
+        while os.path.exists(backup_path):
+            backup_path = f"{stem}.{stamp}-{suffix}{extension}.bak"
+            suffix += 1
+        try:
+            shutil.copy2(path, backup_path)
+        except OSError as exc:
+            self.logger.warning("Could not back up %s before overwriting it: %s", path, exc)
+            return None
+        self.logger.info("Kept the previous annotations as %s", backup_path)
+        return backup_path
+
     def _auto_export_annotations(self):
         """Automatically export annotations to the project directory."""
         if not self._auto_export_path or not self._annotation_model.get_all_events():
@@ -1911,19 +1938,31 @@ class AnnotationController(QObject):
         try:
             # Ensure directory exists
             os.makedirs(os.path.dirname(self._auto_export_path), exist_ok=True)
-            
+
+            # One CSV per video: a new session replaces the video's file, so
+            # keep the previous version next to it first.
+            backup_path = self._backup_before_overwrite(self._auto_export_path)
+
             # Export annotations
             if self._annotation_model.export_to_csv(self._auto_export_path, include_header=True):
                 self._mark_annotations_saved()
                 self._record_recent_annotation(self._auto_export_path)
                 self._main_window.set_status_message(f"Annotations exported to {self._auto_export_path}")
                 self.logger.info(f"Annotations automatically exported to {self._auto_export_path}")
-                
+
                 # Show information message that auto-closes after 1.5 seconds
+                message = (
+                    f"Annotations have been automatically exported to:\n{self._auto_export_path}"
+                )
+                if backup_path:
+                    message += (
+                        "\n\nThe previous version was kept as:\n"
+                        f"{os.path.basename(backup_path)}"
+                    )
                 AutoCloseMessageBox.information(
                     self._main_window,
                     "Export Successful",
-                    f"Annotations have been automatically exported to:\n{self._auto_export_path}",
+                    message,
                     timeout=1500  # Auto-close after 1.5 seconds
                 )
                 
