@@ -86,21 +86,21 @@ chmod +x RABET-Linux-x86_64-1.4.2.AppImage
 
 ### 1.3 What RABET Creates
 
-On first launch, RABET creates a user data folder:
+On first launch, RABET creates two folders for your files:
 
-| OS | Location |
-| --- | --- |
-| Windows | `%APPDATA%\RABET\` |
-| macOS | `~/Library/Application Support/RABET/` |
-| Linux | `~/.config/RABET/` |
+| OS | Settings folder | Configuration folder |
+| --- | --- | --- |
+| Windows | `%LOCALAPPDATA%\RABET\config\` | `%APPDATA%\RABET\configs\` |
+| macOS | `~/Library/Application Support/RABET/config/` | `~/Library/Application Support/RABET/configs/` |
+| Linux | `~/.rabet/config/` | `~/.config/RABET/configs/` |
 
-The folder contains:
+- The settings folder holds `settings.json`: window layout, recent files,
+  recording duration and the other preferences listed in 9.1.
+- The configuration folder holds your global action map and the colour maps
+  you save from the Visualization tab (see 9.2).
 
-- `configs/`: action maps, metric settings, and colour maps.
-- `logs/`: runtime logs for troubleshooting.
-- `projects/`: default location for RABET projects.
-
-RABET also remembers the last folders used in file dialogs.
+Projects are stored wherever you choose when creating them. RABET also
+remembers the last folders used in file dialogs.
 
 ### 1.4 Main Workflows
 
@@ -213,15 +213,27 @@ Typical flow:
 3. Click **Start Recording**.
 4. Press `Space` to start the session and play the video.
 5. Press behaviour keys while scoring.
-6. Use **Pause**, **Resume**, or **Stop** as needed.
+6. Press `Space` to pause or resume; the recording follows the video. To end
+   the session early, click the recording button (labelled **Cancel** while a
+   session is armed or running); the annotations recorded so far are saved.
 
-When the duration elapses, RABET stops the recording and pauses playback.
+When the duration elapses, RABET stops the recording and pauses playback. If
+the video ends first, the session waits; click the recording button to end
+and save it.
 
 ### 2.5 Rewind Handling
 
-If **Preserve on rewind** is off, an active state event is discarded when the
-playhead is moved backward past its onset. This is useful when you started an
-event too early. If the checkbox is on, that active event is kept.
+Rewinding during a session (dragging the position slider back or stepping
+frames backward) is governed by **Preserve on rewind**:
+
+- **Off**: annotations after the new position are removed. An event that
+  spans the new position is shortened to end there, and a still-held event
+  that started after it is discarded. Use this to redo a stretch you scored
+  wrongly.
+- **On** (the default): all annotations are kept.
+
+Rewinding before the session's start point asks whether to reset the whole
+session.
 
 Point events are completed immediately, so they are not held in the active
 key list.
@@ -235,7 +247,7 @@ Common actions:
 - Click an event to select it.
 - Press `Delete` or `Backspace` to remove the selected event.
 - Use `Ctrl + Z` to undo the most recently recorded event.
-- Use the zoom controls or mouse wheel to inspect dense sections.
+- Use the zoom controls to inspect dense sections.
 
 ### 2.7 Export and Import Annotations
 
@@ -714,15 +726,20 @@ RABET persists:
 
 ### 9.2 Configuration Files
 
-Typical files under the RABET user data folder:
+In the configuration folder (see 1.3):
 
-- `configs/default_action_map.json`
-- `configs/user_action_map.json` — the global action map. A project with its
+- `user_action_map.json` — the global action map. A project with its
   own map stores it in the project instead (see
   [Project action maps](#project-action-maps)).
-- `configs/default_metrics.json`
-- `configs/custom_color_map.json`
-- `logs/rabet_<date>.log`
+- `custom_*.json` — colour maps saved from the Visualization tab.
+
+The bundled defaults (`default_action_map.json`, `default_metrics.json`,
+`custom_color_map.json`) are read from the application's own `configs`
+folder, so copies placed elsewhere are not used. Change the action map in the
+Action Map panel and the metrics with **Configure Metrics...**
+(**Save Config...** / **Load Config...**).
+
+`settings.json` in the settings folder stores the preferences listed in 9.1.
 
 Configuration and project files are read as UTF-8, with or without a byte
 order mark, so a hand-edited file keeps non-ASCII behaviour labels intact.
@@ -773,10 +790,12 @@ from `pyproject.toml` or use the provided conda environment.
 
 ### Logs
 
-Use `Log > View Logs` to open the log folder. `Log > Clean Up Logs` removes
-old logs.
+`Log > View Logs` opens the log viewer with this session's log. RABET keeps
+the log in memory (the most recent 5,000 entries), so use **Export Log** in
+the viewer before quitting if you need it. When started from source with
+`--dev`, RABET also writes `logs/rabet.log`.
 
-When reporting a bug, include the log file and the RABET version shown in
+When reporting a bug, include the exported log and the RABET version shown in
 `Help > About`.
 
 ---

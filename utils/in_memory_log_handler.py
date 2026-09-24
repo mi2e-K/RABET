@@ -43,6 +43,19 @@ class InMemoryLogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
     
+    def _snapshot(self):
+        """Copy the entries under the handler lock.
+
+        emit() runs under the same lock (logging.Handler.handle). Iterating
+        the live deque while another thread logged raised "deque mutated
+        during iteration".
+        """
+        self.acquire()
+        try:
+            return list(self.log_entries)
+        finally:
+            self.release()
+
     def get_logs(self, max_lines=None, filter_text=None):
         """
         Get logs from memory.
@@ -56,12 +69,14 @@ class InMemoryLogHandler(logging.Handler):
         Returns:
             list: List of log entries
         """
+        entries = self._snapshot()
+
         # Apply filtering if needed
         if filter_text:
             filter_text = filter_text.lower()
-            filtered_logs = [log for log in self.log_entries if filter_text in log.lower()]
+            filtered_logs = [log for log in entries if filter_text in log.lower()]
         else:
-            filtered_logs = list(self.log_entries)
+            filtered_logs = entries
         
         # Apply line limit if needed
         if max_lines and max_lines > 0:
@@ -85,4 +100,8 @@ class InMemoryLogHandler(logging.Handler):
     
     def clear(self):
         """Clear all log entries."""
-        self.log_entries.clear()
+        self.acquire()
+        try:
+            self.log_entries.clear()
+        finally:
+            self.release()

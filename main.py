@@ -289,12 +289,7 @@ def main():
         profiler.mark("appctrl_import")
 
         # Initialize main controller
-        # Pass development mode flag if the app_controller accepts it
-        try:
-            controller = AppController(development_mode=args.dev)
-        except TypeError:
-            # Fall back to standard initialization if the controller doesn't accept the parameter
-            controller = AppController()
+        controller = AppController(development_mode=args.dev)
         profiler.mark("appctrl_init")
         splash.set_progress(80, "Preparing main window...")
 

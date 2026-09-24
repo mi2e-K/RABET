@@ -337,6 +337,17 @@ class LogViewerDialog(QDialog):
                 self.file_combo.setCurrentIndex(i)
                 break
     
+    def done(self, result):
+        """Stop refreshing however the dialog ends.
+
+        Esc and the dialog buttons end it through done() without a
+        closeEvent (Qt >= 6.3); the hidden dialog, still parented to the
+        main window, then kept re-reading the logs every 3 s, one more
+        timer per opening.
+        """
+        self.refresh_timer.stop()
+        super().done(result)
+
     def closeEvent(self, event):
         """Handle window close event."""
         # Stop timer when window is closed

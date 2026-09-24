@@ -158,7 +158,7 @@ python main.py
 ```
 
 Python 3.11 or newer is required. The pinned conda environment uses
-Python 3.12.
+Python 3.11.
 
 ---
 
