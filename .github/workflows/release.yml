@@ -363,79 +363,105 @@ jobs:
           cat > release_body.md <<'EOF'
           ## RABET vVERSION_PLACEHOLDER
 
-          RABET vVERSION_PLACEHOLDER gives each project its own action map, so
-          one key means the same behaviour for every video in a project, and
-          makes the auto-save destination configurable outside Project mode.
-
-          ### Added
-
-          - **Project action maps.**
-            Creating a project now saves a copy of the action map in use into
-            the project and records it in `project.json`. Opening the project
-            loads that map; closing it restores your global map. Edits made
-            while the project is open are saved into the project, so the global
-            action map is never altered by working on a project.
-
-          - **The active action map is always identifiable.**
-            The Action Map panel heading names what you are recording with:
-            the project name when the project has its own map, or "global"
-            when it does not.
-
-          - **Notification when opening a project changes the keys.**
-            If opening a project changes what any key means, RABET lists the
-            differences before you can record. Nothing is shown when the map is
-            unchanged.
-
-          - **Guard on changing an action map that already has annotations.**
-            Renaming a behaviour, switching a key between State and Point,
-            removing a mapping, or replacing the whole map now asks for
-            confirmation when the open project already contains annotated
-            videos. Adding a new key is additive and is never questioned.
-            Existing annotation CSVs are never modified.
-
-          - **Configurable auto-save folder for non-project recordings.**
-            File > Set Auto-Save Folder chooses where annotation CSVs are
-            written when a recording ends outside Project mode. File > Reset
-            Auto-Save Folder to Default restores saving next to each video.
-            Project-mode auto-save remains fixed to the project's `annotations`
-            folder.
+          RABET vVERSION_PLACEHOLDER is a maintenance release. It fixes recording,
+          playback, project-mode and analysis problems found in a review of 1.4.2,
+          and three optional analyses now measure time from each file's recording
+          start.
 
           ### Changed
 
-          - **Refreshed Windows installer.**
-            The setup wizard now carries RABET's own artwork, and its opening
-            page no longer asks you to close all other applications — RABET
-            installs per-user and registers nothing, so the only thing worth
-            closing is RABET itself when upgrading.
+          - **Optional analyses measure time from the recording start.**
+            Files whose session starts at video time 0 give the same values as
+            before; files whose session starts later in the video can change.
+            - Predictability (Transition Analysis): the chance baseline no longer
+              includes video before the session, which lowered the chance level and
+              inflated the above-chance fraction.
+            - Detailed reliability compares only the time both files recorded, from
+              the later `RecordingStart` to the earlier `RecordingStart` + Test
+              Duration. The compared window is shown above the results and in the
+              export, and differing Test Durations are flagged on screen.
+            - The bout raster and its figure are drawn from each file's recording
+              start, with the axis titled "Time from recording start (s)".
 
-          - **Clearer Action Map type labels.**
-            The editor now shows the concise labels State and Point, and the
-            guides explain that State records an onset and offset whereas Point
-            records a single timestamp. The choice describes the data
-            representation rather than how quickly the behaviour occurs.
+          - **Clearing annotations during a recording discards the session.**
+            Clear Annotations now asks to stop the recording and discard the session
+            without saving (the default is No). Previously the recording kept running
+            without its start marker, so the saved file could not be placed in time.
+            Import Annotations waits until the recording is stopped.
+
+          - **Replaced and unreadable files are kept.**
+            In Project mode, the annotation file a new session replaces is kept next
+            to it as `<name>.<date-time>.csv.bak`. An unreadable
+            `user_action_map.json` or `settings.json` is kept as
+            `<name>.corrupt-<date-time>` before defaults are used, and RABET says so
+            after start-up.
+
+          - **Clearer labels.**
+            The record button reads Stop during a session (Cancel only while waiting
+            for the start key). Remove in the project panel says whether the file
+            will be deleted from disk or only removed from the list.
 
           ### Fixed
 
-          - **Configuration and project files are read as UTF-8.**
-            Action maps, `project.json`, settings, and metric configurations
-            are now read as UTF-8 and tolerate a byte order mark. Previously a
-            hand-edited or externally generated file could fail to load, or
-            load with corrupted non-ASCII behaviour labels, depending on the
-            system locale. Files written by RABET were unaffected.
+          - **Recording and playback**
+            - Opening a video during playback left play/pause stuck until RABET was
+              restarted.
+            - After a video failed to open, its duration stayed in place, so a
+              recording could be started without a video.
+            - A seek during playback left the recording paused, so key presses were
+              ignored.
+            - With "Preserve on rewind" off, a rewind could occasionally delete
+              nothing, and a bare click on the position slider could delete recent
+              annotations.
+            - The last frames of a video could not be reached, a step after some
+              seeks skipped a frame, and a session ending at the last frame did not
+              complete.
+            - A rewind landing on an event's onset left a zero-length event.
+            - Unmapped keys showed a misleading "already active" notice.
 
-          - **The annotation auto-save preference is applied at startup.**
-            The existing `general.auto_save_annotations` setting now controls
-            end-of-recording auto-save instead of being stored but ignored. It
-            remains enabled by default.
+          - **Project mode**
+            - When a project video failed to load, the video left open saved its
+              session under the failed video's name.
+            - Answering "load existing annotations" discarded unsaved annotations
+              without asking.
+            - Closing a project did not stop a running recording.
+            - Videos sharing a file name lost their annotation status on reload.
+
+          - **Keyboard focus**
+            - The action-map table, the position slider and the timeline could keep
+              focus and swallow behaviour or arrow keys.
+            - Delete could remove the wrong timeline event after events changed.
+
+          - **Files and settings**
+            - Importing an annotation CSV ignored its Test Duration.
+            - Imported times were truncated to the millisecond below, and a byte
+              order mark broke CSVs that start with the header row.
+            - A saved recording duration with 0 minutes came back 5 minutes longer.
+            - Metric configurations with colliding names were accepted on load, and
+              the metric dialogs split or replaced some behaviour names.
+
+          - **Visualization, reliability and stability**
+            - Point events were invisible in the raster plot.
+            - "Export Individual Plots" saved the same figure for every file.
+            - Action maps with point behaviours could not be loaded in the
+              Visualization tab, and custom colour maps were lost in the packaged
+              app.
+            - The "Note" row of a summary table was read as an animal in the
+              Reliability tab.
+            - Closing the disagreement review with Esc could crash RABET on exit.
 
           ### Compatibility
 
-          Projects created before vVERSION_PLACEHOLDER have no action map of
-          their own and continue to use the global map exactly as before. To
-          give one its own map, open it and choose
-          `File > Use Current Action Map for This Project`. RABET does not do
-          this automatically, because it cannot know whether the map loaded now
-          is the one those videos were originally scored with.
+          Annotation CSVs keep the same format, and projects and settings from
+          1.4.2 open unchanged. Two exports gain columns: Export Bouts adds
+          `start_from_recording_s` and `end_from_recording_s` at the end of each
+          row, and the Detailed reliability export adds the compared window to its
+          first row (plus a warning row when the Test Durations differ).
+
+          ### Documentation
+
+          The user guide (English and Japanese) now describes the actual file
+          locations, logging, rewind handling and recording controls.
 
           ### Packaging
 
