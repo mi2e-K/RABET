@@ -1,6 +1,6 @@
 # RABET User Guide
 
-This guide covers RABET 1.4.2. It is written for researchers who want to
+This guide covers RABET 1.4.3. It is written for researchers who want to
 annotate animal-behaviour videos, aggregate annotation files, visualise event
 patterns, assess scorer reliability, and run the bout and transition analyses
 included in RABET.
@@ -38,11 +38,11 @@ reference: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 | Platform | File |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.4.2-Setup.zip` |
-| Windows portable | `RABET-Windows-1.4.2-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.2.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.2.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.2.AppImage` |
+| Windows installer | `RABET-Windows-1.4.3-Setup.zip` |
+| Windows portable | `RABET-Windows-1.4.3-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.3.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.3.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.3.AppImage` |
 
 All packages are self-contained. You do not need a separate VLC, FFmpeg,
 Python, R, scipy, or codec-pack installation to use the released app.
@@ -51,13 +51,13 @@ Python, R, scipy, or codec-pack installation to use the released app.
 
 **Windows installer**
 
-1. Unzip `RABET-Windows-1.4.2-Setup.zip`.
+1. Unzip `RABET-Windows-1.4.3-Setup.zip`.
 2. Run `RABET-Setup.exe`.
 3. Launch RABET from the Start Menu or desktop shortcut.
 
 **Windows portable**
 
-1. Unzip `RABET-Windows-1.4.2-portable.zip`.
+1. Unzip `RABET-Windows-1.4.3-portable.zip`.
 2. Open the extracted folder.
 3. Run `RABET.exe`.
 
@@ -80,8 +80,8 @@ Then open `RABET.app` normally.
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.2.AppImage
-./RABET-Linux-x86_64-1.4.2.AppImage
+chmod +x RABET-Linux-x86_64-1.4.3.AppImage
+./RABET-Linux-x86_64-1.4.3.AppImage
 ```
 
 ### 1.3 What RABET Creates
@@ -839,7 +839,7 @@ Issues: <https://github.com/mi2e-K/RABET/issues>
 If RABET supports your research, please cite:
 
 > Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.2) [Computer software].
+> (Version 1.4.3) [Computer software].
 > https://github.com/mi2e-K/RABET
 > doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
 
