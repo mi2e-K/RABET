@@ -19,6 +19,8 @@ def _bare_controller():
     vc = VideoController.__new__(VideoController)
     vc.logger = logging.getLogger("test.video_controller")
     vc._stepping_in_progress = True
+    vc._pending_step_frames = 0.0
+    vc._video_initializing = False
     vc._video_model = types.SimpleNamespace(get_position=lambda: 1000)
     # window() -> None so _finalize_step_operation skips the annotation hop.
     vc._view = types.SimpleNamespace(set_position=lambda _p: None, window=lambda: None)

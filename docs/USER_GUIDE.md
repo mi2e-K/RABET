@@ -196,8 +196,9 @@ already collected. You can always continue if the change is intended.
 | Show shortcuts | `F1` |
 
 The step size and playback rate are set in the video control strip below the
-frame. The timestamp display shows video time and, during recording,
-session-relative time.
+frame. Playback speed runs from 0.2× to 2.0× in 0.1× steps. Holding Left or
+Right keeps stepping until you release the key. The timestamp display shows
+video time and, during recording, session-relative time.
 
 ### 2.4 Timed Recording
 

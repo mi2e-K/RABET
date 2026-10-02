@@ -96,6 +96,9 @@ class MainWindow(QMainWindow):
         # on it must be no-ops.
         self.config_manager = None
         self._settings_restored = False
+        # Whether the Left/Right key now down has auto-repeated (held, not
+        # tapped); see keyReleaseEvent.
+        self._arrow_key_held = False
 
         self.setWindowTitle("RABET - Real-time Animal Behavior Event Tagger")
         # Increase default window size, but never open larger than the
@@ -1097,6 +1100,8 @@ class MainWindow(QMainWindow):
         
         # Handle arrow keys for frame-by-frame navigation when paused
         step_size = self.video_player_view.step_size_spin.value()
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self._arrow_key_held = event.isAutoRepeat()
         
         # Check if frame-by-frame mode is enabled
         if self.video_player_view.is_frame_by_frame_mode():
@@ -1170,8 +1175,18 @@ class MainWindow(QMainWindow):
         if event.key() == Qt.Key.Key_Space:
             return
             
-        # Skip arrow keys (already handled in press event)
+        # Skip arrow keys (already handled in press event). Releasing a held
+        # Left or Right drops the steps its key-repeat left pending, so it
+        # stops where it is; a tapped key's step always runs.
         if event.key() in [Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down]:
+            if (
+                event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)
+                and not event.isAutoRepeat()
+                and self._arrow_key_held
+                and hasattr(self, "video_controller")
+            ):
+                self._arrow_key_held = False
+                self.video_controller.cancel_pending_steps()
             return
             
         # Convert key to string
@@ -1649,13 +1664,18 @@ class MainWindow(QMainWindow):
                                                 min(step_ms, vpv.step_size_spin.maximum())))
                 vpv.step_size_spin.blockSignals(False)
 
+                # The slider counts tenths; a rate saved by an older build in
+                # 0.01x steps (e.g. 0.25 or 1.07) lands on the nearest 0.1x.
                 rate = float(video_section.get("default_playback_rate", 1.0) or 1.0)
-                rate_value = int(round(rate * 100))
+                rate_value = int(round(rate * 10))
                 vpv.rate_slider.blockSignals(True)
                 vpv.rate_slider.setValue(max(vpv.rate_slider.minimum(),
                                              min(rate_value, vpv.rate_slider.maximum())))
                 vpv.rate_slider.blockSignals(False)
-                vpv.rate_value_label.setText(f"{rate:.2f}x")
+                vpv.rate_value_label.setText(f"{vpv.rate_slider.value() / 10:.1f}x")
+                # The decoder starts at 1.0x; without this the slider showed
+                # the saved speed while videos played at normal speed.
+                vpv.rate_changed.emit(vpv.rate_slider.value() / 10.0)
 
                 # NOTE (1.3.1): volume restoration was removed along with
                 # audio playback in the PyAV migration. The setting value
@@ -1738,13 +1758,13 @@ class MainWindow(QMainWindow):
                 )
 
             # Video-player preferences. Slider values are stored in the same
-            # units the UI exposes them in (ms, percent, 0-100 volume).
+            # units the UI exposes them in (ms, playback-rate multiple).
             if hasattr(self, 'video_player_view'):
                 vpv = self.video_player_view
                 self.config_manager.set("video", "default_step_size_ms",
                                         int(vpv.step_size_spin.value()))
                 self.config_manager.set("video", "default_playback_rate",
-                                        float(vpv.rate_slider.value()) / 100.0)
+                                        float(vpv.rate_slider.value()) / 10.0)
                 # ``default_volume`` no longer persisted as of 1.3.1
                 # (audio playback removed). Reading still works for
                 # backward-compat on older settings files.
