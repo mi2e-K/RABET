@@ -404,6 +404,19 @@ jobs:
           ### Fixed
 
           - **Recording and playback**
+            - Stepping back stopped at keyframes in MPEG-4 Part 2 videos with
+              B-frames (common in AVI files), so only a few dozen frames could
+              be reached. In AVI files whose frame time is not a whole number of
+              milliseconds (e.g. 30 fps), every other step also skipped a frame.
+            - Holding the Left arrow rewound only a few dozen frames on videos
+              with long keyframe intervals, because key repeats that arrived
+              during a step were dropped. They now add up into the next step,
+              and a held key stops when it is released.
+            - The playback speed slider packed 176 values (0.01x steps) into a
+              narrow track, so many of them, such as 0.50x, could not be
+              reached with the mouse. It now moves in 0.1x steps from 0.2x to
+              2.0x, and the speed saved from the last session is applied at
+              start-up instead of only being shown.
             - Opening a video during playback left play/pause stuck until RABET was
               restarted.
             - After a video failed to open, its duration stayed in place, so a

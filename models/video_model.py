@@ -259,12 +259,14 @@ class _VideoDecodeWorker(QObject):
         """Convert a millisecond timestamp to PTS in the stream's time base.
 
         Uses Fraction arithmetic to avoid float rounding errors that
-        would otherwise accumulate over long videos.
+        would otherwise accumulate over long videos. Rounds to the nearest
+        tick: positions are whole ms, so with a coarse time base (AVI's
+        1/fps) truncating turned frame 298's 9933 ms into frame 297.
         """
         if self._time_base == 0:
             return 0
         # ms -> seconds (as Fraction) -> stream PTS
-        pts = int(Fraction(ms, 1000) / self._time_base)
+        pts = round(Fraction(ms, 1000) / self._time_base)
         return pts + self._stream_start_pts
 
     def _pts_to_ms(self, pts: int) -> int:
@@ -805,57 +807,44 @@ class _VideoDecodeWorker(QObject):
         with self._decode_lock:
             # Frames decoded ahead of the old position are stale now.
             self._frame_buffer.clear()
-            try:
-                # ``backward=True`` lands us on the nearest keyframe <=
-                # target_pts; ``any_frame=False`` ensures we don't end up
-                # on a non-decodable frame.
-                self._container.seek(
-                    target_pts,
-                    stream=self._stream,
-                    any_frame=False,
-                    backward=True,
-                )
-            except av.error.FFmpegError as exc:
-                self.logger.error(
-                    "Container seek to %d ms failed: %s", position_ms, exc
-                )
-                if was_playing:
-                    self.play()
-                return False
+            seek_pts = target_pts
+            back_off = max(1, self._ms_to_pts(1000) - self._stream_start_pts)
+            for _attempt in range(6):
+                try:
+                    # ``backward=True`` lands us on the nearest keyframe <=
+                    # seek_pts; ``any_frame=False`` ensures we don't end up
+                    # on a non-decodable frame.
+                    self._container.seek(
+                        seek_pts,
+                        stream=self._stream,
+                        any_frame=False,
+                        backward=True,
+                    )
+                except av.error.FFmpegError as exc:
+                    self.logger.error(
+                        "Container seek to %d ms failed: %s", position_ms, exc
+                    )
+                    if was_playing:
+                        self.play()
+                    return False
 
-            # Walk frames forward from the keyframe. Track:
-            #   - last_before: the most recent frame whose pts < target_pts
-            #   - first_at_or_after: the first frame whose pts >= target_pts
-            # then pick whichever is closer to target_pts.
-            last_before: Optional[av.VideoFrame] = None
-            first_at_or_after: Optional[av.VideoFrame] = None
-            # Frames the same packet decoded after first_at_or_after. They are
-            # the next frames in presentation order, so they are kept for the
-            # following tick/step instead of being dropped.
-            decoded_ahead: list = []
-            try:
-                done = False
-                for packet in self._container.demux(self._stream):
-                    frames = [
-                        frame for frame in packet.decode()
-                        if frame is not None and frame.pts is not None
-                    ]
-                    for index, frame in enumerate(frames):
-                        if frame.pts < target_pts:
-                            last_before = frame
-                        else:
-                            first_at_or_after = frame
-                            decoded_ahead = frames[index + 1:]
-                            done = True
-                            break
-                    if done:
-                        break
-            except av.error.EOFError:
-                pass
-            except Exception as exc:
-                self.logger.error(
-                    "Seek-drain decode failed: %s", exc, exc_info=True
+                last_before, first_at_or_after, decoded_ahead = (
+                    self._decode_to_target(target_pts)
                 )
+                # The demuxer can pick a keyframe whose picture comes after
+                # the target: its index time is the reordered one (MPEG-4
+                # Part 2 with B-frames, in MP4 or AVI). Then nothing at or
+                # before the target was decoded, and a step back stuck at
+                # every keyframe. Seek further back and decode again.
+                if (
+                    last_before is not None
+                    or first_at_or_after is None
+                    or first_at_or_after.pts <= target_pts
+                    or seek_pts <= self._stream_start_pts
+                ):
+                    break
+                seek_pts = max(self._stream_start_pts, seek_pts - back_off)
+                back_off *= 2
 
             chosen: Optional[av.VideoFrame]
             if first_at_or_after is None and last_before is None:
@@ -900,6 +889,43 @@ class _VideoDecodeWorker(QObject):
             self.play()
         return True
 
+    def _decode_to_target(self, target_pts: int):
+        """Decode from the demuxer's position up to ``target_pts``.
+
+        Returns ``(last_before, first_at_or_after, decoded_ahead)``: the last
+        frame whose pts < target_pts, the first frame whose pts >=
+        target_pts, and the frames the same packet decoded after that one.
+        Those are the next frames in presentation order, so the caller keeps
+        them for the following tick/step instead of dropping them.
+        """
+        last_before: Optional[av.VideoFrame] = None
+        first_at_or_after: Optional[av.VideoFrame] = None
+        decoded_ahead: list = []
+        try:
+            done = False
+            for packet in self._container.demux(self._stream):
+                frames = [
+                    frame for frame in packet.decode()
+                    if frame is not None and frame.pts is not None
+                ]
+                for index, frame in enumerate(frames):
+                    if frame.pts < target_pts:
+                        last_before = frame
+                    else:
+                        first_at_or_after = frame
+                        decoded_ahead = frames[index + 1:]
+                        done = True
+                        break
+                if done:
+                    break
+        except av.error.EOFError:
+            pass
+        except Exception as exc:
+            self.logger.error(
+                "Seek-drain decode failed: %s", exc, exc_info=True
+            )
+        return last_before, first_at_or_after, decoded_ahead
+
     @Slot(int)
     def seek_with_retry(self, position_ms: int, retries: int = 3) -> bool:
         """Compatibility wrapper.
@@ -923,7 +949,17 @@ class _VideoDecodeWorker(QObject):
         finally:
             self.step_finished.emit(self._current_ms)
 
-    def _do_step_forward(self, time_ms: Optional[int] = None) -> bool:
+    @Slot(int)
+    def step_forward_frames(self, frames: int) -> bool:
+        """Step forward exactly ``frames`` frames (coalesced key-repeat)."""
+        try:
+            return self._do_step_forward(frames=frames)
+        finally:
+            self.step_finished.emit(self._current_ms)
+
+    def _do_step_forward(
+        self, time_ms: Optional[int] = None, frames: Optional[int] = None
+    ) -> bool:
         """Decode one or more frames forward without resuming playback.
 
         Args:
@@ -932,6 +968,7 @@ class _VideoDecodeWorker(QObject):
                 "small value => frame step" heuristic used by
                 video_controller). Larger values move
                 ``round(time_ms / frame_duration_ms)`` frames forward.
+            frames: exact number of frames to move; overrides ``time_ms``.
         """
         if self._container is None or self._stream is None:
             return False
@@ -939,7 +976,9 @@ class _VideoDecodeWorker(QObject):
         if self._is_playing:
             self.pause()
 
-        if time_ms is None or time_ms <= 50:
+        if frames:
+            frames_to_advance = max(1, int(frames))
+        elif time_ms is None or time_ms <= 50:
             frames_to_advance = 1
         else:
             frames_to_advance = max(
@@ -967,18 +1006,35 @@ class _VideoDecodeWorker(QObject):
         finally:
             self.step_finished.emit(self._current_ms)
 
-    def _do_step_backward(self, time_ms: Optional[int] = None) -> bool:
+    @Slot(int)
+    def step_backward_frames(self, frames: int) -> bool:
+        """Step back exactly ``frames`` frames in one seek (coalesced key-repeat)."""
+        try:
+            return self._do_step_backward(frames=frames)
+        finally:
+            self.step_finished.emit(self._current_ms)
+
+    def _do_step_backward(
+        self, time_ms: Optional[int] = None, frames: Optional[int] = None
+    ) -> bool:
         """Step backward by seeking to (current - step_ms).
 
         PyAV has no native "step back" so we seek + decode. Because
         :meth:`seek` is frame-accurate, the result is deterministic.
+        ``frames`` (an exact frame count) overrides ``time_ms``; it is
+        converted with the exact frame rate so long runs do not drift.
         """
         if self._container is None:
             return False
         if self._is_playing:
             self.pause()
 
-        if time_ms is None or time_ms <= 50:
+        if frames:
+            step_ms = max(
+                self._frame_duration_ms,
+                int(round(int(frames) * 1000.0 / max(0.001, self._frame_rate))),
+            )
+        elif time_ms is None or time_ms <= 50:
             step_ms = self._frame_duration_ms
         else:
             step_ms = max(self._frame_duration_ms, int(time_ms))
@@ -1196,6 +1252,18 @@ class VideoModel(QObject):
         QMetaObject.invokeMethod(
             self._worker, "step_backward", Qt.QueuedConnection,
             Q_ARG(int, int(time_ms) if time_ms is not None else 0),
+        )
+
+    def step_forward_frames(self, frames: int) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "step_forward_frames", Qt.QueuedConnection,
+            Q_ARG(int, int(frames)),
+        )
+
+    def step_backward_frames(self, frames: int) -> None:
+        QMetaObject.invokeMethod(
+            self._worker, "step_backward_frames", Qt.QueuedConnection,
+            Q_ARG(int, int(frames)),
         )
 
     def set_playback_rate(self, rate: float) -> None:

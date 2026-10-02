@@ -47,6 +47,10 @@ class VideoController(QObject):
         
         # Flag to track ongoing step operations
         self._stepping_in_progress = False
+        # Frames asked for while a step was in flight (negative = backward).
+        # They run as one step when it lands, so a held arrow key covers the
+        # distance it asked for without queueing steps past its release.
+        self._pending_step_frames = 0.0
         
         # Flag to track if video is currently being initialized
         self._video_initializing = False
@@ -307,6 +311,54 @@ class VideoController(QObject):
         main_window = self._view.window()
         if main_window and hasattr(main_window, 'annotation_controller'):
             main_window.annotation_controller.handle_seek(position)
+
+        self._run_pending_step()
+
+    def _step_request_frames(self, time_ms):
+        """Frames one step request covers (<= 50 ms is one frame, as in the model)."""
+        if time_ms is None or time_ms <= 50:
+            return 1.0
+        fps = self._video_model.get_frame_rate()
+        frame_ms = 1000.0 / fps if fps and fps > 0 else float(max(1, self._frame_duration_ms))
+        return time_ms / frame_ms
+
+    def _queue_step(self, direction, time_ms):
+        """Fold a step request that arrived while a step is in flight.
+
+        A backward step is a seek: on long-GOP video it takes hundreds of ms,
+        while key-repeat arrives every ~30 ms. Dropping those requests (1.3.4)
+        made a held "<<" cover only a few dozen frames. They now add up and run
+        as one step when the current one lands. A request in the other
+        direction replaces what was pending.
+        """
+        frames = direction * self._step_request_frames(time_ms)
+        if self._pending_step_frames * frames < 0:
+            self._pending_step_frames = 0.0
+        self._pending_step_frames += frames
+
+    def cancel_pending_steps(self):
+        """Drop steps folded from key-repeat (the arrow key was released)."""
+        self._pending_step_frames = 0.0
+
+    def _run_pending_step(self):
+        """Start the step folded from requests that arrived mid-step."""
+        frames = int(round(abs(self._pending_step_frames)))
+        backward = self._pending_step_frames < 0
+        self._pending_step_frames = 0.0
+        if frames == 0 or self._video_model is None or self._video_initializing:
+            return
+        self._stepping_in_progress = True
+        self._tag_step_intent()
+        try:
+            if backward:
+                self._video_model.step_backward_frames(frames)
+            else:
+                self._video_model.step_forward_frames(frames)
+        except Exception as exc:
+            self.logger.error(f"Pending step failed: {exc}", exc_info=True)
+            self._stepping_in_progress = False
+            return
+        self._step_complete_timer.start(2000)  # fallback; see handle_step_forward
     
     def _connect_view_signals(self):
         """Connect signals from the view."""
@@ -409,8 +461,11 @@ class VideoController(QObject):
         Returns:
             True on success.
         """
-        if self._video_model is None or self._stepping_in_progress:
+        if self._video_model is None:
             return False
+        if self._stepping_in_progress:
+            self._queue_step(1, time_ms)
+            return True
         self._stepping_in_progress = True
         # Seek-intent model: a frame step must never delete annotations.
         self._tag_step_intent()
@@ -447,8 +502,11 @@ class VideoController(QObject):
         by ``seek(current_ms - step_ms)`` which is frame-accurate, so the
         legacy VLC-era retry/pulse plumbing is gone.
         """
-        if self._video_model is None or self._stepping_in_progress:
+        if self._video_model is None:
             return False
+        if self._stepping_in_progress:
+            self._queue_step(-1, time_ms)
+            return True
         self._stepping_in_progress = True
         # Seek-intent model: stepping backward must never delete annotations
         # (the data-loss bug this hotfix targets).

@@ -305,15 +305,18 @@ class VideoPlayerView(QWidget):
         self.rate_label = QLabel("Speed:")
         self.controls_layout.addWidget(self.rate_label)
         
-        # Use slider instead of dropdown for playback rate
+        # Use slider instead of dropdown for playback rate. Values are tenths
+        # of the normal speed, so every move is a 0.1x step.
         self.rate_slider = QSlider(Qt.Orientation.Horizontal)
-        self.rate_slider.setMinimum(25)  # 0.25x
-        self.rate_slider.setMaximum(200) # 2.00x
-        self.rate_slider.setValue(100)   # 1.00x
+        self.rate_slider.setMinimum(2)   # 0.2x
+        self.rate_slider.setMaximum(20)  # 2.0x
+        self.rate_slider.setValue(10)    # 1.0x
+        self.rate_slider.setSingleStep(1)
+        self.rate_slider.setPageStep(1)
         self.rate_slider.setFixedWidth(130)
         self.controls_layout.addWidget(self.rate_slider)
         
-        self.rate_value_label = QLabel("1.00x")
+        self.rate_value_label = QLabel("1.0x")
         self.rate_value_label.setFixedWidth(38)
         self.controls_layout.addWidget(self.rate_value_label)
         
@@ -828,17 +831,17 @@ class VideoPlayerView(QWidget):
         Handle playback rate slider changed.
         
         Args:
-            value (int): Slider value (25-200)
+            value (int): Slider value in tenths (2-20)
         """
         # Skip if controls are disabled
         if self._controls_disabled:
             return
             
-        # Convert slider value to playback rate (0.25-2.00)
-        rate = value / 100.0
+        # Convert slider value to playback rate (0.2-2.0)
+        rate = value / 10.0
         
         # Update label
-        self.rate_value_label.setText(f"{rate:.2f}x")
+        self.rate_value_label.setText(f"{rate:.1f}x")
         
         # Emit signal
         self.rate_changed.emit(rate)
@@ -954,11 +957,11 @@ class VideoPlayerView(QWidget):
         if self._controls_disabled:
             return
             
-        # Set slider to 100 (1.00x)
-        self.rate_slider.setValue(100)
+        # Set slider to 10 (1.0x)
+        self.rate_slider.setValue(10)
         
         # Update label
-        self.rate_value_label.setText("1.00x")
+        self.rate_value_label.setText("1.0x")
         
         # Emit signal with 1.0 playback rate
         self.rate_changed.emit(1.0)
