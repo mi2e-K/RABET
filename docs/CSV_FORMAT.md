@@ -128,6 +128,10 @@ animal_id,<behavior cols>,<empty>,<behavior cols>,<empty>,<custom metric values>
   Metrics dialog. They include both **latency** metrics (one behavior
   each) and **total-time** metrics (a set of behaviors collapsed into a
   single overlap-aware duration).
+- After the `mean` and `SEM` rows, trailing `Note` rows may follow: one
+  for approximate total-time metrics, and one giving the merge gap when
+  **Merge short gaps** is on (`Note,Merge gap <s> s: ...`). They are not
+  animals.
 
 ### 2.3 `animal_id` derivation
 
@@ -140,7 +144,7 @@ trailing `_annotations` suffix, if any. Example:
 ## 3. Interval Summary CSV
 
 Produced when `Enable interval analysis` is **on**. The header reports the
-interval size in seconds.
+interval size in seconds and, when **Merge short gaps** is on, the merge gap.
 
 ### 3.1 Layout
 

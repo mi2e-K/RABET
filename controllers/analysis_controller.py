@@ -42,6 +42,7 @@ class AnalysisController(QObject):
         
         # Initialize interval analysis from view settings
         self._sync_interval_settings_from_view()
+        self._model.set_merge_gap(*self._view.get_merge_gap_settings())
     
     def _connect_model_signals(self):
         """Connect signals from the model."""
@@ -57,6 +58,7 @@ class AnalysisController(QObject):
         self._view.clear_files_requested.connect(self.on_clear_files_requested)
         self._view.export_table_requested.connect(self.on_export_table_requested)
         self._view.interval_settings_changed.connect(self.on_interval_settings_changed)
+        self._view.merge_gap_changed.connect(self.on_merge_gap_changed)
         self._view.configure_metrics_requested.connect(self.on_configure_metrics_requested)
         self._view.export_metrics_config_requested.connect(self.export_metrics_config)
         self._view.import_metrics_config_requested.connect(self.import_metrics_config)
@@ -378,6 +380,15 @@ class AnalysisController(QObject):
             self._should_auto_export = False
             # Note: The reanalysis is triggered automatically by set_interval_analysis
     
+    @Slot(bool, float)
+    def on_merge_gap_changed(self, enabled, seconds):
+        """Apply the optional merge gap; loaded files are reanalysed."""
+        self.logger.info(f"Merge gap changed: enabled={enabled}, seconds={seconds}")
+        # A settings change reanalyses without auto-exporting; clear the flag
+        # first, as the reanalysis below completes synchronously.
+        self._should_auto_export = False
+        self._model.set_merge_gap(enabled, seconds)
+
     @Slot(list)
     def on_data_loaded(self, file_paths):
         """

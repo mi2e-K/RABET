@@ -334,7 +334,26 @@ Interpretation:
   starts.
 - Point events have zero duration but still contribute to frequency.
 
-### 3.4 Custom Metrics
+### 3.4 Merge Gap (Optional)
+
+**Merge short gaps** in Analysis Settings is off by default. When it is on,
+events of the same behaviour separated by no more than **Max gap (seconds)**
+are merged into one episode before the Summary and Intervals tables are
+computed. An episode runs from its first onset to its last offset, so the gap
+counts as behaviour time.
+
+- The gap is measured as in Bout Analysis: the next onset minus the latest
+  offset so far. A gap equal to the limit is merged.
+- Frequency counts episodes and Duration includes the merged gaps. Latency
+  does not change.
+- Point events that merge into an episode take that episode's duration.
+- `summary_table.csv` ends with a `Note` row giving the gap, and
+  `summary_intervals.csv` names it in its title row.
+- Bout Analysis, Transition Analysis, Visualization and Reliability use the
+  recorded events. The annotation files are not changed, so switching the
+  option off gives the recorded values back.
+
+### 3.5 Custom Metrics
 
 Open **Configure Metrics...** to edit study-specific metrics.
 
@@ -345,7 +364,7 @@ of one behaviour. If the behaviour never occurs, the value is blank.
 onsets and offsets are available, RABET collapses overlapping intervals so
 simultaneous behaviours are not double-counted.
 
-### 3.5 Output
+### 3.6 Output
 
 - **Copy to Clipboard** copies the active table as tab-separated text.
 - **Export Summary Table** writes `summary_table.csv`; when interval analysis

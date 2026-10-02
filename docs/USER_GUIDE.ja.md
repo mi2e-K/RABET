@@ -333,7 +333,26 @@ Point 行動は通常、Duration ではなく Frequency を見る指標です。
   1 つのインターバルにだけカウントされます。
 - Point イベントは Duration 0 ですが、Frequency には入ります。
 
-### 3.4 カスタムメトリクス
+### 3.4 短い間隔のまとめ（オプション）
+
+Analysis Settings の **Merge short gaps** は、既定ではオフです。オンにすると、
+同じ行動で間隔が **Max gap (seconds)** 以下のイベントを 1 つのエピソードに
+まとめてから、Summary と Intervals の表を計算します。エピソードは最初の開始から
+最後の終了までとし、間の空白も行動時間に含めます。
+
+- 間隔は Bout Analysis と同じく、「次の開始 −（それまでの最も遅い終了）」で
+  測ります。上限と等しい間隔もまとめます。
+- Frequency はエピソードの数、Duration はまとめた間隔を含む時間になります。
+  Latency は変わりません。
+- Point イベントがまとまった場合は、そのエピソードの長さが Duration に
+  入ります。
+- `summary_table.csv` の末尾には間隔の値を記した `Note` 行が入り、
+  `summary_intervals.csv` では先頭のタイトル行に記載されます。
+- Bout Analysis、Transition Analysis、Visualization、Reliability は、記録した
+  イベントのまま計算します。アノテーションファイル自体は変更しないので、
+  オフに戻せば元の値に戻ります。
+
+### 3.5 カスタムメトリクス
 
 **Configure Metrics...** から、研究に合わせた指標を編集できます。
 
@@ -344,7 +363,7 @@ Point 行動は通常、Duration ではなく Frequency を見る指標です。
 利用できる場合、RABET は重複区間をまとめてから合計するため、同時に起きた
 行動を二重に数えません。
 
-### 3.5 出力
+### 3.6 出力
 
 - **Copy to Clipboard**: 表をタブ区切りでコピー
 - **Export Summary Table**: `summary_table.csv` を保存。インターバル解析

@@ -365,8 +365,19 @@ jobs:
 
           RABET vVERSION_PLACEHOLDER is a maintenance release. It fixes recording,
           playback, project-mode and analysis problems found in a review of 1.4.2,
-          and three optional analyses now measure time from each file's recording
-          start.
+          adds an optional merge gap to the Analysis tab, and three optional
+          analyses now measure time from each file's recording start.
+
+          ### Added
+
+          - **Optional merge gap in the Analysis tab.**
+            **Merge short gaps** (off by default) merges events of the same
+            behaviour separated by no more than a chosen gap into one episode,
+            from the first onset to the last offset, before the Summary and
+            Intervals tables are computed. Bout Analysis already merged events
+            this way with its bout criterion; the option now applies the same
+            rule to the standard analysis. Exported tables record the gap used,
+            and the recorded events are not changed.
 
           ### Changed
 

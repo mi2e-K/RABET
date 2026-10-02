@@ -62,6 +62,9 @@ class ConfigManager:
             # AnalysisView interval settings persisted across sessions.
             "interval_enabled": False,
             "interval_seconds": 60,
+            # Optional merge gap for the Analysis tab (off by default).
+            "merge_gap_enabled": False,
+            "merge_gap_seconds": 1.0,
         },
         "visualization": {
             # Last selected raster colour map. Custom colour maps are stored

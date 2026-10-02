@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QFileDialog, QMessageBox, QProgressBar, QPushButton,
-    QGroupBox, QSpinBox, QCheckBox, QTabWidget, QApplication,
+    QGroupBox, QSpinBox, QDoubleSpinBox, QCheckBox, QTabWidget, QApplication,
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, Slot
@@ -39,6 +39,7 @@ class AnalysisView(QWidget):
     clear_files_requested = Signal()
     export_table_requested = Signal()
     interval_settings_changed = Signal(bool, int)  # enabled, interval_seconds
+    merge_gap_changed = Signal(bool, float)  # enabled, gap_seconds
     configure_metrics_requested = Signal()
     export_metrics_config_requested = Signal()
     import_metrics_config_requested = Signal()
@@ -191,6 +192,29 @@ class AnalysisView(QWidget):
         
         # Add interval layout to settings group
         self.settings_layout.addLayout(self.interval_layout)
+
+        # Optional merge gap (off by default)
+        self.merge_gap_layout = QHBoxLayout()
+        self.merge_gap_checkbox = QCheckBox("Merge short gaps")
+        self.merge_gap_checkbox.setToolTip(
+            "Merge events of the same behaviour separated by no more than the\n"
+            "gap into one episode (first onset to last offset) before Duration,\n"
+            "Frequency, latency and interval results are computed. Bout and\n"
+            "Transition Analysis keep the recorded events."
+        )
+        self.merge_gap_layout.addWidget(self.merge_gap_checkbox)
+
+        self.merge_gap_label = QLabel("Max gap (seconds):")
+        self.merge_gap_layout.addWidget(self.merge_gap_label)
+
+        self.merge_gap_spinner = QDoubleSpinBox()
+        self.merge_gap_spinner.setDecimals(2)
+        self.merge_gap_spinner.setRange(0.01, 600.0)
+        self.merge_gap_spinner.setSingleStep(0.25)
+        self.merge_gap_spinner.setValue(1.0)
+        self.merge_gap_spinner.setToolTip("Largest gap between events that is merged")
+        self.merge_gap_layout.addWidget(self.merge_gap_spinner)
+        self.settings_layout.addLayout(self.merge_gap_layout)
         
         # Add metrics configuration buttons
         self.metrics_button_layout = QHBoxLayout()
@@ -382,6 +406,7 @@ class AnalysisView(QWidget):
         
         # Set initial state for interval controls
         self.update_interval_controls_state()
+        self.update_merge_gap_controls_state()
     
     def update_interval_controls_state(self):
         """Update the state of interval analysis controls based on checkbox."""
@@ -391,6 +416,12 @@ class AnalysisView(QWidget):
         # Mirror the same state on the Intervals tab; an empty/disabled tab
         # gives the user a clear hint about why interval data is missing.
         self._set_intervals_tab_enabled(is_enabled)
+
+    def update_merge_gap_controls_state(self):
+        """Enable the gap value only while merging is switched on."""
+        enabled = self.merge_gap_checkbox.isChecked()
+        self.merge_gap_spinner.setEnabled(enabled)
+        self.merge_gap_label.setEnabled(enabled)
 
     def _set_intervals_tab_enabled(self, enabled):
         """Enable/disable the Intervals tab in the tab bar."""
@@ -411,6 +442,8 @@ class AnalysisView(QWidget):
         # Connect interval analysis controls
         self.interval_checkbox.stateChanged.connect(self.on_interval_settings_changed)
         self.interval_seconds_spinner.valueChanged.connect(self.on_interval_settings_changed)
+        self.merge_gap_checkbox.stateChanged.connect(self.on_merge_gap_changed)
+        self.merge_gap_spinner.valueChanged.connect(self.on_merge_gap_changed)
 
         # Connect metrics configuration buttons
         self.configure_metrics_button.clicked.connect(self.configure_metrics_requested)
@@ -479,6 +512,35 @@ class AnalysisView(QWidget):
         # way to push the state through.
         self.interval_settings_changed.emit(enabled, seconds)
     
+    def on_merge_gap_changed(self, *_args):
+        """Handle changes to the optional merge gap."""
+        self.update_merge_gap_controls_state()
+        enabled, seconds = self.get_merge_gap_settings()
+        self.merge_gap_changed.emit(enabled, seconds)
+        if enabled:
+            self.set_status_message(
+                f"Merging same-behaviour events separated by {seconds:g} s or less"
+            )
+        else:
+            self.set_status_message("Merge gap off: recorded events are analysed as they are")
+
+    def set_merge_gap_settings(self, enabled, seconds):
+        """Set the merge gap controls and apply them (e.g. restored settings)."""
+        self.merge_gap_checkbox.blockSignals(True)
+        self.merge_gap_spinner.blockSignals(True)
+        self.merge_gap_checkbox.setChecked(bool(enabled))
+        self.merge_gap_spinner.setValue(float(seconds))
+        self.update_merge_gap_controls_state()
+        self.merge_gap_checkbox.blockSignals(False)
+        self.merge_gap_spinner.blockSignals(False)
+        # Emit once after the batch write so the model gets the restored state
+        # (see set_interval_settings).
+        self.merge_gap_changed.emit(*self.get_merge_gap_settings())
+
+    def get_merge_gap_settings(self):
+        """Return ``(enabled, gap_seconds)`` from the controls."""
+        return (self.merge_gap_checkbox.isChecked(), float(self.merge_gap_spinner.value()))
+
     def get_interval_settings(self):
         """
         Get the current interval analysis settings from the UI.
