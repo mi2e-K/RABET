@@ -7,6 +7,7 @@ import numpy as np
 import re
 from PySide6.QtCore import QObject, Signal
 from models.analysis_config import AnalysisMetricsConfig
+from models.bout_analysis import compute_bouts
 from utils.annotation_csv_parser import extract_event_dataframe
 from utils.csv_safety import SafeCsvWriter
 
@@ -48,6 +49,11 @@ class AnalysisModel(QObject):
         self._interval_enabled = False  # Whether to use time intervals for analysis
         self._interval_seconds = 60     # Default interval size (in seconds) - changed from minutes
         self._interval_results = {}     # File path -> interval results
+
+        # Optional merge gap (off by default): same-behaviour events separated
+        # by no more than this many seconds are merged before analysis.
+        self._merge_gap_enabled = False
+        self._merge_gap_seconds = 1.0
         
         # List of default behaviors to track (for consistent ordering)
         self._default_behaviors = [
@@ -107,6 +113,66 @@ class AnalysisModel(QObject):
         if self._analysis_inputs:
             self.logger.info("Reanalyzing existing files with new interval settings")
             self.analyze_all_files()
+
+    def set_merge_gap(self, enabled, gap_seconds=1.0):
+        """Configure the optional merge gap (off by default).
+
+        When enabled, events of the same behaviour separated by no more than
+        ``gap_seconds`` are merged into one episode, from the first onset to
+        the last offset (the gap counts as behaviour time), before Duration,
+        Frequency, latency, total-time and interval results are computed. The
+        gap is measured as in Bout Analysis: the next onset minus the latest
+        offset so far. The stored events are not changed, so turning it off
+        gives the recorded values back.
+        """
+        self._merge_gap_enabled = bool(enabled)
+        self._merge_gap_seconds = max(0.0, float(gap_seconds))
+        self.logger.info(
+            "Setting merge gap: enabled=%s, gap=%.3f s",
+            self._merge_gap_enabled, self._merge_gap_seconds,
+        )
+        if self._analysis_inputs:
+            self.analyze_all_files()
+
+    def get_merge_gap_settings(self):
+        """Return ``(enabled, gap_seconds)``."""
+        return (self._merge_gap_enabled, self._merge_gap_seconds)
+
+    def merge_gap_active(self):
+        """Whether a merge gap is applied to the analysis."""
+        return self._merge_gap_enabled and self._merge_gap_seconds > 0
+
+    def _merge_close_events(self, df):
+        """Return ``df`` with close same-behaviour events merged (merge gap).
+
+        Markers (``RecordingStart``), unnamed rows and events with unusable
+        times are kept as they are, so the usual checks still see them.
+        """
+        if not self.merge_gap_active() or df is None or df.empty or 'Event' not in df.columns:
+            return df
+
+        onsets = pd.to_numeric(df['Onset'], errors='coerce').to_numpy(dtype=float)
+        offsets = pd.to_numeric(df['Offset'], errors='coerce').to_numpy(dtype=float)
+        usable = np.isfinite(onsets) & np.isfinite(offsets) & (offsets >= onsets)
+        events = df['Event'].to_numpy()
+        behaviors = [
+            behavior for behavior in pd.unique(events)
+            if self._is_valid_behavior_name(str(behavior))
+        ]
+        mergeable = df['Event'].isin(behaviors).to_numpy() & usable
+
+        merged = []
+        for behavior in behaviors:
+            rows = mergeable & (events == behavior)
+            pairs = list(zip(onsets[rows], offsets[rows], strict=True))
+            for bout in compute_bouts(pairs, self._merge_gap_seconds):
+                merged.append((behavior, bout.start, bout.end))
+
+        merged_df = pd.DataFrame(merged, columns=['Event', 'Onset', 'Offset'])
+        kept = df[~mergeable]
+        parts = [kept, merged_df] if not kept.empty else [merged_df]
+        result = pd.concat(parts, ignore_index=True)
+        return result.sort_values('Onset', kind='stable').reset_index(drop=True)
 
     def _create_analysis_context(self, df, summary_data, test_duration):
         """
@@ -665,6 +731,7 @@ class AnalysisModel(QObject):
             
             test_duration = self._resolve_test_duration(df, test_duration)
             behavior_names = self._analysis_behavior_names(df, summary_data)
+            df = self._merge_close_events(df)
 
             # Initialize results dictionary
             results = {
@@ -678,7 +745,9 @@ class AnalysisModel(QObject):
                     duration, count = self._calculate_behavior_duration_count(
                         df, behavior, file_path,
                     )
-                    if behavior in summary_data:
+                    # The summary section counts the recorded events, so it
+                    # is not compared while a merge gap is applied.
+                    if behavior in summary_data and not self.merge_gap_active():
                         self._warn_if_summary_mismatch(
                             file_path,
                             behavior,
@@ -878,6 +947,7 @@ class AnalysisModel(QObject):
             # when metadata was unavailable.
             test_duration = self._resolve_test_duration(df, test_duration)
             self.logger.debug(f"Using test duration: {test_duration} seconds")
+            df = self._merge_close_events(df)
             
             # Initialize results dictionary
             results = {
@@ -1626,6 +1696,14 @@ class AnalysisModel(QObject):
 
         writer.writerows(stats_rows)
 
+    def _merge_gap_note(self):
+        """Describe the merge gap for the exported tables."""
+        return (
+            f"Merge gap {self._merge_gap_seconds:g} s: events of the same "
+            "behaviour separated by no more than this were merged, from the "
+            "first onset to the last offset"
+        )
+
     def export_summary_csv(self, file_path):
         """
         Export the summary table to CSV.
@@ -1781,13 +1859,18 @@ class AnalysisModel(QObject):
                 # as a trailing note row so the table layout above is unchanged
                 # and downstream column parsing is unaffected (backward compat).
                 approx_names = self.get_approximate_metric_names()
+                notes = []
                 if approx_names:
-                    writer.writerow([])
-                    writer.writerow([
-                        "Note",
+                    notes.append(
                         "Approximate (overlap not considered; computed from "
-                        "summary-only input): " + ", ".join(sorted(approx_names)),
-                    ])
+                        "summary-only input): " + ", ".join(sorted(approx_names))
+                    )
+                if self.merge_gap_active():
+                    notes.append(self._merge_gap_note())
+                if notes:
+                    writer.writerow([])
+                    for note in notes:
+                        writer.writerow(["Note", note])
 
             self.logger.info(f"Successfully exported standard summary table to {file_path}")
             return True
@@ -1820,7 +1903,10 @@ class AnalysisModel(QObject):
                 behaviors_list = self._behaviors
 
                 # Write a title row indicating this is an interval-based analysis
-                writer.writerow([f"Interval analysis ({self._interval_seconds}-second intervals)"])
+                title = f"Interval analysis ({self._interval_seconds}-second intervals)"
+                if self.merge_gap_active():
+                    title += f"; {self._merge_gap_note()}"
+                writer.writerow([title])
                 # FIX: Remove the unnecessary blank line on the second row
                 
                 # Write structured headers with Duration/Frequency sections.

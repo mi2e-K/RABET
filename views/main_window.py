@@ -1034,8 +1034,8 @@ class MainWindow(QMainWindow):
         current_view = self.stacked_widget.currentWidget()
 
         if ((hasattr(self, 'analysis_view') and current_view == self.analysis_view and
-             hasattr(self.analysis_view, 'interval_seconds_spinner') and
-             watched == self.analysis_view.interval_seconds_spinner) or
+             watched in (getattr(self.analysis_view, 'interval_seconds_spinner', None),
+                         getattr(self.analysis_view, 'merge_gap_spinner', None))) or
             (hasattr(self, 'visualization_view') and current_view == self.visualization_view)):
             return super().eventFilter(watched, event)
 
@@ -1625,6 +1625,15 @@ class MainWindow(QMainWindow):
             interval_seconds = int(analysis_section.get("interval_seconds", 60) or 60)
             if hasattr(self, 'analysis_view') and hasattr(self.analysis_view, 'set_interval_settings'):
                 self.analysis_view.set_interval_settings(interval_enabled, interval_seconds)
+            if hasattr(self, 'analysis_view') and hasattr(self.analysis_view, 'set_merge_gap_settings'):
+                try:
+                    merge_gap_seconds = float(analysis_section.get("merge_gap_seconds", 1.0))
+                except (TypeError, ValueError):
+                    merge_gap_seconds = 1.0
+                self.analysis_view.set_merge_gap_settings(
+                    bool(analysis_section.get("merge_gap_enabled", False)),
+                    merge_gap_seconds,
+                )
 
             # Restore recording-control preferences.
             annotation_section = self.config_manager.get("annotation") or {}
@@ -1744,6 +1753,9 @@ class MainWindow(QMainWindow):
                 enabled, seconds = self.analysis_view.get_interval_settings()
                 self.config_manager.set("analysis", "interval_enabled", bool(enabled))
                 self.config_manager.set("analysis", "interval_seconds", int(seconds))
+                merge_enabled, merge_seconds = self.analysis_view.get_merge_gap_settings()
+                self.config_manager.set("analysis", "merge_gap_enabled", bool(merge_enabled))
+                self.config_manager.set("analysis", "merge_gap_seconds", float(merge_seconds))
 
             # Recording-control preferences
             if hasattr(self, 'recording_control_view'):

@@ -136,6 +136,9 @@ animal_id,<behavior cols>,<empty>,<behavior cols>,<empty>,<custom metric values>
 - Point 行動は通常、Duration ではなく Frequency を主に見ます。
 - カスタムメトリクスは Metrics ダイアログで設定した順に末尾へ追加されます。
 - カスタムメトリクスには **latency** と **total-time** の 2 種類があります。
+- `mean` と `SEM` の行のあとに、`Note` 行が続く場合があります。概算の
+  total-time メトリクスがあるときと、**Merge short gaps** がオンのとき
+  （`Note,Merge gap <s> s: ...`）です。どちらも個体の行ではありません。
 
 ### 2.3 カスタムメトリクス
 
@@ -164,6 +167,7 @@ RI_010.csv               -> RI_010
 
 Interval Summary CSV は、Analysis ビューで **Enable interval analysis** が
 有効な場合に出力されます。先頭ヘッダーには、インターバル幅が秒で記録されます。
+**Merge short gaps** がオンのときは、その間隔も記録されます。
 
 ### 3.1 レイアウト
 
