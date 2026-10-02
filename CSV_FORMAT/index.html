@@ -1205,6 +1205,10 @@ One header band + one row per loaded animal / file.</p>
   Metrics dialog. They include both <strong>latency</strong> metrics (one behavior
   each) and <strong>total-time</strong> metrics (a set of behaviors collapsed into a
   single overlap-aware duration).</li>
+<li>After the <code>mean</code> and <code>SEM</code> rows, trailing <code>Note</code> rows may follow: one
+  for approximate total-time metrics, and one giving the merge gap when
+  <strong>Merge short gaps</strong> is on (<code>Note,Merge gap &lt;s&gt; s: ...</code>). They are not
+  animals.</li>
 </ul>
 <h3 id="23-animal_id-derivation">2.3 <code>animal_id</code> derivation<a class="headerlink" href="#23-animal_id-derivation" title="Permanent link">&para;</a></h3>
 <p>The <code>animal_id</code> is the basename of the source annotation CSV minus a
@@ -1213,7 +1217,7 @@ trailing <code>_annotations</code> suffix, if any. Example:
 <hr />
 <h2 id="3-interval-summary-csv">3. Interval Summary CSV<a class="headerlink" href="#3-interval-summary-csv" title="Permanent link">&para;</a></h2>
 <p>Produced when <code>Enable interval analysis</code> is <strong>on</strong>. The header reports the
-interval size in seconds.</p>
+interval size in seconds and, when <strong>Merge short gaps</strong> is on, the merge gap.</p>
 <h3 id="31-layout">3.1 Layout<a class="headerlink" href="#31-layout" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Interval analysis (&lt;N&gt;-second intervals)
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>&lt;...,Duration band,&lt;spacer&gt;,Frequency,...&gt;

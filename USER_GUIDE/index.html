@@ -725,10 +725,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#34-custom-metrics" class="md-nav__link">
+  <a href="#34-merge-gap-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.4 Custom Metrics
+        3.4 Merge Gap (Optional)
       
     </span>
   </a>
@@ -736,10 +736,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#35-output" class="md-nav__link">
+  <a href="#35-custom-metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.5 Output
+        3.5 Custom Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Output
       
     </span>
   </a>
@@ -1626,10 +1637,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#34-custom-metrics" class="md-nav__link">
+  <a href="#34-merge-gap-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.4 Custom Metrics
+        3.4 Merge Gap (Optional)
       
     </span>
   </a>
@@ -1637,10 +1648,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#35-output" class="md-nav__link">
+  <a href="#35-custom-metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3.5 Output
+        3.5 Custom Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Output
       
     </span>
   </a>
@@ -2513,14 +2535,32 @@ The <strong>Intervals</strong> tab then contains one row per animal and interval
   starts.</li>
 <li>Point events have zero duration but still contribute to frequency.</li>
 </ul>
-<h3 id="34-custom-metrics">3.4 Custom Metrics<a class="headerlink" href="#34-custom-metrics" title="Permanent link">&para;</a></h3>
+<h3 id="34-merge-gap-optional">3.4 Merge Gap (Optional)<a class="headerlink" href="#34-merge-gap-optional" title="Permanent link">&para;</a></h3>
+<p><strong>Merge short gaps</strong> in Analysis Settings is off by default. When it is on,
+events of the same behaviour separated by no more than <strong>Max gap (seconds)</strong>
+are merged into one episode before the Summary and Intervals tables are
+computed. An episode runs from its first onset to its last offset, so the gap
+counts as behaviour time.</p>
+<ul>
+<li>The gap is measured as in Bout Analysis: the next onset minus the latest
+  offset so far. A gap equal to the limit is merged.</li>
+<li>Frequency counts episodes and Duration includes the merged gaps. Latency
+  does not change.</li>
+<li>Point events that merge into an episode take that episode's duration.</li>
+<li><code>summary_table.csv</code> ends with a <code>Note</code> row giving the gap, and
+  <code>summary_intervals.csv</code> names it in its title row.</li>
+<li>Bout Analysis, Transition Analysis, Visualization and Reliability use the
+  recorded events. The annotation files are not changed, so switching the
+  option off gives the recorded values back.</li>
+</ul>
+<h3 id="35-custom-metrics">3.5 Custom Metrics<a class="headerlink" href="#35-custom-metrics" title="Permanent link">&para;</a></h3>
 <p>Open <strong>Configure Metrics...</strong> to edit study-specific metrics.</p>
 <p><strong>Latency metrics</strong> measure time from recording start to the first occurrence
 of one behaviour. If the behaviour never occurs, the value is blank.</p>
 <p><strong>Total-time metrics</strong> sum time across a set of behaviours. When raw event
 onsets and offsets are available, RABET collapses overlapping intervals so
 simultaneous behaviours are not double-counted.</p>
-<h3 id="35-output">3.5 Output<a class="headerlink" href="#35-output" title="Permanent link">&para;</a></h3>
+<h3 id="36-output">3.6 Output<a class="headerlink" href="#36-output" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Copy to Clipboard</strong> copies the active table as tab-separated text.</li>
 <li><strong>Export Summary Table</strong> writes <code>summary_table.csv</code>; when interval analysis

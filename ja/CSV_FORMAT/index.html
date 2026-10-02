@@ -1241,6 +1241,9 @@
 <li>Point 行動は通常、Duration ではなく Frequency を主に見ます。</li>
 <li>カスタムメトリクスは Metrics ダイアログで設定した順に末尾へ追加されます。</li>
 <li>カスタムメトリクスには <strong>latency</strong> と <strong>total-time</strong> の 2 種類があります。</li>
+<li><code>mean</code> と <code>SEM</code> の行のあとに、<code>Note</code> 行が続く場合があります。概算の
+  total-time メトリクスがあるときと、<strong>Merge short gaps</strong> がオンのとき
+  （<code>Note,Merge gap &lt;s&gt; s: ...</code>）です。どちらも個体の行ではありません。</li>
 </ul>
 <h3 id="23">2.3 カスタムメトリクス<a class="headerlink" href="#23" title="Permanent link">&para;</a></h3>
 <p><strong>Latency メトリクス</strong> は、記録開始から対象行動の最初の発生までの秒数です。
@@ -1258,7 +1261,8 @@ offset が利用できる場合、RABET は重複区間をまとめてから合�
 <hr />
 <h2 id="3-interval-summary-csv">3. Interval Summary CSV<a class="headerlink" href="#3-interval-summary-csv" title="Permanent link">&para;</a></h2>
 <p>Interval Summary CSV は、Analysis ビューで <strong>Enable interval analysis</strong> が
-有効な場合に出力されます。先頭ヘッダーには、インターバル幅が秒で記録されます。</p>
+有効な場合に出力されます。先頭ヘッダーには、インターバル幅が秒で記録されます。
+<strong>Merge short gaps</strong> がオンのときは、その間隔も記録されます。</p>
 <h3 id="31">3.1 レイアウト<a class="headerlink" href="#31" title="Permanent link">&para;</a></h3>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Interval analysis (&lt;N&gt;-second intervals)
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>&lt;...,Duration band,&lt;spacer&gt;,Frequency,...&gt;
