@@ -430,11 +430,10 @@ class AnnotationController(QObject):
         # Always update timeline position for smooth playback indicator.
         # ``set_position`` repaints the canvas, and active events (offset=None)
         # are drawn against ``_current_position`` automatically, so we do NOT
-        # need to rebuild the full event list every frame here. Triggering
-        # ``should_update`` is still useful to keep the throttle counter
-        # advancing for any code paths that depend on it.
+        # need to rebuild the full event list every frame here. It also applies
+        # the Update Rate itself; counting a second time here made a rate of 2
+        # never repaint.
         self._timeline_view.set_position(position)
-        self._timeline_view.should_update()
 
         # Seek-intent model (1.3.4): a backward jump deletes future annotations
         # only for *user-initiated* seeks — dragging the position slider OR

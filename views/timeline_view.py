@@ -95,6 +95,12 @@ class TimelineView(QWidget):
         self._timeline_visible = True
         self._update_frequency = 1
         self._frame_counter = 0
+        # With an Update Rate above 1, shows the last position once positions
+        # stop arriving: a seek or a frame step while paused sends only one.
+        self._pending_position_timer = QTimer(self)
+        self._pending_position_timer.setSingleShot(True)
+        self._pending_position_timer.setInterval(100)
+        self._pending_position_timer.timeout.connect(self._show_position)
         self._performance_mode = False
         self._timeline_scrollbar_height = 12
         self._timeline_canvas_height = 50
@@ -395,19 +401,28 @@ class TimelineView(QWidget):
             position_ms (int): Position in milliseconds
         """
         self._current_position = position_ms
-        
-        # Only update canvas if visible and performance settings allow
-        if self._timeline_visible and self.should_update():
-            self.timeline_canvas.update()
-        
-        # Auto-scroll to keep position in view (only if visible)
-        if self._timeline_visible:
-            self._auto_scroll()
-        
+
+        # Repaint and scroll together, every Update Rate positions. Scrolling
+        # on the positions in between moved what was already drawn (REC
+        # start, markers, finished events) while the playhead and the event
+        # being recorded waited for the next repaint, so they drifted apart.
+        if self.should_update():
+            self._pending_position_timer.stop()
+            self._show_position()
+        elif self._timeline_visible:
+            self._pending_position_timer.start()
+
         # CRITICAL FIX: Ensure controls remain visible during updates
         # Force a layout update to prevent control row from collapsing
         self.controls_layout.update()
         self.update()
+
+    def _show_position(self):
+        """Repaint the canvas at the current position and keep it in view."""
+        if not self._timeline_visible:
+            return
+        self.timeline_canvas.update()
+        self._auto_scroll()
     
     def _update_colors(self):
         """
