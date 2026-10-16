@@ -363,129 +363,45 @@ jobs:
           cat > release_body.md <<'EOF'
           ## RABET vVERSION_PLACEHOLDER
 
-          RABET vVERSION_PLACEHOLDER is a maintenance release. It fixes recording,
-          playback, project-mode and analysis problems found in a review of 1.4.2,
-          adds an optional merge gap to the Analysis tab, and three optional
-          analyses now measure time from each file's recording start.
-
-          ### Added
-
-          - **Optional merge gap in the Analysis tab.**
-            **Merge short gaps** (off by default) merges events of the same
-            behaviour separated by no more than a chosen gap into one episode,
-            from the first onset to the last offset, before the Summary and
-            Intervals tables are computed. Bout Analysis already merged events
-            this way with its bout criterion; the option now applies the same
-            rule to the standard analysis. Exported tables record the gap used,
-            and the recorded events are not changed.
-
-          ### Changed
-
-          - **Optional analyses measure time from the recording start.**
-            Files whose session starts at video time 0 give the same values as
-            before; files whose session starts later in the video can change.
-            - Predictability (Transition Analysis): the chance baseline no longer
-              includes video before the session, which lowered the chance level and
-              inflated the above-chance fraction.
-            - Detailed reliability compares only the time both files recorded, from
-              the later `RecordingStart` to the earlier `RecordingStart` + Test
-              Duration. The compared window is shown above the results and in the
-              export, and differing Test Durations are flagged on screen.
-            - The bout raster and its figure are drawn from each file's recording
-              start, with the axis titled "Time from recording start (s)".
-
-          - **Clearing annotations during a recording discards the session.**
-            Clear Annotations now asks to stop the recording and discard the session
-            without saving (the default is No). Previously the recording kept running
-            without its start marker, so the saved file could not be placed in time.
-            Import Annotations waits until the recording is stopped.
-
-          - **Replaced and unreadable files are kept.**
-            In Project mode, the annotation file a new session replaces is kept next
-            to it as `<name>.<date-time>.csv.bak`. An unreadable
-            `user_action_map.json` or `settings.json` is kept as
-            `<name>.corrupt-<date-time>` before defaults are used, and RABET says so
-            after start-up.
-
-          - **Clearer labels.**
-            The record button reads Stop during a session (Cancel only while waiting
-            for the start key). Remove in the project panel says whether the file
-            will be deleted from disk or only removed from the list.
+          RABET vVERSION_PLACEHOLDER is a maintenance release. It fixes the timeline's
+          time markers, which jumped during playback at zoom levels below 100 px/s, and
+          the timeline's Update Rate setting. Citations now point to the RABET paper,
+          available as a preprint.
 
           ### Fixed
 
-          - **Recording and playback**
-            - Stepping back stopped at keyframes in MPEG-4 Part 2 videos with
-              B-frames (common in AVI files), so only a few dozen frames could
-              be reached. In AVI files whose frame time is not a whole number of
-              milliseconds (e.g. 30 fps), every other step also skipped a frame.
-            - Holding the Left arrow rewound only a few dozen frames on videos
-              with long keyframe intervals, because key repeats that arrived
-              during a step were dropped. They now add up into the next step,
-              and a held key stops when it is released.
-            - The playback speed slider packed 176 values (0.01x steps) into a
-              narrow track, so many of them, such as 0.50x, could not be
-              reached with the mouse. It now moves in 0.1x steps from 0.2x to
-              2.0x, and the speed saved from the last session is applied at
-              start-up instead of only being shown.
-            - Opening a video during playback left play/pause stuck until RABET was
-              restarted.
-            - After a video failed to open, its duration stayed in place, so a
-              recording could be started without a video.
-            - A seek during playback left the recording paused, so key presses were
-              ignored.
-            - With "Preserve on rewind" off, a rewind could occasionally delete
-              nothing, and a bare click on the position slider could delete recent
-              annotations.
-            - The last frames of a video could not be reached, a step after some
-              seeks skipped a frame, and a session ending at the last frame did not
-              complete.
-            - A rewind landing on an event's onset left a zero-length event.
-            - Unmapped keys showed a misleading "already active" notice.
+          - **Time markers move with the timeline.**
+            Below 100 px/s the timeline labels every 2nd, 5th or 10th second. Since
+            1.3.4 the labelled seconds changed whenever the visible edge passed a whole
+            second, so during playback the markers jumped back by a second, once a
+            second, and did not move with the events or the REC start line. They now
+            stay on their seconds and scroll with the rest of the timeline. At 100 px/s
+            and above (the default) the markers were not affected.
 
-          - **Project mode**
-            - When a project video failed to load, the video left open saved its
-              session under the failed video's name.
-            - Answering "load existing annotations" discarded unsaved annotations
-              without asking.
-            - Closing a project did not stop a running recording.
-            - Videos sharing a file name lost their annotation status on reload.
+          - **The Update Rate setting skips whole frames.**
+            With an Update Rate above 1, the timeline scrolled on every frame but was
+            redrawn only on some, so the playhead and the event being recorded drifted
+            from the rest of the timeline, and a rate of 2 never redrew it. The timeline
+            now moves as a whole once every N frames, and a seek or frame step while
+            paused is always shown. The default of 1 (every frame) behaves as before.
 
-          - **Keyboard focus**
-            - The action-map table, the position slider and the timeline could keep
-              focus and swallow behaviour or arrow keys.
-            - Delete could remove the wrong timeline event after events changed.
+          ### Citation
 
-          - **Files and settings**
-            - Importing an annotation CSV ignored its Test Duration.
-            - Imported times were truncated to the millisecond below, and a byte
-              order mark broke CSVs that start with the header row.
-            - A saved recording duration with 0 minutes came back 5 minutes longer.
-            - Metric configurations with colliding names were accepted on load, and
-              the metric dialogs split or replaced some behaviour names.
+          The RABET paper is now available as a preprint (under peer review):
 
-          - **Visualization, reliability and stability**
-            - Point events were invisible in the raster plot.
-            - "Export Individual Plots" saved the same figure for every file.
-            - Action maps with point behaviours could not be loaded in the
-              Visualization tab, and custom colour maps were lost in the packaged
-              app.
-            - The "Note" row of a summary table was read as an animal in the
-              Reliability tab.
-            - Closing the disagreement review with Esc could crash RABET on exit.
+          > Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+          > Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+          > Animal Behavior Event Tagger [Preprint]. SSRN.
+          > https://doi.org/10.2139/ssrn.7320524
+
+          Please cite this paper when RABET supports your research. `CITATION.cff`, the
+          README, the user guides and Help > About (with its BibTeX) now give this
+          reference. The Zenodo DOI remains the archive of each release.
 
           ### Compatibility
 
-          Annotation CSVs keep the same format, and projects and settings from
-          1.4.2 open unchanged. Two exports gain columns: Export Bouts adds
-          `start_from_recording_s` and `end_from_recording_s` at the end of each
-          row, and the Detailed reliability export adds the compared window to its
-          first row (plus a warning row when the Test Durations differ).
-
-          ### Documentation
-
-          The user guide (English and Japanese) now describes the actual file
-          locations, logging, rewind handling and recording controls.
+          Annotation CSVs, projects and settings from 1.4.3 open unchanged, and
+          analysis results are the same.
 
           ### Packaging
 

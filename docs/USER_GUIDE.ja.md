@@ -1,6 +1,6 @@
 # RABET ユーザーガイド
 
-このガイドは RABET 1.4.3 向けです。動画を見ながら動物行動を記録し、
+このガイドは RABET 1.4.4 向けです。動画を見ながら動物行動を記録し、
 複数ファイルの集計、可視化、評価者間・評価者内信頼性の確認、バウト解析、
 遷移解析まで行うための基本的な使い方をまとめています。
 
@@ -36,11 +36,11 @@
 
 | OS | ファイル |
 | --- | --- |
-| Windows インストーラー | `RABET-Windows-1.4.3-Setup.zip` |
-| Windows ポータブル版 | `RABET-Windows-1.4.3-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.3.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.3.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.3.AppImage` |
+| Windows インストーラー | `RABET-Windows-1.4.4-Setup.zip` |
+| Windows ポータブル版 | `RABET-Windows-1.4.4-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.4.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.4.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.4.AppImage` |
 
 配布版には必要な実行環境が同梱されています。通常の利用では、VLC、FFmpeg、
 Python、R、scipy、コーデックパックなどを別途インストールする必要はありません。
@@ -49,13 +49,13 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 
 **Windows インストーラー**
 
-1. `RABET-Windows-1.4.3-Setup.zip` を展開。
+1. `RABET-Windows-1.4.4-Setup.zip` を展開。
 2. `RABET-Setup.exe` を実行。
 3. スタートメニューまたはショートカットから RABET を起動。
 
 **Windows ポータブル版**
 
-1. `RABET-Windows-1.4.3-portable.zip` を展開します。
+1. `RABET-Windows-1.4.4-portable.zip` を展開します。
 2. 展開先のフォルダを開きます。
 3. `RABET.exe` を実行します。
 
@@ -79,8 +79,8 @@ xattr -dr com.apple.quarantine /Applications/RABET.app
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-./RABET-Linux-x86_64-1.4.3.AppImage
+chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+./RABET-Linux-x86_64-1.4.4.AppImage
 ```
 
 ### 1.3 初回起動時に作られるもの

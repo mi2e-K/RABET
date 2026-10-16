@@ -106,7 +106,7 @@ transition analysis.
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Download RABET-Windows-1.4.3-Setup.zip from GitHub Releases
+    1. Download RABET-Windows-1.4.4-Setup.zip from GitHub Releases
     2. Run the installer
     3. Launch RABET from the Start Menu
     ```
@@ -114,7 +114,7 @@ transition analysis.
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Download RABET-macOS-arm64-1.4.3.dmg from GitHub Releases
+    1. Download RABET-macOS-arm64-1.4.4.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
     3. If Gatekeeper blocks launch, remove quarantine once
     ```
@@ -122,7 +122,7 @@ transition analysis.
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Download RABET-macOS-x86_64-1.4.3.dmg from GitHub Releases
+    1. Download RABET-macOS-x86_64-1.4.4.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
     3. If Gatekeeper blocks launch, remove quarantine once
     ```
@@ -130,8 +130,8 @@ transition analysis.
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-    ./RABET-Linux-x86_64-1.4.3.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+    ./RABET-Linux-x86_64-1.4.4.AppImage
     ```
 
 </div>

@@ -102,7 +102,7 @@ hide:
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. GitHub Releases から RABET-Windows-1.4.3-Setup.zip をダウンロード
+    1. GitHub Releases から RABET-Windows-1.4.4-Setup.zip をダウンロード
     2. 任意の場所に展開（デスクトップ / Tools フォルダなど）
     3. RABET.exe をダブルクリック
     ```
@@ -110,7 +110,7 @@ hide:
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. GitHub Releases から RABET-macOS-arm64-1.4.3.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-arm64-1.4.4.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
@@ -118,7 +118,7 @@ hide:
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. GitHub Releases から RABET-macOS-x86_64-1.4.3.dmg をダウンロード
+    1. GitHub Releases から RABET-macOS-x86_64-1.4.4.dmg をダウンロード
     2. 展開して RABET.app を Applications にドラッグ
     3. Gatekeeper に止められた場合は quarantine を一度だけ解除
     ```
@@ -126,8 +126,8 @@ hide:
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-    ./RABET-Linux-x86_64-1.4.3.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+    ./RABET-Linux-x86_64-1.4.4.AppImage
     ```
 
 </div>
