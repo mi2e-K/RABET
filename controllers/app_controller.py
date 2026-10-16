@@ -671,5 +671,6 @@ class AppController(QObject):
                 f"© 2026 Koshiro Mitsui\n"
                 "Released under the MIT License.\n"
                 "Repository: https://github.com/mi2e-K/RABET\n"
-                "DOI (all versions): https://doi.org/10.5281/zenodo.15313025"
+                "Cite (preprint): https://doi.org/10.2139/ssrn.7320524\n"
+                "Software archive (Zenodo): https://doi.org/10.5281/zenodo.15313025"
             )

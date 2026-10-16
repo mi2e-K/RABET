@@ -25,20 +25,24 @@ from version import __version__ as _RABET_VERSION
 
 _REPOSITORY_URL = "https://github.com/mi2e-K/RABET"
 _CONCEPT_DOI_URL = "https://doi.org/10.5281/zenodo.15313025"
+# The RABET paper, a preprint under peer review. Replace with the published
+# article once it is out.
+_PAPER_DOI_URL = "https://doi.org/10.2139/ssrn.7320524"
 
 
-def _bibtex_snippet(version: str) -> str:
-    """Return a minimal BibTeX entry for the current RABET release."""
+def _bibtex_snippet() -> str:
+    """Return the BibTeX entry for the RABET paper."""
     return (
-        "@software{rabet_"
-        + version.replace(".", "_")
-        + ",\n"
-        "  author       = {Mitsui, Koshiro},\n"
-        "  title        = {RABET --- Real-time Animal Behavior Event Tagger},\n"
-        f"  version      = {{{version}}},\n"
-        "  year         = {2026},\n"
-        "  url          = {" + _REPOSITORY_URL + "},\n"
-        "  doi          = {10.5281/zenodo.15313025}\n"
+        "@article{mitsui2026rabet,\n"
+        "  author  = {Mitsui, Koshiro and Wakatsuki, Moe and Takahashi, Aki},\n"
+        "  title   = {Protocol For Structured Ethological Coding of Mouse\n"
+        "             Aggressive Behavior Using {RABET}, The Real-Time Animal\n"
+        "             Behavior Event Tagger},\n"
+        "  journal = {SSRN},\n"
+        "  year    = {2026},\n"
+        "  note    = {Preprint},\n"
+        "  doi     = {10.2139/ssrn.7320524},\n"
+        "  url     = {https://ssrn.com/abstract=7320524}\n"
         "}\n"
     )
 
@@ -49,7 +53,7 @@ class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("About RABET")
-        self.resize(560, 480)
+        self.resize(560, 560)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -78,8 +82,8 @@ class AboutDialog(QDialog):
 
         self._bibtex_view = QTextBrowser(self)
         self._bibtex_view.setLineWrapMode(QTextBrowser.LineWrapMode.NoWrap)
-        self._bibtex_view.setMaximumHeight(140)
-        self._bibtex_view.setPlainText(_bibtex_snippet(_RABET_VERSION))
+        self._bibtex_view.setMaximumHeight(180)
+        self._bibtex_view.setPlainText(_bibtex_snippet())
         self._bibtex_view.setOpenExternalLinks(False)
         layout.addWidget(self._bibtex_view)
 
@@ -127,13 +131,22 @@ class AboutDialog(QDialog):
             "<p>Koshiro Mitsui &nbsp;"
             "<a href='https://orcid.org/0009-0009-0556-3906'>"
             "ORCID 0009-0009-0556-3906</a></p>"
+            "<h3>Citation</h3>"
+            "<p>If RABET supports your research, please cite the RABET paper "
+            "(a preprint under peer review):</p>"
+            "<p>Mitsui, K., Wakatsuki, M., &amp; Takahashi, A. (2026). Protocol "
+            "For Structured Ethological Coding of Mouse Aggressive Behavior "
+            "Using RABET, The Real-Time Animal Behavior Event Tagger "
+            f"[Preprint]. SSRN. <a href='{_PAPER_DOI_URL}'>{_PAPER_DOI_URL}</a></p>"
+            "<p>Please also report the RABET version you used.</p>"
             "<h3>License</h3>"
             "<p>Released under the MIT License - see the bundled "
             "<tt>LICENSE</tt> file for details.</p>"
             "<h3>Links</h3>"
             "<ul>"
             f"<li>Repository: <a href='{_REPOSITORY_URL}'>{_REPOSITORY_URL}</a></li>"
-            f"<li>DOI (all versions): <a href='{_CONCEPT_DOI_URL}'>{_CONCEPT_DOI_URL}</a></li>"
+            f"<li>Software archive (Zenodo, all versions): "
+            f"<a href='{_CONCEPT_DOI_URL}'>{_CONCEPT_DOI_URL}</a></li>"
             "</ul>"
             "<p style='color:#888;'>&copy; 2026 Koshiro Mitsui</p>"
         )

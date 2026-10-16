@@ -1,6 +1,6 @@
 # RABET User Guide
 
-This guide covers RABET 1.4.3. It is written for researchers who want to
+This guide covers RABET 1.4.4. It is written for researchers who want to
 annotate animal-behaviour videos, aggregate annotation files, visualise event
 patterns, assess scorer reliability, and run the bout and transition analyses
 included in RABET.
@@ -33,16 +33,17 @@ switcher and in the repository as
 
 The latest binaries are published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases/latest).
-The Zenodo concept DOI is provided for citation and long-term archival
-reference: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+Every release is also archived on Zenodo (concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)). To cite
+RABET, see [Citation and Support](#11-citation-and-support).
 
 | Platform | File |
 | --- | --- |
-| Windows installer | `RABET-Windows-1.4.3-Setup.zip` |
-| Windows portable | `RABET-Windows-1.4.3-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.3.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.3.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.3.AppImage` |
+| Windows installer | `RABET-Windows-1.4.4-Setup.zip` |
+| Windows portable | `RABET-Windows-1.4.4-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.4.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.4.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.4.AppImage` |
 
 All packages are self-contained. You do not need a separate VLC, FFmpeg,
 Python, R, scipy, or codec-pack installation to use the released app.
@@ -51,13 +52,13 @@ Python, R, scipy, or codec-pack installation to use the released app.
 
 **Windows installer**
 
-1. Unzip `RABET-Windows-1.4.3-Setup.zip`.
+1. Unzip `RABET-Windows-1.4.4-Setup.zip`.
 2. Run `RABET-Setup.exe`.
 3. Launch RABET from the Start Menu or desktop shortcut.
 
 **Windows portable**
 
-1. Unzip `RABET-Windows-1.4.3-portable.zip`.
+1. Unzip `RABET-Windows-1.4.4-portable.zip`.
 2. Open the extracted folder.
 3. Run `RABET.exe`.
 
@@ -80,8 +81,8 @@ Then open `RABET.app` normally.
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-./RABET-Linux-x86_64-1.4.3.AppImage
+chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+./RABET-Linux-x86_64-1.4.4.AppImage
 ```
 
 ### 1.3 What RABET Creates
@@ -856,12 +857,14 @@ When reporting a bug, include the exported log and the RABET version shown in
 
 Issues: <https://github.com/mi2e-K/RABET/issues>
 
-If RABET supports your research, please cite:
+If RABET supports your research, please cite the RABET paper (a preprint
+under peer review; this reference will be updated once it is published):
 
-> Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3) [Computer software].
-> https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-The DOI is the Zenodo concept DOI. When reproducibility matters, report the
-exact RABET version used.
+When reproducibility matters, also report the exact RABET version used. Every
+release is archived on Zenodo under the concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).

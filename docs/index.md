@@ -106,7 +106,7 @@ transition analysis.
 === ":material-microsoft-windows: Windows"
 
     ```text
-    1. Download RABET-Windows-1.4.3-Setup.zip from GitHub Releases
+    1. Download RABET-Windows-1.4.4-Setup.zip from GitHub Releases
     2. Run the installer
     3. Launch RABET from the Start Menu
     ```
@@ -114,7 +114,7 @@ transition analysis.
 === ":material-apple: macOS (Apple Silicon)"
 
     ```text
-    1. Download RABET-macOS-arm64-1.4.3.dmg from GitHub Releases
+    1. Download RABET-macOS-arm64-1.4.4.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
     3. If Gatekeeper blocks launch, remove quarantine once
     ```
@@ -122,7 +122,7 @@ transition analysis.
 === ":material-apple: macOS (Intel)"
 
     ```text
-    1. Download RABET-macOS-x86_64-1.4.3.dmg from GitHub Releases
+    1. Download RABET-macOS-x86_64-1.4.4.dmg from GitHub Releases
     2. Open the DMG and drag RABET.app into Applications
     3. If Gatekeeper blocks launch, remove quarantine once
     ```
@@ -130,8 +130,8 @@ transition analysis.
 === ":material-linux: Linux"
 
     ```bash
-    chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-    ./RABET-Linux-x86_64-1.4.3.AppImage
+    chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+    ./RABET-Linux-x86_64-1.4.4.AppImage
     ```
 
 </div>
@@ -145,18 +145,19 @@ transition analysis.
 
 ## Cite RABET
 
-If RABET supports your research, please cite it.  Machine-readable
-metadata lives in [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff); a human-readable form is:
+If RABET supports your research, please cite the RABET paper. It is a
+preprint under peer review; this reference will be updated once the paper
+is published. Machine-readable metadata lives in
+[`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff).
 
-> Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3). https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-The DOI above is the **concept DOI** that always resolves to the
-RABET record on Zenodo. For reproducibility, also report the exact
-RABET version used.
-
-A tool paper describing RABET is in preparation.
+For reproducibility, also report the exact RABET version used. Every
+release is archived on Zenodo under the concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 ---
 

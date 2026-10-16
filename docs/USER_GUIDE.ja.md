@@ -1,6 +1,6 @@
 # RABET ユーザーガイド
 
-このガイドは RABET 1.4.3 向けです。動画を見ながら動物行動を記録し、
+このガイドは RABET 1.4.4 向けです。動画を見ながら動物行動を記録し、
 複数ファイルの集計、可視化、評価者間・評価者内信頼性の確認、バウト解析、
 遷移解析まで行うための基本的な使い方をまとめています。
 
@@ -30,16 +30,17 @@
 
 最新版のバイナリは
 [GitHub Releases](https://github.com/mi2e-K/RABET/releases/latest)
-で公開しています。Zenodo の DOI は、引用と長期アーカイブのために用意して
-います: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)。
+で公開しています。各リリースは Zenodo にも保存されています(concept DOI:
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
+引用のしかたは「11. 引用とサポート」を参照してください。
 
 | OS | ファイル |
 | --- | --- |
-| Windows インストーラー | `RABET-Windows-1.4.3-Setup.zip` |
-| Windows ポータブル版 | `RABET-Windows-1.4.3-portable.zip` |
-| macOS Apple Silicon | `RABET-macOS-arm64-1.4.3.dmg` |
-| macOS Intel | `RABET-macOS-x86_64-1.4.3.dmg` |
-| Linux | `RABET-Linux-x86_64-1.4.3.AppImage` |
+| Windows インストーラー | `RABET-Windows-1.4.4-Setup.zip` |
+| Windows ポータブル版 | `RABET-Windows-1.4.4-portable.zip` |
+| macOS Apple Silicon | `RABET-macOS-arm64-1.4.4.dmg` |
+| macOS Intel | `RABET-macOS-x86_64-1.4.4.dmg` |
+| Linux | `RABET-Linux-x86_64-1.4.4.AppImage` |
 
 配布版には必要な実行環境が同梱されています。通常の利用では、VLC、FFmpeg、
 Python、R、scipy、コーデックパックなどを別途インストールする必要はありません。
@@ -48,13 +49,13 @@ Python、R、scipy、コーデックパックなどを別途インストール�
 
 **Windows インストーラー**
 
-1. `RABET-Windows-1.4.3-Setup.zip` を展開。
+1. `RABET-Windows-1.4.4-Setup.zip` を展開。
 2. `RABET-Setup.exe` を実行。
 3. スタートメニューまたはショートカットから RABET を起動。
 
 **Windows ポータブル版**
 
-1. `RABET-Windows-1.4.3-portable.zip` を展開します。
+1. `RABET-Windows-1.4.4-portable.zip` を展開します。
 2. 展開先のフォルダを開きます。
 3. `RABET.exe` を実行します。
 
@@ -78,8 +79,8 @@ xattr -dr com.apple.quarantine /Applications/RABET.app
 **Linux**
 
 ```bash
-chmod +x RABET-Linux-x86_64-1.4.3.AppImage
-./RABET-Linux-x86_64-1.4.3.AppImage
+chmod +x RABET-Linux-x86_64-1.4.4.AppImage
+./RABET-Linux-x86_64-1.4.4.AppImage
 ```
 
 ### 1.3 初回起動時に作られるもの
@@ -850,12 +851,14 @@ kappa や alpha は未定義です。
 
 Issues: <https://github.com/mi2e-K/RABET/issues>
 
-研究で RABET を使った場合は、次のように引用してください。
+研究で RABET を使った場合は、RABET の論文を引用してください。現在は査読中の
+プレプリントで、論文として出版された時点でこの引用情報を更新します。
 
-> Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3) [Computer software].
-> https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-この DOI は Zenodo の concept DOI です。再現性のため、実際に使った RABET の
-バージョンも必ず記録してください。
+再現性のため、実際に使った RABET のバージョンも必ず記録してください。各リリースは
+Zenodo にも保存されています(concept DOI:
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
