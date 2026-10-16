@@ -31,8 +31,11 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "PySide6>=6.8",
-    "shiboken6>=6.8",
+    # Below 6.12: PySide6 6.12.0 can crash while the interpreter exits, as it
+    # destroys the Qt objects still alive (seen in the test suite and, rarely,
+    # when closing RABET). Lift the bound once a 6.12 release is shown clean.
+    "PySide6>=6.8,<6.12",
+    "shiboken6>=6.8,<6.12",
     # PyAV (FFmpeg bindings) replaces python-vlc in 1.3.1. Wheels ship a
     # bundled FFmpeg build for win/mac/linux, so no system VLC/FFmpeg
     # install is required at runtime.
