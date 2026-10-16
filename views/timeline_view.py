@@ -877,6 +877,11 @@ class TimelineCanvas(QWidget):
         if clip is not None and self.timeline_view._zoom_level > 0:
             zoom = self.timeline_view._zoom_level
             start_seconds = max(0, int(clip.left() / zoom) - seconds_per_marker)
+            # Keep markers on multiples of the marker step. Starting at the
+            # visible edge put them on whichever second it had reached, so
+            # below 100 px/s the ruler jumped a second at a time while the
+            # timeline scrolled, out of step with the events.
+            start_seconds -= start_seconds % seconds_per_marker
             end_seconds = min(total_seconds, int(clip.right() / zoom) + seconds_per_marker)
 
         # Draw markers
