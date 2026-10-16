@@ -96,7 +96,7 @@ normal use.
 
 The latest release is published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases/latest).
-Every release is also archived on Zenodo (concept DOI
+RABET is also archived on Zenodo (concept DOI
 [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)). To cite
 RABET, see [Citation](#citation).
 
@@ -214,9 +214,7 @@ published. Machine-readable metadata is in [CITATION.cff](CITATION.cff).
 > Animal Behavior Event Tagger [Preprint]. SSRN.
 > doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-Please also report the exact RABET version you used. Every release is archived
-on Zenodo under the concept DOI
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+Please also report the exact RABET version you used.
 
 ---
 

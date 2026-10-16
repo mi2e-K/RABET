@@ -21,8 +21,9 @@ date-released: "2026-10-16"
 license: MIT
 repository-code: "https://github.com/mi2e-K/RABET"
 url: "https://github.com/mi2e-K/RABET"
-# Zenodo archives every release. Its DOIs identify the software archive:
-#   - a "concept DOI" that always resolves to the latest version
+# RABET is also archived on Zenodo, which is not linked to the GitHub
+# releases. Its DOIs identify that archive:
+#   - a "concept DOI" that resolves to the latest version on Zenodo
 #     (10.5281/zenodo.15313025), and
 #   - optional "version DOI" records specific to archived releases.
 # To cite RABET, use the paper under preferred-citation below.

@@ -33,7 +33,7 @@ switcher and in the repository as
 
 The latest binaries are published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases/latest).
-Every release is also archived on Zenodo (concept DOI
+RABET is also archived on Zenodo (concept DOI
 [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)). To cite
 RABET, see [Citation and Support](#11-citation-and-support).
 
@@ -865,6 +865,4 @@ under peer review; this reference will be updated once it is published):
 > Animal Behavior Event Tagger [Preprint]. SSRN.
 > doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-When reproducibility matters, also report the exact RABET version used. Every
-release is archived on Zenodo under the concept DOI
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+When reproducibility matters, also report the exact RABET version used.
