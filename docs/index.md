@@ -155,9 +155,7 @@ is published. Machine-readable metadata lives in
 > Animal Behavior Event Tagger [Preprint]. SSRN.
 > doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-For reproducibility, also report the exact RABET version used. Every
-release is archived on Zenodo under the concept DOI
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+For reproducibility, also report the exact RABET version used.
 
 ---
 

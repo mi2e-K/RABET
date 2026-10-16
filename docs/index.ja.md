@@ -152,8 +152,6 @@ hide:
 > doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
 再現性のため、実際に使った RABET のバージョンもあわせて記録してください。
-各リリースは Zenodo にも保存されています(concept DOI:
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
 
 ---
 

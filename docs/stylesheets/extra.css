@@ -35,6 +35,13 @@
   margin: 0 0 1.5rem;
 }
 
+/* The title and subtitle are headings, so they got a "¶" permalink on
+   hover like every section heading; a link to the top of the page is no
+   use. Section headings keep theirs. */
+.rabet-hero .headerlink {
+  display: none;
+}
+
 .rabet-hero p {
   max-width: 38rem;
   margin: 0 auto 1.5rem;

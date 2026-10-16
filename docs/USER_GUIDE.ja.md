@@ -30,7 +30,7 @@
 
 最新版のバイナリは
 [GitHub Releases](https://github.com/mi2e-K/RABET/releases/latest)
-で公開しています。各リリースは Zenodo にも保存されています(concept DOI:
+で公開しています。RABET は Zenodo にも保存されています(concept DOI:
 [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
 引用のしかたは「11. 引用とサポート」を参照してください。
 
@@ -859,6 +859,4 @@ Issues: <https://github.com/mi2e-K/RABET/issues>
 > Animal Behavior Event Tagger [Preprint]. SSRN.
 > doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-再現性のため、実際に使った RABET のバージョンも必ず記録してください。各リリースは
-Zenodo にも保存されています(concept DOI:
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
+再現性のため、実際に使った RABET のバージョンも必ず記録してください。
