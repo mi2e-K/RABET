@@ -145,18 +145,19 @@ transition analysis.
 
 ## Cite RABET
 
-If RABET supports your research, please cite it.  Machine-readable
-metadata lives in [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff); a human-readable form is:
+If RABET supports your research, please cite the RABET paper. It is a
+preprint under peer review; this reference will be updated once the paper
+is published. Machine-readable metadata lives in
+[`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff).
 
-> Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3). https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-The DOI above is the **concept DOI** that always resolves to the
-RABET record on Zenodo. For reproducibility, also report the exact
-RABET version used.
-
-A tool paper describing RABET is in preparation.
+For reproducibility, also report the exact RABET version used. Every
+release is archived on Zenodo under the concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 ---
 

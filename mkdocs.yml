@@ -83,6 +83,9 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/mi2e-K/RABET
+    - icon: fontawesome/solid/file-lines
+      link: https://doi.org/10.2139/ssrn.7320524
+      name: RABET paper (preprint)
     - icon: simple/zenodo
       link: https://doi.org/10.5281/zenodo.15313025
       name: Zenodo (concept DOI)

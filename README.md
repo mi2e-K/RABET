@@ -12,7 +12,8 @@
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#installation)
 [![CI](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml/badge.svg)](https://github.com/mi2e-K/RABET/actions/workflows/ci.yml)
 [![Website](https://img.shields.io/badge/website-mi2e--k.github.io%2FRABET-ff5722?logo=githubpages&logoColor=white)](https://mi2e-k.github.io/RABET/)
-[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.15313025-orange)](https://doi.org/10.5281/zenodo.15313025)
+[![Preprint](https://img.shields.io/badge/preprint-10.2139%2Fssrn.7320524-8a2be2)](https://doi.org/10.2139/ssrn.7320524)
+[![Zenodo](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.15313025-orange)](https://doi.org/10.5281/zenodo.15313025)
 
 </div>
 
@@ -95,8 +96,9 @@ normal use.
 
 The latest release is published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases/latest).
-The Zenodo concept DOI is kept for citation and long-term archival reference:
-[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+Every release is also archived on Zenodo (concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)). To cite
+RABET, see [Citation](#citation).
 
 Download the asset matching your platform:
 
@@ -203,19 +205,18 @@ Times are seconds with four decimal places. Full details are in
 
 ## Citation
 
-If RABET supports your research, please cite it. Machine-readable metadata is
-in [CITATION.cff](CITATION.cff). A human-readable form is:
+If RABET supports your research, please cite the RABET paper. It is a
+preprint under peer review; this reference will be updated once the paper is
+published. Machine-readable metadata is in [CITATION.cff](CITATION.cff).
 
-> Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3) [Computer software].
-> https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-The DOI above is the Zenodo **concept DOI**, intended to remain stable across
-RABET versions. When citing a specific binary release, also report the exact
-RABET version used.
-
-A tool paper describing RABET is in preparation.
+Please also report the exact RABET version you used. Every release is archived
+on Zenodo under the concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
 
 ---
 

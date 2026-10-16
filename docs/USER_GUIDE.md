@@ -33,8 +33,9 @@ switcher and in the repository as
 
 The latest binaries are published on the
 [GitHub Releases page](https://github.com/mi2e-K/RABET/releases/latest).
-The Zenodo concept DOI is provided for citation and long-term archival
-reference: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).
+Every release is also archived on Zenodo (concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)). To cite
+RABET, see [Citation and Support](#11-citation-and-support).
 
 | Platform | File |
 | --- | --- |
@@ -856,12 +857,14 @@ When reporting a bug, include the exported log and the RABET version shown in
 
 Issues: <https://github.com/mi2e-K/RABET/issues>
 
-If RABET supports your research, please cite:
+If RABET supports your research, please cite the RABET paper (a preprint
+under peer review; this reference will be updated once it is published):
 
-> Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3) [Computer software].
-> https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-The DOI is the Zenodo concept DOI. When reproducibility matters, report the
-exact RABET version used.
+When reproducibility matters, also report the exact RABET version used. Every
+release is archived on Zenodo under the concept DOI
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025).

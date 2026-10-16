@@ -30,8 +30,9 @@
 
 最新版のバイナリは
 [GitHub Releases](https://github.com/mi2e-K/RABET/releases/latest)
-で公開しています。Zenodo の DOI は、引用と長期アーカイブのために用意して
-います: [10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)。
+で公開しています。各リリースは Zenodo にも保存されています(concept DOI:
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
+引用のしかたは「11. 引用とサポート」を参照してください。
 
 | OS | ファイル |
 | --- | --- |
@@ -850,12 +851,14 @@ kappa や alpha は未定義です。
 
 Issues: <https://github.com/mi2e-K/RABET/issues>
 
-研究で RABET を使った場合は、次のように引用してください。
+研究で RABET を使った場合は、RABET の論文を引用してください。現在は査読中の
+プレプリントで、論文として出版された時点でこの引用情報を更新します。
 
-> Mitsui, K. (2026). *RABET - Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3) [Computer software].
-> https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-この DOI は Zenodo の concept DOI です。再現性のため、実際に使った RABET の
-バージョンも必ず記録してください。
+再現性のため、実際に使った RABET のバージョンも必ず記録してください。各リリースは
+Zenodo にも保存されています(concept DOI:
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。

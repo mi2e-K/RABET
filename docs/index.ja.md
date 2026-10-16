@@ -141,17 +141,19 @@ hide:
 
 ## RABET の引用
 
-研究で RABET をご利用いただいた場合は、ぜひ引用をお願いいたします。機械可読形式の引用情報は [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff)
-に記載されています。人間が読みやすい形式の引用例は以下のとおりです。
+研究で RABET をご利用いただいた場合は、RABET の論文の引用をお願いいたします。
+現在は査読中のプレプリントで、論文として出版された時点でこの引用情報を更新します。
+機械可読形式の引用情報は [`CITATION.cff`](https://github.com/mi2e-K/RABET/blob/main/CITATION.cff)
+に記載されています。
 
-> Mitsui, K. (2026). *RABET — Real-time Animal Behavior Event Tagger*
-> (Version 1.4.3). https://github.com/mi2e-K/RABET
-> doi:[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025)
+> Mitsui, K., Wakatsuki, M., & Takahashi, A. (2026). Protocol For Structured
+> Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time
+> Animal Behavior Event Tagger [Preprint]. SSRN.
+> doi:[10.2139/ssrn.7320524](https://doi.org/10.2139/ssrn.7320524)
 
-上記の DOI は Zenodo の **concept DOI** です。再現性のため、実際に使った
-RABET のバージョンもあわせて記録してください。
-
-RABET を解説する論文を準備中です。
+再現性のため、実際に使った RABET のバージョンもあわせて記録してください。
+各リリースは Zenodo にも保存されています(concept DOI:
+[10.5281/zenodo.15313025](https://doi.org/10.5281/zenodo.15313025))。
 
 ---
 

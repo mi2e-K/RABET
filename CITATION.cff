@@ -1,5 +1,8 @@
 cff-version: 1.2.0
-message: "If you use RABET in academic work, please cite it as below."
+message: >-
+  If you use RABET in academic work, please cite the RABET paper given under
+  preferred-citation. It is a preprint under peer review; the entry will be
+  updated once the paper is published.
 title: "RABET — Real-time Animal Behavior Event Tagger"
 abstract: >
   RABET is a cross-platform desktop application for behavioural annotation of
@@ -18,12 +21,11 @@ date-released: "2026-10-02"
 license: MIT
 repository-code: "https://github.com/mi2e-K/RABET"
 url: "https://github.com/mi2e-K/RABET"
-# Zenodo issues two DOIs for this project:
+# Zenodo archives every release. Its DOIs identify the software archive:
 #   - a "concept DOI" that always resolves to the latest version
 #     (10.5281/zenodo.15313025), and
 #   - optional "version DOI" records specific to archived releases.
-# Cite the concept DOI in papers so the reference auto-updates as new
-# RABET versions are released.
+# To cite RABET, use the paper under preferred-citation below.
 identifiers:
   - type: doi
     value: "10.5281/zenodo.15313025"
@@ -39,3 +41,21 @@ keywords:
   - desktop-application
   - python
   - qt
+preferred-citation:
+  type: article
+  status: preprint
+  authors:
+    - family-names: "Mitsui"
+      given-names: "Koshiro"
+      orcid: "https://orcid.org/0009-0009-0556-3906"
+    - family-names: "Wakatsuki"
+      given-names: "Moe"
+    - family-names: "Takahashi"
+      given-names: "Aki"
+  title: "Protocol For Structured Ethological Coding of Mouse Aggressive Behavior Using RABET, The Real-Time Animal Behavior Event Tagger"
+  journal: "SSRN"
+  year: 2026
+  month: 8
+  doi: "10.2139/ssrn.7320524"
+  url: "https://ssrn.com/abstract=7320524"
+  notes: "Preprint, under peer review."
